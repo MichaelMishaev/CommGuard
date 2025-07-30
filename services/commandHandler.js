@@ -423,14 +423,17 @@ class CommandHandler {
         if (this.isPrivateChat(msg)) {
             // Show general bot statistics
             const { blacklistCache } = require('./blacklistService');
-            const { whitelistCache } = require('./whitelistService');
+            const { listWhitelist } = require('./whitelistService');
             const mutedUsers = getMutedUsers();
             const activeMutes = Array.from(mutedUsers.entries()).filter(([id, muteUntil]) => Date.now() < muteUntil).length;
+            
+            // Get whitelist count
+            const whitelistCount = (await listWhitelist()).length;
             
             const statsText = `📊 *Bot Statistics*
 
 🚫 *Blacklisted Users:* ${blacklistCache.size}
-✅ *Whitelisted Users:* ${whitelistCache.size}
+✅ *Whitelisted Users:* ${whitelistCount}
 🔇 *Currently Muted:* ${activeMutes}
 🔥 *Firebase:* Connected (${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'})
 🌍 *Country Filter:* ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Active' : 'Inactive'}
