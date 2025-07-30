@@ -114,6 +114,10 @@ class CommandHandler {
                            senderId.includes(config.ALERT_PHONE) ||
                            senderId.includes(config.ADMIN_PHONE);
         
+        // Check if it's specifically the alert phone
+        const isAlertPhone = senderPhone === config.ALERT_PHONE || 
+                            senderId.includes(config.ALERT_PHONE);
+        
         // ONLY allow help command in private chat from admin
         if (!isPrivateChat) {
             // In groups, don't reveal anything about the help command
@@ -131,7 +135,94 @@ class CommandHandler {
             return true;
         }
         
-        const helpText = `📝 *CommGuard Bot Commands*
+        // Special detailed help for alert phone
+        if (isAlertPhone) {
+            const detailedHelpText = `📝 *CommGuard Bot - FULL COMMAND REFERENCE*
+
+*✅ WORKING COMMANDS:*
+
+*🔧 Basic Commands:*
+• *#status* - Shows bot online status, ID, version, and configuration
+• *#stats* - Displays group statistics (members, admins, etc)
+• *#help* - This command list (private chat only)
+
+*👮 Moderation Commands:*
+• *#kick* - Reply to message → Kicks user + deletes their message + adds to blacklist
+• *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
+• *#warn* - Reply to message → Sends private warning to user
+• *#clear* - ⚠️ NOT IMPLEMENTED (will show "not yet implemented")
+
+*🔇 Mute Commands:*
+• *#mute 30* - Mutes entire group for 30 minutes (only admins can speak)
+• *#mute* (reply) - Mutes specific user (deletes all their messages)
+• *#unmute* - Unmutes group or user
+
+*📋 Whitelist Management:*
+• *#whitelist 972555123456* - Adds number to whitelist (bypasses ALL restrictions)
+• *#unwhitelist 972555123456* - Removes from whitelist
+• *#whitelst* - Shows all whitelisted numbers
+
+*🚫 Blacklist Management:*
+• *#blacklist 972555123456* - Adds to blacklist (auto-kicked on join)
+• *#unblacklist 972555123456* - Removes from blacklist
+• *#blacklst* - Shows all blacklisted numbers
+• *#botkick* - Scans current group and kicks all blacklisted members
+
+*🌍 Country Restriction:*
+• *#botforeign* - Removes ALL users with +1 (US/Canada) and +6 (Southeast Asia) numbers
+  - Protects Israeli numbers (+972)
+  - Skips whitelisted users
+
+*🧹 Advanced Commands:*
+• *#sweep* - Removes inactive users (requires superadmin)
+• *#sessioncheck* - Shows session decryption error statistics
+• *#botadmin* - Checks if bot has admin privileges in current group
+• *#debugnumbers* - Shows participant phone formats (for debugging LID issues)
+
+*🚨 AUTO-PROTECTION FEATURES:*
+1. **Invite Link Detection** ✅
+   - Detects: chat.whatsapp.com links
+   - Actions: Deletes message → Kicks user → Adds to blacklist → Alerts admin
+
+2. **Blacklist Auto-Kick** ✅
+   - When blacklisted user joins → Instant kick
+   - Admin override: If ADMIN adds blacklisted user → Allowed to stay
+
+3. **Country Code Auto-Kick** ✅
+   - Auto-kicks: +1 (US/Canada) and +6x (Southeast Asia)
+   - Protected: +972 (Israel) NEVER kicked
+   - Admin override: If ADMIN adds restricted user → Allowed to stay
+
+4. **Whitelist Bypass** ✅
+   - Whitelisted users bypass ALL restrictions
+   - Never kicked for any reason
+
+*⚙️ SPECIAL BEHAVIORS:*
+• Bot needs admin to work (bypass enabled for LID issues)
+• #kick now deletes the target message too
+• All kicks add user to blacklist automatically
+• Muted users kicked after 10 messages
+• Session errors handled automatically
+
+*🔒 SECURITY NOTES:*
+• #help only works in private chat
+• #help shows "Unknown command" in groups
+• Only admin phones can access commands
+• Alert phone: ${config.ALERT_PHONE} (YOU)
+• Admin phone: ${config.ADMIN_PHONE}
+
+*📱 BOT STATUS:*
+• Version: 2.0 (Baileys)
+• Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'}
+• Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? 'Enabled' : 'Disabled'}
+• Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Enabled' : 'Disabled'}
+
+*🛡️ Bot is protecting your groups 24/7!*`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: detailedHelpText });
+        } else {
+            // Regular help text for admin phone
+            const helpText = `📝 *CommGuard Bot Commands*
 
 *🔧 Basic Commands:*
 • *#status* - Check bot status and configuration
@@ -192,7 +283,8 @@ class CommandHandler {
 
 *🛡️ Bot protects your groups 24/7 automatically!*`;
 
-        await this.sock.sendMessage(msg.key.remoteJid, { text: helpText });
+            await this.sock.sendMessage(msg.key.remoteJid, { text: helpText });
+        }
         return true;
     }
 
@@ -440,7 +532,24 @@ class CommandHandler {
 
             console.log(`[${require('../utils/logger').getTimestamp()}] 👢 Admin kick: ${targetUserId} from ${groupId}`);
 
-            // Delete the #kick command message first
+            // Delete the replied-to message first
+            if (quotedMsg.stanzaId) {
+                try {
+                    await this.sock.sendMessage(groupId, { 
+                        delete: {
+                            remoteJid: groupId,
+                            fromMe: false,
+                            id: quotedMsg.stanzaId,
+                            participant: targetUserId
+                        }
+                    });
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted target user's message`);
+                } catch (deleteError) {
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete target message:`, deleteError);
+                }
+            }
+
+            // Delete the #kick command message
             try {
                 await this.sock.sendMessage(groupId, { 
                     delete: msg.key 

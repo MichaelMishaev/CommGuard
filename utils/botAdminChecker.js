@@ -36,9 +36,21 @@ async function isBotAdmin(sock, groupId) {
         // that has no relation to the phone number. In this case, we need to
         // check if the bot name matches or use the bypass feature.
         
+        // First check if the bot ID is in LID format
+        const isLidFormat = botId.includes('@lid');
+        let botLid = null;
+        
+        if (isLidFormat) {
+            botLid = botId;
+            console.log(`   Bot is using LID format: ${botLid}`);
+        }
+        
         const botParticipant = groupMetadata.participants.find(p => {
             // Direct ID match
             if (p.id === botId) return true;
+            
+            // If bot uses LID format, check for exact match
+            if (botLid && p.id === botLid) return true;
             
             // Extract phone from participant ID
             const participantPhone = p.id.split(':')[0].split('@')[0];
@@ -130,13 +142,30 @@ async function getBotGroupStatus(sock, groupId) {
         const groupMetadata = await sock.groupMetadata(groupId);
         const botId = sock.user.id;
         
-        const botParticipant = groupMetadata.participants.find(p => p.id === botId);
+        // Handle LID format
+        const isLidFormat = botId.includes('@lid');
+        
+        const botParticipant = groupMetadata.participants.find(p => {
+            // Direct match
+            if (p.id === botId) return true;
+            
+            // Known LIDs
+            const knownBotLids = ['171012763213843@lid'];
+            if (knownBotLids.includes(p.id)) return true;
+            
+            // Phone-based matching
+            const botPhone = botId.split(':')[0].split('@')[0];
+            const participantPhone = p.id.split(':')[0].split('@')[0];
+            return participantPhone === botPhone || p.id.includes(botPhone);
+        });
         
         return {
             botId: botId,
+            botIdFormat: isLidFormat ? 'LID' : 'Standard',
             groupName: groupMetadata.subject,
             groupId: groupId,
             isInGroup: !!botParticipant,
+            participantId: botParticipant?.id || 'not_found',
             adminStatus: botParticipant?.admin || 'not_member',
             isAdmin: botParticipant?.admin === 'admin' || botParticipant?.admin === 'superadmin',
             participantCount: groupMetadata.participants.length,

@@ -330,9 +330,10 @@ async function startBot() {
     });
     
     // Handle group participant updates
-    sock.ev.on('group-participants.update', async ({ id, participants, action }) => {
+    sock.ev.on('group-participants.update', async ({ id, participants, action, author }) => {
         if (action === 'add') {
-            await handleGroupJoin(sock, id, participants);
+            // The 'author' field contains who added the participants
+            await handleGroupJoin(sock, id, participants, author);
         }
     });
     
@@ -620,11 +621,24 @@ async function handleMessage(sock, msg, commandHandler) {
 }
 
 // Handle new group joins
-async function handleGroupJoin(sock, groupId, participants) {
+async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
     console.log(`\n[${getTimestamp()}] 👥 New participants joined group ${groupId}`);
+    if (addedBy) {
+        console.log(`   Added by: ${addedBy}`);
+    }
     
     try {
         const groupMetadata = await sock.groupMetadata(groupId);
+        
+        // Check if the person who added them is an admin
+        let addedByAdmin = false;
+        if (addedBy) {
+            const adderParticipant = groupMetadata.participants.find(p => p.id === addedBy);
+            addedByAdmin = adderParticipant && (adderParticipant.admin === 'admin' || adderParticipant.admin === 'superadmin');
+            if (addedByAdmin) {
+                console.log('✅ Participants added by admin - blacklist check will be skipped');
+            }
+        }
         
         // Use the correct bot admin check
         const { isBotAdmin: checkBotAdmin } = require('./utils/botAdminChecker');
@@ -652,8 +666,8 @@ async function handleGroupJoin(sock, groupId, participants) {
                 continue; // Skip all checks for whitelisted users
             }
             
-            // Check if user is blacklisted
-            if (await blacklistService.isBlacklisted(participantId)) {
+            // Check if user is blacklisted (skip if added by admin)
+            if (!addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
                 console.log(`🚫 Blacklisted user detected: ${participantId}`);
                 
                 try {
@@ -690,6 +704,8 @@ async function handleGroupJoin(sock, groupId, participants) {
                     console.error('❌ Failed to kick blacklisted user:', error);
                 }
                 continue; // Skip further checks for this user
+            } else if (addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
+                console.log(`⚠️ Blacklisted user ${participantId} allowed to join - added by admin`);
             }
             
             // Check if phone number starts with +1 or +6 (or just 1 or 6 without +)
@@ -705,7 +721,7 @@ async function handleGroupJoin(sock, groupId, participants) {
             const isLidUSNumber = isLidFormat && phoneNumber.startsWith('1') && phoneNumber.length >= 11;
             const isLidSEAsiaNumber = isLidFormat && phoneNumber.startsWith('6') && phoneNumber.length >= 10;
             
-            if (config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber &&
+            if (config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !addedByAdmin &&
                 ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || // US/Canada format
                  (phoneNumber.startsWith('+1') && phoneNumber.length === 12) || // US/Canada with +
                  isLidUSNumber || // LID format US numbers
@@ -752,6 +768,10 @@ async function handleGroupJoin(sock, groupId, participants) {
                 } catch (error) {
                     console.error('❌ Failed to kick user with restricted country code:', error);
                 }
+            } else if (addedByAdmin && config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber &&
+                      ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || 
+                       (phoneNumber.startsWith('6') && phoneNumber.length >= 10 && phoneNumber.length <= 12))) {
+                console.log(`⚠️ Restricted country code user ${participantId} allowed to join - added by admin`);
             }
         }
     } catch (error) {
