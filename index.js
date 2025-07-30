@@ -4,6 +4,7 @@ const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const { logger, getTimestamp } = require('./utils/logger');
 const config = require('./config');
+const SingleInstance = require('./single-instance');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService;
@@ -50,9 +51,13 @@ const { handleSessionError, clearSessionErrors, mightContainInviteLink, extractM
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
 
-// Track reconnection attempts
+// Track reconnection attempts with error-specific handling
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
+let error515Count = 0;
+const MAX_515_ERRORS = 3;
+let lastConnectionTime = null;
+const CONNECTION_STABILITY_THRESHOLD = 60000; // 1 minute
 
 // Create a custom logger for Baileys with minimal output
 const baileysLogger = {
@@ -118,7 +123,7 @@ async function startBot() {
         version = [2, 2413, 1]; // Fallback version
     }
     
-    // Create socket connection with improved configuration
+    // Create socket connection with improved configuration for error 515 prevention
     const sock = makeWASocket({
         version,
         auth: {
@@ -129,12 +134,24 @@ async function startBot() {
         logger: baileysLogger,
         generateHighQualityLinkPreview: false,
         syncFullHistory: false,
-        markOnlineOnConnect: true,
-        defaultQueryTimeoutMs: 60000, // 60 seconds timeout
-        keepAliveIntervalMs: 30000, // Send keep-alive every 30 seconds
-        connectTimeoutMs: 60000, // 60 seconds connection timeout
+        markOnlineOnConnect: false, // Disable auto-online to reduce connection stress
+        defaultQueryTimeoutMs: 120000, // Extended timeout to prevent premature disconnects
+        keepAliveIntervalMs: 45000, // Increased keep-alive interval
+        connectTimeoutMs: 90000, // Extended connection timeout
         emitOwnEvents: false,
-        browser: ['CommGuard Bot', 'Chrome', '120.0.0'], // Updated browser info
+        browser: ['CommGuard Bot', 'Desktop', '4.0.0'], // More generic browser info
+        getMessage: async (key) => { // Add message cache handler to prevent stream errors
+            return { conversation: 'Hello' };
+        },
+        // Additional WebSocket options to prevent stream errors
+        options: {
+            chats: {
+                writeIncomingMessages: false, // Reduce database writes
+                writeOutgoingMessages: false,
+            },
+        },
+        retryRequestDelayMs: 5000, // Add delay between retries
+        maxMsgRetryCount: 3, // Limit message retry attempts
     });
     
     // Save credentials whenever updated
@@ -153,16 +170,57 @@ async function startBot() {
         if (connection === 'close') {
             const disconnectReason = lastDisconnect?.error?.output?.statusCode;
             const errorMessage = lastDisconnect?.error?.message || 'Unknown error';
+            const boom = lastDisconnect?.error;
             
             console.error(`\n[${getTimestamp()}] ❌ Connection closed:`);
             console.error(`   Error: ${errorMessage}`);
             console.error(`   Status Code: ${disconnectReason}`);
             
-            // Check if it's error 515
-            if (errorMessage.includes('515') || disconnectReason === 515) {
-                console.error(`\n[${getTimestamp()}] 🚨 Stream Error 515 detected!`);
-                console.log('This is a known issue with WhatsApp Web connections.');
-                console.log('Attempting workaround...\n');
+            // Enhanced error 515 detection and handling
+            const isError515 = errorMessage.includes('515') || 
+                              disconnectReason === 515 || 
+                              boom?.data?.code === '515' ||
+                              errorMessage.includes('stream:error') ||
+                              errorMessage.includes('Stream Errored');
+            
+            if (isError515) {
+                error515Count++;
+                console.error(`\n[${getTimestamp()}] 🚨 Stream Error 515 detected! (Count: ${error515Count}/${MAX_515_ERRORS})`);
+                console.log('🔧 Implementing enhanced recovery strategy...');
+                
+                // Check connection stability
+                const connectionDuration = lastConnectionTime ? Date.now() - lastConnectionTime : 0;
+                const isStableConnection = connectionDuration > CONNECTION_STABILITY_THRESHOLD;
+                
+                console.log(`   Connection Duration: ${Math.round(connectionDuration / 1000)}s (Stable: ${isStableConnection})`);
+                
+                // If we've had too many 515 errors, try more aggressive fixes
+                if (error515Count >= MAX_515_ERRORS) {
+                    console.log(`\n[${getTimestamp()}] 🔧 Maximum 515 errors reached - attempting comprehensive fix...`);
+                    
+                    try {
+                        const fs = require('fs').promises;
+                        
+                        // Clear all authentication data
+                        await fs.rm('baileys_auth_info', { recursive: true, force: true });
+                        console.log('✅ Cleared authentication data');
+                        
+                        // Reset all counters
+                        error515Count = 0;
+                        reconnectAttempts = 0;
+                        lastConnectionTime = null;
+                        
+                        console.log('✅ Reset all connection counters');
+                        console.log('📱 Fresh QR scan will be required');
+                        
+                        // Wait longer before restart after clearing auth
+                        setTimeout(startBot, 30000); // 30 seconds
+                        return;
+                        
+                    } catch (err) {
+                        console.error('❌ Failed to clear auth data:', err);
+                    }
+                }
             }
             
             // Check if it's a conflict error (status 440)
@@ -177,36 +235,24 @@ async function startBot() {
             if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++;
                 
-                // Calculate delay with exponential backoff
+                // Enhanced delay calculation with error-specific handling
                 let delayMs;
-                if (disconnectReason === 515) {
-                    // For error 515, use longer delays
-                    delayMs = Math.min(60000 * reconnectAttempts, 300000); // Up to 5 minutes
+                if (isError515) {
+                    // Progressive delay for 515 errors
+                    delayMs = Math.min(30000 * error515Count, 180000); // 30s, 60s, 90s, up to 3 minutes
+                    console.log(`[${getTimestamp()}] 🔧 Using Error 515 recovery delay: ${delayMs / 1000}s`);
                 } else if (disconnectReason === 440) {
-                    // For conflict errors, use moderate delay
-                    delayMs = 10000; // 10 seconds
+                    // Quick reconnect for conflict errors
+                    delayMs = 15000; // 15 seconds
                 } else {
-                    delayMs = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), 60000); // Standard exponential backoff
+                    // Standard exponential backoff for other errors
+                    delayMs = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), 60000);
                 }
                 
                 console.log(`[${getTimestamp()}] 🔄 Reconnecting in ${delayMs / 1000} seconds (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                console.log(`   Error 515 Count: ${error515Count}/${MAX_515_ERRORS}`);
                 
-                // Clear auth if too many 515 errors or session issues
-                if ((disconnectReason === 515 && reconnectAttempts > 3) ||
-                    (errorMessage.includes('session') && reconnectAttempts > 5) ||
-                    (errorMessage.includes('decrypt') && reconnectAttempts > 5)) {
-                    console.log(`[${getTimestamp()}] 🗑️ Clearing authentication data for fresh start...`);
-                    console.log(`   Reason: ${errorMessage.includes('515') ? 'Stream Error 515' : 'Session/Decryption errors'}`);
-                    try {
-                        const fs = require('fs').promises;
-                        await fs.rm('baileys_auth_info', { recursive: true, force: true });
-                        reconnectAttempts = 0; // Reset counter for fresh auth
-                        console.log(`[${getTimestamp()}] ✅ Authentication data cleared - will require QR scan`);
-                    } catch (err) {
-                        console.error('Failed to clear auth:', err);
-                    }
-                }
-                
+                // Don't clear auth for individual 515 errors anymore - handle them at the threshold
                 setTimeout(startBot, delayMs);
             } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
                 console.error(`\n[${getTimestamp()}] ❌ Max reconnection attempts reached. Please restart the bot manually.`);
@@ -221,7 +267,11 @@ async function startBot() {
                 process.exit(0);
             }
         } else if (connection === 'open') {
-            reconnectAttempts = 0; // Reset counter on successful connection
+            // Reset all error counters on successful connection
+            reconnectAttempts = 0;
+            error515Count = 0;
+            lastConnectionTime = Date.now();
+            
             console.log(`\n[${getTimestamp()}] ✅ Bot connected successfully!`);
             console.log(`Bot ID: ${sock.user.id}`);
             console.log(`Bot Name: ${sock.user.name}`);
@@ -233,13 +283,17 @@ async function startBot() {
             console.log(`Bot Phone: ${botPhone}`);
             
             console.log(`\n🛡️ CommGuard Bot (Baileys Edition) is now protecting your groups!`);
+            console.log(`🔧 Enhanced Error 515 protection active`);
             
-            // Send startup notification
+            // Send startup notification with error status
             try {
                 const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
-                await sock.sendMessage(adminId, { 
-                    text: `🟢 CommGuard Bot Started\n\nBot is now online and monitoring groups.\nTime: ${getTimestamp()}` 
-                });
+                const statusMessage = `🟢 CommGuard Bot Started\n\n` +
+                                    `✅ Bot is now online and monitoring groups\n` +
+                                    `🔧 Enhanced Error 515 protection enabled\n` +
+                                    `📊 Connection stable after ${reconnectAttempts} attempts\n` +
+                                    `⏰ Time: ${getTimestamp()}`;
+                await sock.sendMessage(adminId, { text: statusMessage });
             } catch (err) {
                 console.error('Failed to send startup notification:', err.message);
             }
@@ -790,6 +844,20 @@ async function main() {
 ╚═══════════════════════════════════════════╝
     `);
     
+    // Check for single instance
+    const canStart = await SingleInstance.acquire();
+    if (!canStart) {
+        console.error('\n❌ Cannot start: Another instance is already running!');
+        console.log('\nPossible solutions:');
+        console.log('1. Stop the other instance (pm2 stop commguard)');
+        console.log('2. Delete .commguard.lock if the other instance crashed');
+        console.log('3. Use ./fix-multiple-connections.sh to manage instances');
+        process.exit(1);
+    }
+    
+    // Check auth state
+    await SingleInstance.checkAuth();
+    
     // Show important info
     console.log(`\n📞 Admin Phone: ${config.ADMIN_PHONE}`);
     console.log(`📞 Alert Phone: ${config.ALERT_PHONE}`);
@@ -828,11 +896,18 @@ process.on('uncaughtException', (err) => {
     console.error(`\n[${getTimestamp()}] ❌ Uncaught Exception:`, err);
     console.error('Stack:', err.stack);
     
-    // Don't exit on connection-related errors
+    // Don't exit on connection-related errors, including error 515
     if (err.message?.includes('Connection Closed') || 
         err.message?.includes('Stream Errored') ||
+        err.message?.includes('515') ||
+        err.message?.includes('stream:error') ||
         err.message?.includes('decrypt')) {
         console.log(`[${getTimestamp()}] 🔄 Connection error detected, bot will attempt to reconnect...`);
+        
+        // Log 515 errors specifically for monitoring
+        if (err.message?.includes('515') || err.message?.includes('stream:error')) {
+            console.log(`[${getTimestamp()}] 🚨 Error 515 handled gracefully in uncaught exception`);
+        }
         return;
     }
     
@@ -852,10 +927,17 @@ process.on('unhandledRejection', (reason, promise) => {
         
         if (errorMessage.includes('Connection Closed') || 
             errorMessage.includes('Stream Errored') ||
+            errorMessage.includes('515') ||
+            errorMessage.includes('stream:error') ||
             errorMessage.includes('conflict') ||
             errorMessage.includes('replaced') ||
             errorMessage.includes('precondition')) {
             console.log(`[${getTimestamp()}] 🔄 Connection issue detected, will handle gracefully...`);
+            
+            // Log 515 errors specifically for monitoring
+            if (errorMessage.includes('515') || errorMessage.includes('stream:error')) {
+                console.log(`[${getTimestamp()}] 🚨 Error 515 handled gracefully in promise rejection`);
+            }
             return;
         }
     }

@@ -51,6 +51,9 @@ tmp/
 pids/
 *.pid
 
+# Instance lock file
+.commguard.lock
+
 # Coverage
 coverage/
 .nyc_output/

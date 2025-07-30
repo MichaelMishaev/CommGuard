@@ -1,0 +1,12 @@
+WhatsApp Web QR Code
+
+Generated at: 2025-07-30T22:29:22.286Z
+
+QR Data:
+2@NwfC3yVMy1s+Lm+/TiYpEe1CdUfAlXm/ric3iQRp0nXse84V17X1XjceW9yCxEzEzPjFWmhem7R7NyslpfCooZIDyR3YFlewyjI=,S/lvqd7g30R6qy2+qgTEGk2TwEo+eRz7Ht8fO2v2Cnc=,4sKmO7n4oHTjr4xTh/WaliD1dAOGV137/s9flzWiyyQ=,v1ySbQjCQE2bsSzI3HC04yI3lMKx3Z226Hyp71Yr3Z8=
+
+To scan:
+1. Open WhatsApp on your phone
+2. Go to Settings > Linked Devices
+3. Tap "Link a Device"
+4. Scan the QR code
