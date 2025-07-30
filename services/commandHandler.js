@@ -430,8 +430,36 @@ class CommandHandler {
             // Get whitelist count
             const whitelistCount = (await listWhitelist()).length;
             
+            // Get group information
+            let totalGroups = 0;
+            let adminGroups = 0;
+            try {
+                const groups = await this.sock.groupFetchAllParticipating();
+                totalGroups = Object.keys(groups).length;
+                
+                // Count groups where bot is admin
+                for (const groupId in groups) {
+                    const group = groups[groupId];
+                    const botId = this.sock.user.id;
+                    const botParticipant = group.participants.find(p => {
+                        // Check various ID formats
+                        return p.id === botId || 
+                               p.id === '171012763213843@lid' || // Known bot LID
+                               p.id.includes(botId.split(':')[0].split('@')[0]);
+                    });
+                    
+                    if (botParticipant && (botParticipant.admin === 'admin' || botParticipant.admin === 'superadmin')) {
+                        adminGroups++;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching groups:', error);
+            }
+            
             const statsText = `📊 *Bot Statistics*
 
+👥 *Total Groups:* ${totalGroups}
+👮 *Admin in Groups:* ${adminGroups}
 🚫 *Blacklisted Users:* ${blacklistCache.size}
 ✅ *Whitelisted Users:* ${whitelistCount}
 🔇 *Currently Muted:* ${activeMutes}
