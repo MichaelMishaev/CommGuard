@@ -1,4 +1,4 @@
-const db = require('../firebaseConfig');
+const db = require('../firebaseConfig.js');
 
 // Cache for blacklist
 const blacklistCache = new Set();

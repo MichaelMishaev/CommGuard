@@ -1,4 +1,4 @@
-const db = require('../firebaseConfig');
+const db = require('../firebaseConfig.js');
 const { jidKey } = require('../utils/jidUtils');
 
 // In-memory mute storage for fast access
