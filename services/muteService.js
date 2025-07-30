@@ -114,6 +114,34 @@ function getMutedUsers() {
     return new Map(mutedUsers);
 }
 
+function getRemainingMuteTime(userId) {
+    const jid = jidKey(userId);
+    if (!jid) return null;
+    
+    const muteUntil = mutedUsers.get(jid);
+    if (!muteUntil) return null;
+    
+    const now = Date.now();
+    if (now >= muteUntil) {
+        return null; // Expired
+    }
+    
+    const remainingMs = muteUntil - now;
+    const minutes = Math.ceil(remainingMs / 60000);
+    
+    if (minutes < 60) {
+        return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    } else {
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        if (remainingMinutes === 0) {
+            return `${hours} hour${hours === 1 ? '' : 's'}`;
+        } else {
+            return `${hours}h ${remainingMinutes}m`;
+        }
+    }
+}
+
 module.exports = { 
     addMutedUser, 
     removeMutedUser, 
@@ -121,5 +149,6 @@ module.exports = {
     isMuted,
     incrementMutedMessageCount,
     getMutedMessageCount,
-    getMutedUsers
+    getMutedUsers,
+    getRemainingMuteTime
 };

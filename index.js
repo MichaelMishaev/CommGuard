@@ -25,7 +25,8 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
     muteService = {
         loadMutedUsers: muteModule.loadMutedUsers,
         isMuted: muteModule.isMuted,
-        incrementMutedMessageCount: muteModule.incrementMutedMessageCount
+        incrementMutedMessageCount: muteModule.incrementMutedMessageCount,
+        getRemainingMuteTime: muteModule.getRemainingMuteTime
     };
 } else {
     // Mock services when Firebase is disabled
@@ -41,7 +42,8 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
     muteService = {
         loadMutedUsers: async () => { console.log('📋 Firebase disabled - skipping muted users load'); },
         isMuted: () => false,
-        incrementMutedMessageCount: async () => { console.log('📋 Firebase disabled - mute count skipped'); }
+        incrementMutedMessageCount: async () => { console.log('📋 Firebase disabled - mute count skipped'); },
+        getRemainingMuteTime: () => null
     };
 }
 
@@ -512,6 +514,26 @@ async function handleMessage(sock, msg, commandHandler) {
             await sock.sendMessage(groupId, { delete: msg.key });
             const msgCount = await muteService.incrementMutedMessageCount(senderId);
             console.log(`[${getTimestamp()}] 🔇 Deleted message from muted user (${msgCount} messages deleted)`);
+            
+            // Send warning at 7 messages with remaining mute time
+            if (msgCount === 7) {
+                const remainingTime = await muteService.getRemainingMuteTime(senderId);
+                const timeText = remainingTime ? ` (${remainingTime} remaining / נותרו ${remainingTime})` : '';
+                
+                try {
+                    await sock.sendMessage(groupId, { 
+                        text: `⚠️ @${senderId.split('@')[0]} You are muted${timeText}\n` +
+                              `🚨 After 3 more messages, you will be removed from the group\n\n` +
+                              `⚠️ @${senderId.split('@')[0]} אתה מושתק${timeText}\n` +
+                              `🚨 אחרי עוד 3 הודעות, תוסר מהקבוצה\n\n` +
+                              `🤐 Please wait until your mute expires / אנא המתן עד שההשתקה תפוג`,
+                        mentions: [senderId]
+                    });
+                    console.log(`[${getTimestamp()}] ⚠️ Sent bilingual mute warning to user`);
+                } catch (warnError) {
+                    console.error('Failed to send mute warning:', warnError);
+                }
+            }
             
             // Kick user if they send too many messages while muted (after 10 messages)
             if (msgCount >= 10) {

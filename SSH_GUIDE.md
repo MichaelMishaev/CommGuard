@@ -12,9 +12,9 @@ ssh root@209.38.231.184
 cd /root/CommGuard
 ```
 
-### Restart Bot
+### Check Bot Status
 ```bash
-pm2 restart commguard
+pm2 status
 ```
 
 ---
@@ -28,11 +28,53 @@ pm2 restart commguard
 
 ---
 
-## 🔧 Common Commands
+## 🔧 Essential Commands
 
-### Connect to Server
+### Bot Management
 ```bash
-ssh root@209.38.231.184
+# Check bot status
+pm2 status
+
+# View bot logs (real-time)
+pm2 logs commguard
+
+# View last 20 lines of logs
+pm2 logs commguard --lines 20
+
+# Restart bot
+pm2 restart commguard
+
+# Stop bot
+pm2 stop commguard
+
+# Start bot
+pm2 start commguard
+
+# Delete old processes
+pm2 delete whatsapp-bot
+
+# Monitor bot in real-time
+pm2 monit
+
+# Save PM2 configuration
+pm2 save
+
+# Set PM2 to start on boot
+pm2 startup
+```
+
+### File Management
+```bash
+# List project files
+ls -la
+
+# Check Firebase files
+ls -la firebaseConfig.js
+ls -la guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
+
+# View log files directly
+tail -f ~/.pm2/logs/commguard-out.log
+tail -f ~/.pm2/logs/commguard-error.log
 ```
 
 ### Copy Files to Server (from local machine)
@@ -42,38 +84,6 @@ scp firebaseConfig.js root@209.38.231.184:/root/CommGuard/
 
 # Copy Firebase service account key
 scp guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json root@209.38.231.184:/root/CommGuard/
-```
-
-### Bot Management
-```bash
-# Check bot status
-pm2 status
-
-# Restart bot
-pm2 restart commguard
-
-# View bot logs
-pm2 logs commguard
-
-# Stop bot
-pm2 stop commguard
-
-# Start bot
-pm2 start commguard
-```
-
-### File Management
-```bash
-# List files in project
-ls -la
-
-# Check if Firebase files exist
-ls -la firebaseConfig.js
-ls -la guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
-
-# View bot logs
-tail -f ~/.pm2/logs/commguard-out.log
-tail -f ~/.pm2/logs/commguard-error.log
 ```
 
 ### Git Operations
@@ -92,34 +102,63 @@ git log --oneline -5
 
 ## 🚨 Troubleshooting
 
-### Bot Not Starting
-1. Check if Firebase files exist:
-   ```bash
-   ls -la firebaseConfig.js
-   ls -la guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
-   ```
+### Bot Not Starting - Firebase Error
+```bash
+# Check if Firebase files exist
+ls -la firebaseConfig.js
+ls -la guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
 
-2. If files missing, copy from local:
-   ```bash
-   # From your local machine:
-   scp firebaseConfig.js root@209.38.231.184:/root/CommGuard/
-   scp guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json root@209.38.231.184:/root/CommGuard/
-   ```
+# If missing, copy from local machine:
+scp firebaseConfig.js root@209.38.231.184:/root/CommGuard/
+scp guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json root@209.38.231.184:/root/CommGuard/
 
-3. Restart bot:
-   ```bash
-   pm2 restart commguard
-   ```
+# Restart bot
+pm2 restart commguard
+```
 
-### Firebase Authentication Error
-- Ensure both Firebase files are present
-- Check file permissions: `ls -la *.json *.js`
-- Restart bot after adding files
+### Stream Error 515 (Multiple Connections)
+```bash
+# Clear auth data to force new login
+rm -rf baileys_auth_info
 
-### QR Code Issues
-- Bot needs to scan QR code to connect to WhatsApp
-- Check logs: `pm2 logs commguard`
-- Restart if needed: `pm2 restart commguard`
+# Restart bot
+pm2 restart commguard
+
+# Check for multiple instances
+ps aux | grep node
+pkill -f node  # Kill all Node processes if needed
+```
+
+### Bot Process Issues
+```bash
+# Check all PM2 processes
+pm2 list
+
+# Delete unwanted processes
+pm2 delete process-name
+
+# Clear PM2 logs
+pm2 flush
+
+# Reset PM2
+pm2 kill
+pm2 start index.js --name commguard
+```
+
+### Server Resources
+```bash
+# Check disk space
+df -h
+
+# Check memory usage
+free -h
+
+# Check CPU usage
+htop
+
+# Check running processes
+ps aux | grep node
+```
 
 ---
 
@@ -131,10 +170,11 @@ git log --oneline -5
 - `guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json` - Firebase service account key
 - `config.js` - Bot configuration
 
-### Bot Process
+### Bot Process & Logs
 - **PM2 Process Name**: `commguard`
 - **Logs Location**: `~/.pm2/logs/`
 - **Working Directory**: `/root/CommGuard`
+- **Lock File**: `.commguard.lock` (prevents multiple instances)
 
 ---
 
@@ -144,13 +184,28 @@ git log --oneline -5
 - Keep `guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json` secure
 - Never commit Firebase credentials to Git
 - Use `.gitignore` to exclude sensitive files
+- Bot uses single-instance lock to prevent multiple connections
 
 ---
 
-## 📞 Support
+## 📞 Quick Fixes
 
-If you encounter issues:
-1. Check bot logs: `pm2 logs commguard`
-2. Verify Firebase files exist
-3. Restart bot: `pm2 restart commguard`
-4. Check server resources: `htop` or `df -h` 
+### Bot Won't Start
+1. Check Firebase files: `ls -la firebaseConfig.js`
+2. Copy missing files from local machine
+3. Restart: `pm2 restart commguard`
+
+### Bot Disconnected
+1. Check logs: `pm2 logs commguard`
+2. Clear auth: `rm -rf baileys_auth_info`
+3. Restart: `pm2 restart commguard`
+
+### Multiple Connection Error
+1. Choose one location (cloud OR local)
+2. Clear auth on unused location
+3. Restart bot
+
+### PM2 Issues
+1. Check status: `pm2 status`
+2. Delete old processes: `pm2 delete process-name`
+3. Restart: `pm2 restart commguard` 

@@ -345,7 +345,8 @@ class CommandHandler {
         const minutes = parseInt(args, 10);
         if (!minutes || minutes <= 0) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please specify valid minutes. Example: #mute 10' 
+                text: `⚠️ Please specify valid minutes. Example: #mute 10\n` +
+                      `⚠️ אנא ציין דקות חוקיות. דוגמה: #mute 10`
             });
             return true;
         }
@@ -356,14 +357,18 @@ class CommandHandler {
         groupMuteStatus.set(groupId, muteUntil);
 
         await this.sock.sendMessage(groupId, { 
-            text: `🔇 Group muted for ${minutes} minutes.\nOnly admins can send messages.` 
+            text: `🔇 Group muted for ${minutes} minutes\n` +
+                  `👮‍♂️ Only admins can send messages\n\n` +
+                  `🔇 הקבוצה הושתקה ל-${minutes} דקות\n` +
+                  `👮‍♂️ רק מנהלים יכולים לשלוח הודעות`
         });
 
         // Auto-unmute after specified time
         setTimeout(async () => {
             groupMuteStatus.delete(groupId);
             await this.sock.sendMessage(groupId, { 
-                text: '🔊 Group has been unmuted. Everyone can now send messages.' 
+                text: `🔊 Group has been unmuted. Everyone can now send messages.\n` +
+                      `🔊 הקבוצה שוחררה מההשתקה. כולם יכולים לשלוח הודעות עכשיו.`
             });
         }, minutes * 60000);
 
@@ -377,24 +382,51 @@ class CommandHandler {
         
         if (minutes <= 0) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please specify valid minutes. Example: #mute 30' 
+                text: `⚠️ Please specify valid minutes. Example: #mute 30\n` +
+                      `⚠️ אנא ציין דקות חוקיות. דוגמה: #mute 30`
             });
             return true;
         }
 
-        const quotedMsgId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-        if (!quotedMsgId) {
+        const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
+        
+        if (!quotedMsg || !quotedParticipant) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please reply to a message to mute that user.' 
+                text: `⚠️ Please reply to a message to mute that user.\n` +
+                      `⚠️ אנא השב להודעה כדי להשתיק את המשתמש.`
             });
             return true;
         }
 
-        // Get the quoted message to find the user to mute
-        // Note: This is simplified - in practice you'd need to track message senders
-        await this.sock.sendMessage(msg.key.remoteJid, { 
-            text: `🔇 User will be muted for ${minutes} minutes. Their messages will be automatically deleted.` 
-        });
+        // Extract user ID from quoted message
+        const userToMute = quotedParticipant;
+        const muteUntil = Date.now() + (minutes * 60000);
+        
+        // Add user to mute service
+        const success = await addMutedUser(userToMute, muteUntil);
+        
+        if (success) {
+            const muteEndTime = new Date(muteUntil).toLocaleString('en-GB', {
+                day: '2-digit',
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `🔇 User muted for ${minutes} minutes until ${muteEndTime}\n` +
+                      `🗑️ All their messages will be automatically deleted\n\n` +
+                      `🔇 המשתמש הושתק ל-${minutes} דקות עד ${muteEndTime}\n` +
+                      `🗑️ כל ההודעות שלו יימחקו אוטומטית`
+            });
+        } else {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `❌ Failed to mute user. Please try again.\n` +
+                      `❌ נכשל בהשתקת המשתמש. אנא נסה שוב.`
+            });
+        }
 
         return true;
     }
@@ -1073,11 +1105,13 @@ Thank you for your cooperation.`;
             if (quotedParticipant) {
                 await removeMutedUser(quotedParticipant);
                 await this.sock.sendMessage(groupId, { 
-                    text: '🔊 User has been unmuted.' 
+                    text: `🔊 User has been unmuted.\n` +
+                          `🔊 המשתמש שוחרר מההשתקה.`
                 });
             } else {
                 await this.sock.sendMessage(groupId, { 
-                    text: '⚠️ Could not identify user to unmute.' 
+                    text: `⚠️ Could not identify user to unmute.\n` +
+                          `⚠️ לא ניתן לזהות את המשתמש לביטול השתקה.`
                 });
             }
         } else {
@@ -1085,11 +1119,13 @@ Thank you for your cooperation.`;
             if (groupMuteStatus.has(groupId)) {
                 groupMuteStatus.delete(groupId);
                 await this.sock.sendMessage(groupId, { 
-                    text: '🔊 Group has been unmuted. Everyone can now send messages.' 
+                    text: `🔊 Group has been unmuted. Everyone can now send messages.\n` +
+                          `🔊 הקבוצה שוחררה מההשתקה. כולם יכולים לשלוח הודעות עכשיו.`
                 });
             } else {
                 await this.sock.sendMessage(groupId, { 
-                    text: '⚠️ Group is not muted.' 
+                    text: `⚠️ Group is not muted.\n` +
+                          `⚠️ הקבוצה לא מושתקת.`
                 });
             }
         }
