@@ -49,6 +49,7 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
 
 const CommandHandler = require('./services/commandHandler');
 const { handleSessionError, clearSessionErrors, mightContainInviteLink, extractMessageText } = require('./utils/sessionManager');
+const { sendKickAlert, sendSecurityAlert } = require('./utils/alertService');
 
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
@@ -540,6 +541,41 @@ async function handleMessage(sock, msg, commandHandler) {
                 try {
                     await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
                     console.log(`[${getTimestamp()}] 👢 Kicked muted user for excessive messaging`);
+                    
+                    // Send alert to alert phone
+                    const groupMetadata = await sock.groupMetadata(groupId).catch(() => null);
+                    const userPhone = senderId.split('@')[0];
+                    
+                    await sendKickAlert(sock, {
+                        userPhone: userPhone,
+                        userName: `User ${userPhone}`,
+                        groupName: groupMetadata?.subject || 'Unknown Group',
+                        groupId: groupId,
+                        reason: 'muted_excessive',
+                        additionalInfo: `Sent ${msgCount} messages while muted`
+                    });
+                    
+                    // Send bilingual private message to kicked user
+                    try {
+                        const remainingTime = await muteService.getRemainingMuteTime(senderId);
+                        const timeText = remainingTime ? ` (${remainingTime} remaining)` : '';
+                        
+                        await sock.sendMessage(senderId, {
+                            text: `🔇 You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
+                                  `📱 Reason: Sent too many messages while muted${timeText}\n` +
+                                  `⚠️ You sent ${msgCount} messages after being muted\n` +
+                                  `📞 Contact admin to discuss your mute status\n` +
+                                  `🤖 This is an automated message from CommGuard Bot\n\n` +
+                                  `🔇 הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
+                                  `📱 סיבה: שלחת יותר מדי הודעות בזמן השתקה${timeText}\n` +
+                                  `⚠️ שלחת ${msgCount} הודעות אחרי שהושתקת\n` +
+                                  `📞 פנה למנהל כדי לדון בסטטוס ההשתקה שלך\n` +
+                                  `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                        });
+                    } catch (privateError) {
+                        console.error(`Failed to send private message to muted user:`, privateError.message);
+                    }
+                    
                 } catch (kickError) {
                     console.error('Failed to kick muted user:', kickError);
                 }
@@ -658,9 +694,37 @@ async function handleMessage(sock, msg, commandHandler) {
             console.log('✅ Kicked user:', senderId);
             kickCooldown.set(senderId, Date.now());
             
-            // Send notification to kicked user
-            const kickMessage = `🚫 You have been removed from ${groupMetadata.subject} for sending unauthorized invite links.\n\n` +
-                              `If you believe this was a mistake, please contact the group admin.`;
+            // Get group invite link
+            let groupInviteLink = 'N/A';
+            try {
+                const inviteCode = await sock.groupInviteCode(groupId);
+                groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+            } catch (err) {
+                console.log('Could not get group invite link:', err.message);
+            }
+
+            // Send alert to alert phone
+            const userPhone = senderId.split('@')[0];
+            await sendKickAlert(sock, {
+                userPhone: userPhone,
+                userName: `User ${userPhone}`,
+                groupName: groupMetadata?.subject || 'Unknown Group',
+                groupId: groupId,
+                reason: 'invite_link',
+                additionalInfo: `Sent unauthorized invite link`,
+                spamLink: matches[0], // The actual spam link that was sent
+                groupInviteLink: groupInviteLink
+            });
+            
+            // Send bilingual notification to kicked user
+            const kickMessage = `🔗 You have been removed from group "${groupMetadata.subject}" for sending unauthorized invite links\n\n` +
+                              `📱 Reason: Invite link spam is not allowed\n` +
+                              `📞 Contact admin if you believe this was a mistake\n` +
+                              `🤖 This is an automated message from CommGuard Bot\n\n` +
+                              `🔗 הוסרת מהקבוצה "${groupMetadata.subject}" בגלל שליחת קישורי הזמנה לא מורשים\n\n` +
+                              `📱 סיבה: ספאם של קישורי הזמנה אסור\n` +
+                              `📞 פנה למנהל אם אתה מאמין שזו הייתה טעות\n` +
+                              `🤖 זהו הודעה אוטומטית מבוט CommGuard`;
             await sock.sendMessage(senderId, { text: kickMessage }).catch(() => {});
         } catch (kickError) {
             console.error('❌ Failed to kick user:', kickError.message);

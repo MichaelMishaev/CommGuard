@@ -3,6 +3,7 @@ const { addToBlacklist, removeFromBlacklist, listBlacklist, isBlacklisted } = re
 const { addToWhitelist, removeFromWhitelist, listWhitelist, isWhitelisted } = require('./whitelistService');
 const { addMutedUser, removeMutedUser, isMuted, getMutedUsers } = require('./muteService');
 const { getTimestamp } = require('../utils/logger');
+const { sendKickAlert } = require('../utils/alertService');
 
 // Track group mute status
 const groupMuteStatus = new Map();
@@ -629,6 +630,45 @@ class CommandHandler {
             const { addToBlacklist } = require('./blacklistService');
             await addToBlacklist(targetUserId, 'Kicked by admin command');
 
+            // Send alert to alert phone
+            const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
+            const userPhone = targetUserId.split('@')[0];
+            
+            // Get group invite link
+            let groupInviteLink = 'N/A';
+            try {
+                const inviteCode = await this.sock.groupInviteCode(groupId);
+                groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+            } catch (err) {
+                console.log('Could not get group invite link:', err.message);
+            }
+
+            await sendKickAlert(this.sock, {
+                userPhone: userPhone,
+                userName: `User ${userPhone}`,
+                groupName: groupMetadata?.subject || 'Unknown Group',
+                groupId: groupId,
+                reason: 'admin_command',
+                additionalInfo: 'Kicked by admin using #kick command',
+                groupInviteLink: groupInviteLink
+            });
+
+            // Send private message to kicked user
+            try {
+                await this.sock.sendMessage(targetUserId, {
+                    text: `👮‍♂️ You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
+                          `📱 Reason: Removed by admin\n` +
+                          `📞 Contact admin if you have questions\n` +
+                          `🤖 This is an automated message from CommGuard Bot\n\n` +
+                          `👮‍♂️ הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
+                          `📱 סיבה: הוסר על ידי מנהל\n` +
+                          `📞 פנה למנהל אם יש לך שאלות\n` +
+                          `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                });
+            } catch (privateError) {
+                console.error(`Failed to send private message to kicked user:`, privateError.message);
+            }
+
             console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Successfully kicked user: ${targetUserId}`);
 
         } catch (error) {
@@ -763,6 +803,37 @@ class CommandHandler {
             // Then kick the user if they're still in group
             if (targetParticipant) {
                 await this.sock.groupParticipantsUpdate(groupId, [targetUserId], 'remove');
+                
+                // Send alert to alert phone
+                const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
+                const userPhone = targetUserId.split('@')[0];
+                
+                await sendKickAlert(this.sock, {
+                    userPhone: userPhone,
+                    userName: `User ${userPhone}`,
+                    groupName: groupMetadata?.subject || 'Unknown Group',
+                    groupId: groupId,
+                    reason: 'admin_command',
+                    additionalInfo: 'Banned by admin using #ban command'
+                });
+                
+                // Send private message to banned user
+                try {
+                    await this.sock.sendMessage(targetUserId, {
+                        text: `🚫 You have been BANNED from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
+                              `📱 Reason: Banned by admin\n` +
+                              `⚠️ You cannot rejoin until unbanned\n` +
+                              `📞 Contact admin to appeal this ban\n` +
+                              `🤖 This is an automated message from CommGuard Bot\n\n` +
+                              `🚫 נחסמת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
+                              `📱 סיבה: נחסם על ידי מנהל\n` +
+                              `⚠️ אתה לא יכול להצטרף שוב עד שתבוטל החסימה\n` +
+                              `📞 פנה למנהל כדי לערער על החסימה\n` +
+                              `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                    });
+                } catch (privateError) {
+                    console.error(`Failed to send private message to banned user:`, privateError.message);
+                }
                 
                 await this.sock.sendMessage(groupId, { 
                     text: `🚫 User has been banned and removed from the group.\nThey cannot rejoin until unbanned.` 
@@ -961,6 +1032,31 @@ Thank you for your cooperation.`;
                     await this.sock.groupParticipantsUpdate(groupId, [user.id], 'remove');
                     successCount++;
                     console.log(`✅ Kicked foreign user: ${user.phone}`);
+                    
+                    // Send alert to alert phone
+                    const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
+                    await sendKickAlert(this.sock, {
+                        userPhone: user.phone,
+                        userName: `User ${user.phone}`,
+                        groupName: groupMetadata?.subject || 'Unknown Group',
+                        groupId: groupId,
+                        reason: 'country_code',
+                        additionalInfo: `Foreign country code restriction (+1/+6)`
+                    });
+                    
+                    // Send private message to removed user
+                    try {
+                        await this.sock.sendMessage(`${user.phone}@s.whatsapp.net`, {
+                            text: `🌍 You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
+                                  `📱 Reason: Country code restriction (+1/+6 numbers not allowed)\n` +
+                                  `🤖 This is an automated message from CommGuard Bot\n\n` +
+                                  `🌍 הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
+                                  `📱 סיבה: הגבלת קוד מדינה (מספרי +1/+6 לא מורשים)\n` +
+                                  `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                        });
+                    } catch (privateError) {
+                        console.error(`Failed to send private message to ${user.phone}:`, privateError.message);
+                    }
                     
                     // Small delay to avoid rate limiting
                     await new Promise(resolve => setTimeout(resolve, 500));
@@ -1333,6 +1429,33 @@ Thank you for your cooperation.`;
                     await this.sock.groupParticipantsUpdate(groupId, [user.id], 'remove');
                     successCount++;
                     console.log(`✅ Kicked blacklisted user: ${user.phone}`);
+                    
+                    // Send alert to alert phone
+                    const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
+                    await sendKickAlert(this.sock, {
+                        userPhone: user.phone,
+                        userName: `User ${user.phone}`,
+                        groupName: groupMetadata?.subject || 'Unknown Group',
+                        groupId: groupId,
+                        reason: 'blacklisted',
+                        additionalInfo: `User was on blacklist`
+                    });
+                    
+                    // Send private message to removed user
+                    try {
+                        await this.sock.sendMessage(`${user.phone}@s.whatsapp.net`, {
+                            text: `🚫 You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
+                                  `📱 Reason: You are on the blacklist\n` +
+                                  `📞 Contact admin if you believe this is an error\n` +
+                                  `🤖 This is an automated message from CommGuard Bot\n\n` +
+                                  `🚫 הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
+                                  `📱 סיבה: אתה ברשימה השחורה\n` +
+                                  `📞 פנה למנהל אם אתה מאמין שזו טעות\n` +
+                                  `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                        });
+                    } catch (privateError) {
+                        console.error(`Failed to send private message to ${user.phone}:`, privateError.message);
+                    }
                     
                     // Small delay to avoid rate limiting
                     await new Promise(resolve => setTimeout(resolve, 500));
