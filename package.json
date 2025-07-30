@@ -1,0 +1,26 @@
+{
+  "name": "bcommguard",
+  "version": "2.0.0",
+  "description": "WhatsApp Community Guard Bot using Baileys",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "fresh": "node start-fresh.js",
+    "diagnose": "node diagnose.js",
+    "test": "node tests/runTests.js"
+  },
+  "keywords": ["whatsapp", "bot", "baileys", "moderation"],
+  "author": "Community Guard Team",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.0",
+    "@hapi/boom": "^10.0.1",
+    "firebase-admin": "^12.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "pino": "^8.16.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

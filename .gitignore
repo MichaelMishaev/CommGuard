@@ -1,0 +1,60 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Authentication data (IMPORTANT - Never commit auth data!)
+baileys_auth_info/
+baileys_auth_backup/
+
+# Firebase credentials (SENSITIVE - DO NOT COMMIT!)
+guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
+guard1-dbkey.json
+guard1-dbkey.json.backup
+firebaseConfig.js
+
+# Blacklist data (contains phone numbers)
+blacklist.json
+blacklist-backup.json
+
+# Test files
+test-blacklist.json
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# PM2
+.pm2/
+pids/
+*.pid
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build files
+dist/
+build/
