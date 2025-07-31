@@ -27,6 +27,15 @@ async function sendAlert(sock, message) {
 }
 
 async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, reason, additionalInfo = '', spamLink = '', groupInviteLink = '' }) {
+    // Get group invite link if not provided
+    if (!groupInviteLink || groupInviteLink === 'N/A') {
+        try {
+            const inviteCode = await sock.groupInviteCode(groupId);
+            groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+        } catch (err) {
+            groupInviteLink = 'N/A';
+        }
+    }
     const timestamp = new Date().toLocaleString('en-GB', {
         day: '2-digit',
         month: '2-digit',

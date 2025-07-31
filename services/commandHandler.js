@@ -631,7 +631,6 @@ class CommandHandler {
             await addToBlacklist(targetUserId, 'Kicked by admin command');
 
             // Send alert to alert phone
-            const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
             const userPhone = targetUserId.split('@')[0];
             
             // Get group invite link
@@ -804,9 +803,17 @@ class CommandHandler {
             if (targetParticipant) {
                 await this.sock.groupParticipantsUpdate(groupId, [targetUserId], 'remove');
                 
-                // Send alert to alert phone
-                const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
+                // Send alert to alert phone  
                 const userPhone = targetUserId.split('@')[0];
+                
+                // Get group invite link
+                let groupInviteLink = 'N/A';
+                try {
+                    const inviteCode = await this.sock.groupInviteCode(groupId);
+                    groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                } catch (err) {
+                    console.log('Could not get group invite link:', err.message);
+                }
                 
                 await sendKickAlert(this.sock, {
                     userPhone: userPhone,
@@ -814,7 +821,8 @@ class CommandHandler {
                     groupName: groupMetadata?.subject || 'Unknown Group',
                     groupId: groupId,
                     reason: 'admin_command',
-                    additionalInfo: 'Banned by admin using #ban command'
+                    additionalInfo: 'Banned by admin using #ban command',
+                    groupInviteLink: groupInviteLink
                 });
                 
                 // Send private message to banned user
@@ -1034,14 +1042,14 @@ Thank you for your cooperation.`;
                     console.log(`✅ Kicked foreign user: ${user.phone}`);
                     
                     // Send alert to alert phone
-                    const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
                     await sendKickAlert(this.sock, {
                         userPhone: user.phone,
                         userName: `User ${user.phone}`,
                         groupName: groupMetadata?.subject || 'Unknown Group',
                         groupId: groupId,
                         reason: 'country_code',
-                        additionalInfo: `Foreign country code restriction (+1/+6)`
+                        additionalInfo: `Foreign country code restriction (+1/+6)`,
+                        groupInviteLink: 'N/A' // Will be obtained by alert service
                     });
                     
                     // Send private message to removed user
@@ -1431,14 +1439,14 @@ Thank you for your cooperation.`;
                     console.log(`✅ Kicked blacklisted user: ${user.phone}`);
                     
                     // Send alert to alert phone
-                    const groupMetadata = await this.sock.groupMetadata(groupId).catch(() => null);
                     await sendKickAlert(this.sock, {
                         userPhone: user.phone,
                         userName: `User ${user.phone}`,
                         groupName: groupMetadata?.subject || 'Unknown Group',
                         groupId: groupId,
                         reason: 'blacklisted',
-                        additionalInfo: `User was on blacklist`
+                        additionalInfo: `User was on blacklist`,
+                        groupInviteLink: 'N/A' // Will be obtained by alert service
                     });
                     
                     // Send private message to removed user
