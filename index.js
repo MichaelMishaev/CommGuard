@@ -144,7 +144,7 @@ async function startBot() {
         emitOwnEvents: false,
         browser: ['CommGuard Bot', 'Desktop', '4.0.0'], // More generic browser info
         getMessage: async (key) => { // Add message cache handler to prevent stream errors
-            return { conversation: 'Hello' };
+            return null; // Return null instead of sending "Hello" messages
         },
         // Additional WebSocket options to prevent stream errors
         options: {

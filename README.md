@@ -21,6 +21,8 @@ A lightweight, efficient WhatsApp group moderation bot built with Baileys WebSoc
 - **Admin Immunity**: Admins can share invite links without restrictions
 - **Firebase Integration**: Optional cloud storage for blacklist persistence
 - **Lightweight**: No browser needed, pure WebSocket connection
+- **Web Search Integration**: Chrome-based web search with MCP (Model Context Protocol)
+- **Link Verification**: Verify URL safety before sharing
 
 ## 📋 Prerequisites
 
@@ -82,6 +84,15 @@ node tests/testInviteDetection.js
 
 # Stress test
 node tests/stressTest.js
+
+# MCP search test
+node tests/testMcpSearch.js
+```
+
+### Running with Chrome Search (MCP)
+```bash
+# Start with MCP integration
+./start-with-mcp.sh
 ```
 
 ## 📱 First Time Setup
@@ -139,12 +150,26 @@ Based on stress testing:
 - The bot works without Firebase (memory-only mode)
 - Check your `guard1-dbkey.json` file is valid
 
+## 🔍 MCP Chrome Search Features
+
+### What is MCP?
+MCP (Model Context Protocol) enables the bot to interact with Chrome for web searching and link verification.
+
+### Search Commands
+- **`#search <query>`** - Search the web (admin only, rate limited)
+- **`#verify <url>`** - Check if a link is safe
+
+### Setup (Optional)
+See `MCP_SETUP.md` for detailed setup instructions.
+
 ## 📁 Project Structure
 
 ```
 bCommGuard/
 ├── index.js              # Main bot application
 ├── config.js             # Configuration settings
+├── mcp.json              # MCP server configuration
+├── MCP_SETUP.md          # MCP setup guide
 ├── firebaseConfig.js     # Firebase setup
 ├── services/
 │   └── blacklistService.js  # Blacklist management

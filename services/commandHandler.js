@@ -4,6 +4,7 @@ const { addToWhitelist, removeFromWhitelist, listWhitelist, isWhitelisted } = re
 const { addMutedUser, removeMutedUser, isMuted, getMutedUsers } = require('./muteService');
 const { getTimestamp } = require('../utils/logger');
 const { sendKickAlert } = require('../utils/alertService');
+const searchService = require('./searchService');
 
 // Track group mute status
 const groupMuteStatus = new Map();
@@ -90,6 +91,12 @@ class CommandHandler {
                     
                 case '#botadmin':
                     return await this.handleBotAdminCheck(msg, isAdmin);
+                    
+                case '#search':
+                    return await this.handleSearch(msg, args, isAdmin);
+                    
+                case '#verify':
+                    return await this.handleVerifyLink(msg, args, isAdmin);
                     
                 default:
                     return false; // Command not handled
@@ -179,6 +186,10 @@ class CommandHandler {
 • *#sessioncheck* - Shows session decryption error statistics
 • *#botadmin* - Checks if bot has admin privileges in current group
 • *#debugnumbers* - Shows participant phone formats (for debugging LID issues)
+
+*🔍 Search Commands (Requires MCP Setup):*
+• *#search <query>* - Search the web (rate limited: 5/minute)
+• *#verify <url>* - Verify if a link is safe
 
 *🚨 AUTO-PROTECTION FEATURES:*
 1. **Invite Link Detection** ✅
@@ -1619,6 +1630,127 @@ Thank you for your cooperation.`;
             await this.sock.sendMessage(msg.key.remoteJid, { text: report });
         }
         
+        return true;
+    }
+
+    async handleSearch(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ This command is admin only.' 
+            });
+            return true;
+        }
+
+        if (args.length === 0) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Please provide a search query\n\nUsage: #search <query>\nExample: #search WhatsApp security tips' 
+            });
+            return true;
+        }
+
+        // Check if search service is initialized
+        if (!searchService.isConnected) {
+            await searchService.initialize();
+        }
+
+        const query = args.join(' ');
+        const userId = msg.key.participant || msg.key.remoteJid;
+
+        // Check rate limit
+        const rateLimit = searchService.checkRateLimit(userId);
+        if (!rateLimit.allowed) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `⏳ Rate limit exceeded. Please wait ${rateLimit.remainingTime} seconds before searching again.` 
+            });
+            return true;
+        }
+
+        try {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `🔍 Searching for: "${query}"...` 
+            });
+
+            const results = await searchService.search(query);
+            const formattedResults = searchService.formatSearchResults(results);
+
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: formattedResults 
+            });
+
+            console.log(`[${getTimestamp()}] ✅ Search completed for query: ${query}`);
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Search failed:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `❌ Search failed: ${error.message}\n\n💡 Note: MCP Chrome search requires setup. See MCP_SETUP.md for instructions.` 
+            });
+        }
+
+        return true;
+    }
+
+    async handleVerifyLink(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ This command is admin only.' 
+            });
+            return true;
+        }
+
+        if (args.length === 0) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Please provide a URL to verify\n\nUsage: #verify <url>\nExample: #verify https://example.com' 
+            });
+            return true;
+        }
+
+        const url = args[0];
+
+        // Basic URL validation
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Invalid URL. Please include http:// or https://' 
+            });
+            return true;
+        }
+
+        // Check if search service is initialized
+        if (!searchService.isConnected) {
+            await searchService.initialize();
+        }
+
+        try {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `🔒 Verifying link safety: ${url}...` 
+            });
+
+            const verification = await searchService.verifyLink(url);
+
+            let resultMessage = `🔍 *Link Verification Results*\n\n`;
+            resultMessage += `📎 URL: ${url}\n`;
+            resultMessage += `${verification.safe ? '✅' : '❌'} Safety: ${verification.safe ? 'SAFE' : 'UNSAFE'}\n`;
+            resultMessage += `📂 Category: ${verification.category}\n`;
+
+            if (verification.threats && verification.threats.length > 0) {
+                resultMessage += `\n⚠️ *Threats Detected:*\n`;
+                verification.threats.forEach(threat => {
+                    resultMessage += `• ${threat}\n`;
+                });
+            }
+
+            resultMessage += `\n⏰ Verified at: ${getTimestamp()}`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: resultMessage 
+            });
+
+            console.log(`[${getTimestamp()}] ✅ Link verified: ${url} - Safe: ${verification.safe}`);
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Link verification failed:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `❌ Verification failed: ${error.message}\n\n💡 Note: Link verification requires MCP setup. See MCP_SETUP.md for instructions.` 
+            });
+        }
+
         return true;
     }
 }

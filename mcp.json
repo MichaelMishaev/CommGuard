@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "chrome-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "env": {
+        "PUPPETEER_HEADLESS": "false"
+      }
+    },
+    "web-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-web-search"
+      ],
+      "env": {
+        "GOOGLE_SEARCH_API_KEY": "your-google-api-key",
+        "GOOGLE_SEARCH_ENGINE_ID": "your-search-engine-id"
+      }
+    }
+  }
+}
