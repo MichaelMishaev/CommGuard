@@ -7,11 +7,12 @@ const config = require('./config');
 const SingleInstance = require('./single-instance');
 
 // Conditionally load Firebase services only if enabled
-let blacklistService, whitelistService, muteService;
+let blacklistService, whitelistService, muteService, unblacklistRequestService;
 if (config.FEATURES.FIREBASE_INTEGRATION) {
     const blacklistModule = require('./services/blacklistService');
     const whitelistModule = require('./services/whitelistService');
     const muteModule = require('./services/muteService');
+    const unblacklistModule = require('./services/unblacklistRequestService');
     
     blacklistService = {
         loadBlacklistCache: blacklistModule.loadBlacklistCache,
@@ -27,6 +28,13 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
         isMuted: muteModule.isMuted,
         incrementMutedMessageCount: muteModule.incrementMutedMessageCount,
         getRemainingMuteTime: muteModule.getRemainingMuteTime
+    };
+    unblacklistRequestService = {
+        loadRequestCache: unblacklistModule.loadRequestCache,
+        canMakeRequest: unblacklistModule.canMakeRequest,
+        createRequest: unblacklistModule.createRequest,
+        processAdminResponse: unblacklistModule.processAdminResponse,
+        getPendingRequests: unblacklistModule.getPendingRequests
     };
 } else {
     // Mock services when Firebase is disabled
@@ -44,6 +52,13 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
         isMuted: () => false,
         incrementMutedMessageCount: async () => { console.log('📋 Firebase disabled - mute count skipped'); },
         getRemainingMuteTime: () => null
+    };
+    unblacklistRequestService = {
+        loadRequestCache: async () => { console.log('📋 Firebase disabled - skipping unblacklist request cache load'); },
+        canMakeRequest: async () => ({ canRequest: false, reason: 'Firebase disabled' }),
+        createRequest: async () => { console.log('📋 Firebase disabled - unblacklist request skipped'); return false; },
+        processAdminResponse: async () => { console.log('📋 Firebase disabled - admin response skipped'); return false; },
+        getPendingRequests: async () => { console.log('📋 Firebase disabled - pending requests unavailable'); return []; }
     };
 }
 
@@ -109,6 +124,7 @@ async function startBot() {
     await blacklistService.loadBlacklistCache();
     await whitelistService.loadWhitelistCache();
     await muteService.loadMutedUsers();
+    await unblacklistRequestService.loadRequestCache();
     
     console.log(`[${getTimestamp()}] 🔄 Starting bot connection (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
     
@@ -815,11 +831,15 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     await sock.groupParticipantsUpdate(groupId, [participantId], 'remove');
                     console.log('✅ Kicked blacklisted user');
                     
-                    // Notify the user
-                    const message = `🚫 You have been automatically removed from ${groupMetadata.subject} ` +
-                                  `because you are on the blacklist.\n\n` +
-                                  `If you believe this is a mistake, please contact the admin.`;
-                    await sock.sendMessage(participantId, { text: message }).catch(() => {});
+                    // Send policy message with unblacklist option
+                    const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
+                                         `📋 *To request removal from blacklist:*\n` +
+                                         `1️⃣ Agree to NEVER share invite links in groups\n` +
+                                         `2️⃣ Send *#free* to this bot\n` +
+                                         `3️⃣ Wait for admin approval\n\n` +
+                                         `⏰ You can request once every 24 hours.\n` +
+                                         `⚠️ By sending #free, you agree to follow group rules.`;
+                    await sock.sendMessage(participantId, { text: policyMessage }).catch(() => {});
                     
                     // Alert admin
                     const adminId = config.ALERT_PHONE + '@s.whatsapp.net';

@@ -12,16 +12,23 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
 - `npm start` - Start the bot in production mode
 - `npm run dev` - Start with nodemon for auto-restart during development
 - `npm run fresh` - Clean start using start-fresh.js
+- `npm test` - Run the test suite (tests/runTests.js)
+- `npm run diagnose` - Run diagnostic checks
 - `node tests/testInviteDetection.js` - Test invite link pattern detection
 - `node tests/stressTest.js` - Performance stress testing
 - `node setupFirebase.js` - Test Firebase connection and permissions
-- `node diagnose.js` - Run diagnostic checks
+
+### MCP Integration Testing
+- `node tests/testMcpSearch.js` - Test MCP search functionality
+- `./start-with-mcp.sh` - Start bot with MCP integration enabled
 
 ### Debugging Commands
 - `node debugBotStatus.js` - Debug bot admin status issues
 - `node debugCommandFlow.js` - Debug command processing flow
 - `node tests/debugKick.js` - Debug user kicking functionality
 - `node tests/qaTestBotAdmin.js` - Test bot admin detection
+- `node tests/testMuteFunctionality.js` - Test mute service functionality
+- `node tests/testAlertService.js` - Test alert notifications
 
 ## Architecture and Key Flows
 
@@ -33,11 +40,13 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
   - `blacklistService.js` - Manages blacklisted users with Firebase persistence
   - `whitelistService.js` - Manages whitelisted users who bypass all restrictions
   - `muteService.js` - Manages muted users and groups
+  - `searchService.js` - MCP-based web search functionality with rate limiting
 - **Utilities**:
   - `utils/sessionManager.js` - Handles WhatsApp session errors and decryption failures
   - `utils/botAdminChecker.js` - Checks if bot has admin privileges in groups
   - `utils/jidUtils.js` - WhatsApp ID format handling
   - `utils/logger.js` - Timestamp formatting and logging
+  - `utils/alertService.js` - Handles kick alerts and security notifications
 
 ### Critical Message Flow
 1. **Message Reception** → `handleMessage()` in index.js
@@ -57,6 +66,12 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
 - Collections: `blacklist`, `whitelist`, `muted`
 - Falls back to memory-only mode if Firebase unavailable
 - Service account key: `guard1-dbkey.json`
+
+### MCP (Model Context Protocol) Integration
+- Web search functionality through `services/searchService.js`
+- Configuration in `mcp.json` with chrome-search and web-search servers
+- Commands: `#search <query>`, `#verify <url>` (admin only, rate limited)
+- Requires MCP server setup for full functionality
 
 ## Known Issues (from CLAUDE.local.md)
 
@@ -92,6 +107,10 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
 - `#debugnumbers` - Debug participant phone formats
 - `#sessioncheck` - Check session error statistics
 
+### MCP Search Commands (Admin Only)
+- `#search <query>` - Search the web using MCP integration
+- `#verify <url>` - Verify URL safety before sharing
+
 ## Critical Patterns and Behaviors
 
 ### Invite Link Detection
@@ -114,10 +133,17 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
 ## Testing Approach
 
 1. **Unit Tests**: Pattern detection, ID formatting
-2. **Integration Tests**: Firebase operations, command handling
+2. **Integration Tests**: Firebase operations, command handling, MCP integration
 3. **Live QA**: Manual testing checklist in `tests/qaChecklist.md`
-4. **Stress Testing**: Message processing performance
-5. **Debug Scripts**: Specific issue debugging (kick, admin status, etc.)
+4. **Stress Testing**: Message processing performance (`tests/stressTest.js`)
+5. **Debug Scripts**: Specific issue debugging (kick, admin status, mute functionality)
+6. **Test Suite**: Run `npm test` or `node tests/runTests.js` for comprehensive testing
+
+### Key Test Files
+- `tests/testInviteDetection.js` - Regex pattern validation
+- `tests/testMuteFunctionality.js` - Mute service functionality
+- `tests/testMcpSearch.js` - MCP search integration
+- `tests/testAlertService.js` - Alert notification system
 
 ## Performance Characteristics
 - Memory usage: ~50-100MB (vs 500MB+ for whatsapp-web.js)
@@ -139,3 +165,23 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
 - Session error tracking and recovery
 - Clear error messages to admin phone
 - Non-blocking error handling for group operations
+- Smart decryption error filtering (logged but not spammed)
+- Exponential backoff for error 515 (Stream Error)
+
+## Development Patterns
+
+### Service Layer Pattern
+- All services follow singleton pattern with async initialization
+- Firebase services gracefully degrade to memory-only when unavailable
+- Services are conditionally loaded based on feature flags
+
+### Error Handling Pattern
+- `handleSessionError()` in utils/sessionManager.js for connection issues
+- Rate limiting and cooldowns prevent spam/abuse
+- Admin immunity built into all moderation actions
+
+### Testing Pattern
+- Individual test files for each major component
+- Stress testing for performance validation
+- Debug scripts for specific issue investigation
+- QA checklist for manual testing workflows

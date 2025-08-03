@@ -6,6 +6,20 @@ const { getTimestamp } = require('../utils/logger');
 const { sendKickAlert } = require('../utils/alertService');
 const searchService = require('./searchService');
 
+// Conditionally load unblacklist request service
+let unblacklistRequestService;
+if (config.FEATURES.FIREBASE_INTEGRATION) {
+    unblacklistRequestService = require('./unblacklistRequestService');
+} else {
+    // Mock service when Firebase is disabled
+    unblacklistRequestService = {
+        canMakeRequest: async () => ({ canRequest: false, reason: 'Firebase disabled' }),
+        createRequest: async () => false,
+        processAdminResponse: async () => false,
+        getPendingRequests: async () => []
+    };
+}
+
 // Track group mute status
 const groupMuteStatus = new Map();
 
@@ -98,7 +112,14 @@ class CommandHandler {
                 case '#verify':
                     return await this.handleVerifyLink(msg, args, isAdmin);
                     
+                case '#free':
+                    return await this.handleFreeRequest(msg);
+                    
                 default:
+                    // Check for admin approval patterns (yes/no userId)
+                    if (isAdmin && (cmd.startsWith('yes ') || cmd.startsWith('no '))) {
+                        return await this.handleAdminApproval(msg, command, args);
+                    }
                     return false; // Command not handled
             }
         } catch (error) {
@@ -1748,6 +1769,180 @@ Thank you for your cooperation.`;
             console.error(`[${getTimestamp()}] ❌ Link verification failed:`, error);
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: `❌ Verification failed: ${error.message}\n\n💡 Note: Link verification requires MCP setup. See MCP_SETUP.md for instructions.` 
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle #free command - user request to be unblacklisted
+     */
+    async handleFreeRequest(msg) {
+        const userId = msg.key.remoteJid;
+        
+        // Only allow in private chats
+        if (!this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '⚠️ The #free command can only be used in private messages to the bot.' 
+            });
+            return true;
+        }
+
+        try {
+            // Check if user is actually blacklisted
+            if (!await isBlacklisted(userId)) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '✅ You are not on the blacklist. No action needed.' 
+                });
+                return true;
+            }
+
+            // Check if user can make a request (24h cooldown)
+            const eligibility = await unblacklistRequestService.canMakeRequest(userId);
+            
+            if (!eligibility.canRequest) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `⏰ ${eligibility.reason || 'You must wait before making another request.'}` 
+                });
+                return true;
+            }
+
+            // Create the unblacklist request
+            const requestCreated = await unblacklistRequestService.createRequest(userId);
+            
+            if (requestCreated) {
+                // Notify user
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `✅ *Unblacklist request submitted successfully!*\n\n` +
+                          `📋 Your request has been sent to the admin for review.\n` +
+                          `⏰ You will be notified once a decision is made.\n` +
+                          `🕒 Next request allowed in 24 hours.\n\n` +
+                          `By submitting this request, you agree to follow all group rules and never share invite links.` 
+                });
+
+                // Notify admin
+                const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
+                const userPhone = userId.replace('@s.whatsapp.net', '');
+                
+                await this.sock.sendMessage(adminId, { 
+                    text: `🔔 *New Unblacklist Request*\n\n` +
+                          `👤 User: ${userPhone}\n` +
+                          `⏰ Time: ${getTimestamp()}\n\n` +
+                          `*To approve:* Reply \`yes ${userPhone}\`\n` +
+                          `*To deny:* Reply \`no ${userPhone}\`\n\n` +
+                          `⚠️ User has agreed to follow group rules and not share invite links.` 
+                });
+
+                console.log(`[${getTimestamp()}] 📨 Unblacklist request created for ${userPhone}`);
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '❌ Failed to submit request. Please try again later.' 
+                });
+            }
+
+        } catch (error) {
+            console.error(`❌ Error handling #free request:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error processing your request. Please try again later.' 
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle admin approval commands (ok/NO userId)
+     */
+    async handleAdminApproval(msg, command, args) {
+        // Only allow in private chats
+        if (!this.isPrivateChat(msg)) {
+            return false;
+        }
+
+        try {
+            const decision = command.toLowerCase().startsWith('yes') ? 'yes' : 'no';
+            const targetUserId = args[0];
+            
+            if (!targetUserId) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `❌ Usage: \`${decision} <phone_number>\`\nExample: \`${decision} 972555123456\`` 
+                });
+                return true;
+            }
+
+            // Normalize the user ID
+            const normalizedUserId = unblacklistRequestService.normalizeUserId(targetUserId);
+            const fullUserId = normalizedUserId + '@s.whatsapp.net';
+
+            // Process the admin response
+            const adminPhone = msg.key.remoteJid.replace('@s.whatsapp.net', '');
+            const responseProcessed = await unblacklistRequestService.processAdminResponse(
+                normalizedUserId, 
+                decision, 
+                adminPhone
+            );
+
+            if (responseProcessed) {
+                if (decision === 'yes') {
+                    // Approve: Remove from blacklist
+                    const removed = await removeFromBlacklist(fullUserId);
+                    
+                    if (removed) {
+                        // Notify admin
+                        await this.sock.sendMessage(msg.key.remoteJid, { 
+                            text: `✅ *Request APPROVED*\n\n` +
+                                  `👤 User ${normalizedUserId} has been removed from blacklist.\n` +
+                                  `📨 User has been notified.` 
+                        });
+
+                        // Notify user
+                        await this.sock.sendMessage(fullUserId, { 
+                            text: `🎉 *Request Approved!*\n\n` +
+                                  `✅ You have been removed from the blacklist.\n` +
+                                  `📱 You can now rejoin groups.\n\n` +
+                                  `⚠️ *Important:* Remember your agreement to never share invite links in groups.\n` +
+                                  `🚫 Sharing invite links will result in immediate re-blacklisting.` 
+                        }).catch(() => {
+                            console.log(`Could not notify user ${normalizedUserId} - they may have blocked the bot`);
+                        });
+
+                        console.log(`[${getTimestamp()}] ✅ Admin ${adminPhone} approved unblacklist for ${normalizedUserId}`);
+                    } else {
+                        await this.sock.sendMessage(msg.key.remoteJid, { 
+                            text: `❌ Failed to remove ${normalizedUserId} from blacklist. They may not be blacklisted.` 
+                        });
+                    }
+                } else {
+                    // Deny: Keep on blacklist
+                    await this.sock.sendMessage(msg.key.remoteJid, { 
+                        text: `❌ *Request DENIED*\n\n` +
+                              `👤 User ${normalizedUserId} remains on blacklist.\n` +
+                              `📨 User has been notified.` 
+                    });
+
+                    // Notify user
+                    await this.sock.sendMessage(fullUserId, { 
+                        text: `❌ *Request Denied*\n\n` +
+                              `🚫 Your unblacklist request has been denied.\n` +
+                              `📅 You can submit a new request in 24 hours.\n\n` +
+                              `💡 Please ensure you understand and agree to follow all group rules before requesting again.` 
+                    }).catch(() => {
+                        console.log(`Could not notify user ${normalizedUserId} - they may have blocked the bot`);
+                    });
+
+                    console.log(`[${getTimestamp()}] ❌ Admin ${adminPhone} denied unblacklist for ${normalizedUserId}`);
+                }
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `❌ Failed to process response. User ${normalizedUserId} may not have a pending request.` 
+                });
+            }
+
+        } catch (error) {
+            console.error(`❌ Error handling admin approval:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error processing admin response. Please try again.' 
             });
         }
 
