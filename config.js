@@ -5,8 +5,8 @@ module.exports = {
   // Format: Country code + number (without + or @s.whatsapp.net)
   // Example: '1234567890' for US (+1) 234-567-890
   // Example: '972555555555' for Israel (+972) 55-555-5555
-  ADMIN_PHONE: process.env.ADMIN_PHONE || '972555030746', // YOUR phone to control the bot
-  ALERT_PHONE: process.env.ALERT_PHONE || '972555030746', // Phone to receive kick alerts
+  ADMIN_PHONE: process.env.ADMIN_PHONE || '972544345287', // YOUR phone to control the bot
+  ALERT_PHONE: process.env.ALERT_PHONE || '972544345287', // Phone to receive kick alerts
   
   // Bot settings
   BOT_NAME: 'CommGuard Bot',
