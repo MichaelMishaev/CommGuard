@@ -732,16 +732,15 @@ async function handleMessage(sock, msg, commandHandler) {
                 groupInviteLink: groupInviteLink
             });
             
-            // Send bilingual notification to kicked user
-            const kickMessage = `🔗 You have been removed from group "${groupMetadata.subject}" for sending unauthorized invite links\n\n` +
-                              `📱 Reason: Invite link spam is not allowed\n` +
-                              `📞 Contact admin if you believe this was a mistake\n` +
-                              `🤖 This is an automated message from CommGuard Bot\n\n` +
-                              `🔗 הוסרת מהקבוצה "${groupMetadata.subject}" בגלל שליחת קישורי הזמנה לא מורשים\n\n` +
-                              `📱 סיבה: ספאם של קישורי הזמנה אסור\n` +
-                              `📞 פנה למנהל אם אתה מאמין שזו הייתה טעות\n` +
-                              `🤖 זהו הודעה אוטומטית מבוט CommGuard`;
-            await sock.sendMessage(senderId, { text: kickMessage }).catch(() => {});
+            // Send policy message with unblacklist option
+            const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
+                                 `📋 *To request removal from blacklist:*\n` +
+                                 `1️⃣ Agree to NEVER share invite links in groups\n` +
+                                 `2️⃣ Send *#free* to this bot\n` +
+                                 `3️⃣ Wait for admin approval\n\n` +
+                                 `⏰ You can request once every 24 hours.\n` +
+                                 `⚠️ By sending #free, you agree to follow group rules.`;
+            await sock.sendMessage(senderId, { text: policyMessage }).catch(() => {});
         } catch (kickError) {
             console.error('❌ Failed to kick user:', kickError.message);
         }
