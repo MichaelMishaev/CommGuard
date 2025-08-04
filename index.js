@@ -834,7 +834,7 @@ async function handleMessage(sock, msg, commandHandler) {
         // Log group commands to console
         const senderPhone = senderId.split('@')[0];
         console.log(`\n[${getTimestamp()}] 👥 Group Command Received:`);
-        console.log(`   Group: ${groupMetadata?.subject || groupId}`);
+        console.log(`   Group: ${groupId}`);
         console.log(`   From: ${senderPhone} (${senderId})`);
         console.log(`   Command: ${command}`);
         console.log(`   Args: ${args || '[none]'}`);
