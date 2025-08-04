@@ -24,6 +24,9 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
 const groupMuteStatus = new Map();
 
 class CommandHandler {
+    // Track processed messages to prevent duplicates
+    static processedMessages = new Set();
+    
     constructor(sock) {
         this.sock = sock;
     }
@@ -1779,7 +1782,24 @@ Thank you for your cooperation.`;
      * Handle #free command - user request to be unblacklisted
      */
     async handleFreeRequest(msg) {
+        const messageId = msg.key.id;
         const userId = msg.key.remoteJid;
+        
+        // Check if we already processed this exact message
+        if (CommandHandler.processedMessages.has(messageId)) {
+            console.log(`[${getTimestamp()}] ⚠️ Duplicate #free message ignored: ${messageId}`);
+            return true;
+        }
+        
+        // Mark message as processed
+        CommandHandler.processedMessages.add(messageId);
+        
+        // Clean up old message IDs (keep only last 100)
+        if (CommandHandler.processedMessages.size > 100) {
+            const oldestIds = Array.from(CommandHandler.processedMessages).slice(0, 50);
+            oldestIds.forEach(id => CommandHandler.processedMessages.delete(id));
+            console.log(`[${getTimestamp()}] 🧹 Cleaned up ${oldestIds.length} old message IDs`);
+        }
         
         console.log(`[${getTimestamp()}] 🆘 #free command received from ${userId}`);
         

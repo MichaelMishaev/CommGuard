@@ -489,6 +489,22 @@ async function handleMessage(sock, msg, commandHandler) {
             await sock.sendMessage(chatId, { 
                 text: '❌ Unknown command. Use #help to see available commands.' 
             });
+        } else if (isAdmin && messageText && 
+                  (messageText.startsWith('yes ') || messageText.startsWith('no '))) {
+            // Handle admin approval patterns (yes/no userId)
+            console.log(`   Admin Approval Detected: ${messageText}`);
+            
+            const parts = messageText.trim().split(/\s+/);
+            const command = parts[0]; // "yes" or "no"  
+            const args = parts.slice(1).join(' '); // "972555030746"
+            
+            const handled = await commandHandler.handleCommand(msg, command, args, isAdmin, isAdmin);
+            if (handled) {
+                console.log(`   Admin Approval Handled: ✅ Successfully`);
+                return;
+            } else {
+                console.log(`   Admin Approval Failed: ❌ Not processed`);
+            }
         }
         return;
     }
