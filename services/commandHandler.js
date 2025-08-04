@@ -120,7 +120,7 @@ class CommandHandler {
                     
                 default:
                     // Check for admin approval patterns (yes/no userId)
-                    if (isAdmin && (cmd.startsWith('yes ') || cmd.startsWith('no '))) {
+                    if (isAdmin && (cmd === 'yes' || cmd === 'no')) {
                         return await this.handleAdminApproval(msg, command, args);
                     }
                     return false; // Command not handled
@@ -1892,7 +1892,7 @@ Thank you for your cooperation.`;
 
         try {
             const decision = command.toLowerCase().startsWith('yes') ? 'yes' : 'no';
-            const targetUserId = args[0];
+            const targetUserId = typeof args === 'string' ? args.trim() : args[0];
             
             if (!targetUserId) {
                 await this.sock.sendMessage(msg.key.remoteJid, { 
