@@ -1781,13 +1781,18 @@ Thank you for your cooperation.`;
     async handleFreeRequest(msg) {
         const userId = msg.key.remoteJid;
         
+        console.log(`[${getTimestamp()}] 🆘 #free command received from ${userId}`);
+        
         // Only allow in private chats
         if (!this.isPrivateChat(msg)) {
+            console.log(`[${getTimestamp()}] ❌ #free command rejected - not in private chat`);
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: '⚠️ The #free command can only be used in private messages to the bot.' 
             });
             return true;
         }
+        
+        console.log(`[${getTimestamp()}] ✅ #free command in private chat - processing...`);
 
         try {
             // Check if user is actually blacklisted

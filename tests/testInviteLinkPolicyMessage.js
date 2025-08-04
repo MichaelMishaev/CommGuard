@@ -66,7 +66,7 @@ async function testPolicyMessageStructure() {
     let passed = 0;
     let failed = 0;
     
-    // The expected policy message format (based on the implementation)
+    // The expected policy message format (based on the implementation with Hebrew)
     const groupName = mockGroupMetadata.subject;
     const expectedPolicyMessage = `🚫 You have been automatically removed from ${groupName} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
                                  `📋 *To request removal from blacklist:*\n` +
@@ -74,7 +74,14 @@ async function testPolicyMessageStructure() {
                                  `2️⃣ Send *#free* to this bot\n` +
                                  `3️⃣ Wait for admin approval\n\n` +
                                  `⏰ You can request once every 24 hours.\n` +
-                                 `⚠️ By sending #free, you agree to follow group rules.`;
+                                 `⚠️ By sending #free, you agree to follow group rules.\n\n` +
+                                 `🚫 הוסרת אוטומטית מ${groupName} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לווטסאפ.\n\n` +
+                                 `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
+                                 `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
+                                 `2️⃣ שלח *#free* לבוט הזה\n` +
+                                 `3️⃣ חכה לאישור מנהל\n\n` +
+                                 `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
+                                 `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
     
     console.log('Expected Policy Message:');
     console.log('═'.repeat(50));
@@ -109,23 +116,37 @@ async function testMessageConsistency() {
     let passed = 0;
     let failed = 0;
     
-    // The policy message for invite link senders (new implementation)
+    // The policy message for invite link senders (new implementation with Hebrew)
     const inviteLinkPolicyMessage = `🚫 You have been automatically removed from ${mockGroupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
                                    `📋 *To request removal from blacklist:*\n` +
                                    `1️⃣ Agree to NEVER share invite links in groups\n` +
                                    `2️⃣ Send *#free* to this bot\n` +
                                    `3️⃣ Wait for admin approval\n\n` +
                                    `⏰ You can request once every 24 hours.\n` +
-                                   `⚠️ By sending #free, you agree to follow group rules.`;
+                                   `⚠️ By sending #free, you agree to follow group rules.\n\n` +
+                                   `🚫 הוסרת אוטומטית מ${mockGroupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לווטסאפ.\n\n` +
+                                   `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
+                                   `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
+                                   `2️⃣ שלח *#free* לבוט הזה\n` +
+                                   `3️⃣ חכה לאישור מנהל\n\n` +
+                                   `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
+                                   `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
     
-    // The policy message for group join attempts (existing implementation)
+    // The policy message for group join attempts (existing implementation with Hebrew)
     const groupJoinPolicyMessage = `🚫 You have been automatically removed from ${mockGroupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
                                   `📋 *To request removal from blacklist:*\n` +
                                   `1️⃣ Agree to NEVER share invite links in groups\n` +
                                   `2️⃣ Send *#free* to this bot\n` +
                                   `3️⃣ Wait for admin approval\n\n` +
                                   `⏰ You can request once every 24 hours.\n` +
-                                  `⚠️ By sending #free, you agree to follow group rules.`;
+                                  `⚠️ By sending #free, you agree to follow group rules.\n\n` +
+                                  `🚫 הוסרת אוטומטית מ${mockGroupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לווטסאפ.\n\n` +
+                                  `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
+                                  `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
+                                  `2️⃣ שלח *#free* לבוט הזה\n` +
+                                  `3️⃣ חכה לאישור מנהל\n\n` +
+                                  `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
+                                  `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
     
     // Test for exact consistency
     const testName = 'Policy message consistency between invite link and group join';

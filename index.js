@@ -460,18 +460,27 @@ async function handleMessage(sock, msg, commandHandler) {
         
         console.log(`   Is Admin: ${isAdmin ? '✅ Yes' : '❌ No'}`);
         
-        // Only process commands from admin in private
-        if (isAdmin && messageText && messageText.startsWith('#')) {
+        // Process commands in private chat
+        if (messageText && messageText.startsWith('#')) {
             console.log(`   Command Detected: ${messageText}`);
             
             const parts = messageText.trim().split(/\s+/);
             const command = parts[0];
             const args = parts.slice(1).join(' ');
             
-            // Allow all commands in private from admin
-            const handled = await commandHandler.handleCommand(msg, command, args, true, true);
-            if (handled) {
-                console.log(`   Command Handled: ✅ Successfully`);
+            // Handle #free command for all users, other commands require admin
+            if (command === '#free' || isAdmin) {
+                const handled = await commandHandler.handleCommand(msg, command, args, isAdmin, isAdmin);
+                if (handled) {
+                    console.log(`   Command Handled: ✅ Successfully`);
+                    return;
+                }
+            } else {
+                // Non-admin tried to use admin command
+                console.log(`   Command Rejected: ❌ Non-admin user`);
+                await sock.sendMessage(chatId, { 
+                    text: '❌ Only admins can use bot commands (except #free).' 
+                });
                 return;
             }
             
@@ -739,7 +748,14 @@ async function handleMessage(sock, msg, commandHandler) {
                                  `2️⃣ Send *#free* to this bot\n` +
                                  `3️⃣ Wait for admin approval\n\n` +
                                  `⏰ You can request once every 24 hours.\n` +
-                                 `⚠️ By sending #free, you agree to follow group rules.`;
+                                 `⚠️ By sending #free, you agree to follow group rules.\n\n` +
+                                 `🚫 הוסרת אוטומטית מ${groupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לוואטסאפ.\n\n` +
+                                 `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
+                                 `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
+                                 `2️⃣ שלח *#free* לבוט הזה\n` +
+                                 `3️⃣ חכה לאישור מנהל\n\n` +
+                                 `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
+                                 `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
             await sock.sendMessage(senderId, { text: policyMessage }).catch(() => {});
         } catch (kickError) {
             console.error('❌ Failed to kick user:', kickError.message);
@@ -837,7 +853,14 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                                          `2️⃣ Send *#free* to this bot\n` +
                                          `3️⃣ Wait for admin approval\n\n` +
                                          `⏰ You can request once every 24 hours.\n` +
-                                         `⚠️ By sending #free, you agree to follow group rules.`;
+                                         `⚠️ By sending #free, you agree to follow group rules.\n\n` +
+                                         `🚫 הוסרת אוטומטית מ${groupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לוואטסאפ.\n\n` +
+                                         `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
+                                         `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
+                                         `2️⃣ שלח *#free* לבוט הזה\n` +
+                                         `3️⃣ חכה לאישור מנהל\n\n` +
+                                         `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
+                                         `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
                     await sock.sendMessage(participantId, { text: policyMessage }).catch(() => {});
                     
                     // Alert admin
