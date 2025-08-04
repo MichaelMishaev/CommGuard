@@ -31,6 +31,18 @@ class CommandHandler {
         this.sock = sock;
     }
     
+    // TEMPORARY: Use direct API with rate limiting until shared cache is implemented
+    async getCachedGroupMetadata(groupId) {
+        try {
+            // Add rate limiting protection
+            await new Promise(resolve => setTimeout(resolve, 200));
+            return await this.sock.groupMetadata(groupId);
+        } catch (error) {
+            console.error('Rate limited groupMetadata call:', error);
+            throw error;
+        }
+    }
+    
     isPrivateChat(msg) {
         return msg.key.remoteJid.endsWith('@s.whatsapp.net');
     }
@@ -542,7 +554,7 @@ class CommandHandler {
 
         // Group statistics
         try {
-            const groupMetadata = await this.sock.groupMetadata(msg.key.remoteJid);
+            const groupMetadata = await this.getCachedGroupMetadata(msg.key.remoteJid);
             const participants = groupMetadata.participants;
             
             const adminCount = participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').length;
@@ -610,7 +622,7 @@ class CommandHandler {
         
         try {
             // Get group metadata to check permissions
-            const groupMetadata = await this.sock.groupMetadata(groupId);
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
             
             // Check if target user is admin
             const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
@@ -817,7 +829,7 @@ class CommandHandler {
         
         try {
             // Get group metadata to check permissions
-            const groupMetadata = await this.sock.groupMetadata(groupId);
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
             
             // Check if target user is admin
             const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
@@ -975,7 +987,7 @@ Thank you for your cooperation.`;
         
         try {
             // Get group metadata
-            const groupMetadata = await this.sock.groupMetadata(groupId);
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
             const participants = groupMetadata.participants;
             
             // Find all users with +1 or +6 country codes
@@ -1175,7 +1187,7 @@ Thank you for your cooperation.`;
         
         try {
             // Get group metadata
-            const groupMetadata = await this.sock.groupMetadata(groupId);
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
             const participants = groupMetadata.participants;
             
             let debugReport = `🔍 *Group Number Formats Debug*\n\n`;
@@ -1420,7 +1432,7 @@ Thank you for your cooperation.`;
         
         try {
             // Get group metadata
-            const groupMetadata = await this.sock.groupMetadata(groupId);
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
             const participants = groupMetadata.participants;
             
             // Import blacklist check function

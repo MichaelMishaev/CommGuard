@@ -8,6 +8,209 @@ const SingleInstance = require('./single-instance');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
+
+// Group admin management system
+const groupAdminCache = new Map(); // Memory cache for speed
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
+const DB_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour DB updates
+
+// Smart admin checking system (DB + Cache)
+async function isUserAdmin(sock, groupId, userId) {
+    const now = Date.now();
+    
+    // 1. Check memory cache first (fastest)
+    const cached = groupAdminCache.get(groupId);
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+        return cached.admins.has(userId);
+    }
+    
+    // 2. Check database (fast)
+    if (config.FEATURES.FIREBASE_INTEGRATION) {
+        try {
+            const db = require('./firebaseConfig.js');
+            const doc = await db.collection('group_admins').doc(groupId).get();
+            
+            if (doc.exists) {
+                const data = doc.data();
+                // If DB data is fresh (< 1 hour), use it
+                if ((now - data.lastUpdated) < DB_UPDATE_INTERVAL) {
+                    // Cache in memory for speed
+                    groupAdminCache.set(groupId, {
+                        admins: new Set(data.adminList),
+                        timestamp: now
+                    });
+                    return data.adminList.includes(userId);
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to check admin DB:', error.message);
+        }
+    }
+    
+    // 3. Fallback to WhatsApp API (slow, rate limited)
+    try {
+        console.log(`🔄 Updating admin list for group ${groupId}`);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Rate limit protection
+        
+        const metadata = await sock.groupMetadata(groupId);
+        const adminList = metadata.participants
+            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+            .map(p => p.id);
+        
+        // Save to database for future use
+        if (config.FEATURES.FIREBASE_INTEGRATION) {
+            try {
+                const db = require('./firebaseConfig.js');
+                await db.collection('group_admins').doc(groupId).set({
+                    adminList,
+                    lastUpdated: now,
+                    groupName: metadata.subject || 'Unknown Group'
+                });
+            } catch (error) {
+                console.warn('Failed to save admin list to DB:', error.message);
+            }
+        }
+        
+        // Cache in memory
+        groupAdminCache.set(groupId, {
+            admins: new Set(adminList),
+            timestamp: now
+        });
+        
+        return adminList.includes(userId);
+        
+    } catch (error) {
+        console.error('Failed to check admin status:', error);
+        // Return false if we can't determine admin status
+        return false;
+    }
+}
+
+// Cached group metadata function (for commands that need full metadata)
+async function getCachedGroupMetadata(sock, groupId) {
+    const now = Date.now();
+    
+    // Try to get from admin cache first
+    const adminCached = groupAdminCache.get(groupId);
+    if (adminCached && (now - adminCached.timestamp) < CACHE_DURATION && adminCached.fullMetadata) {
+        return adminCached.fullMetadata;
+    }
+    
+    // Check database for recent metadata
+    if (config.FEATURES.FIREBASE_INTEGRATION) {
+        try {
+            const db = require('./firebaseConfig.js');
+            const doc = await db.collection('group_admins').doc(groupId).get();
+            
+            if (doc.exists) {
+                const data = doc.data();
+                if ((now - data.lastUpdated) < DB_UPDATE_INTERVAL && data.fullMetadata) {
+                    // Cache in memory
+                    if (adminCached) {
+                        adminCached.fullMetadata = data.fullMetadata;
+                    }
+                    return data.fullMetadata;
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to get cached metadata from DB:', error.message);
+        }
+    }
+    
+    // Fallback to WhatsApp API with rate limiting
+    try {
+        console.log(`🔄 Fetching full metadata for group ${groupId}`);
+        await new Promise(resolve => setTimeout(resolve, 200)); // More conservative delay
+        
+        const metadata = await sock.groupMetadata(groupId);
+        
+        // Save to cache and database
+        const adminList = metadata.participants
+            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+            .map(p => p.id);
+        
+        // Update memory cache
+        groupAdminCache.set(groupId, {
+            admins: new Set(adminList),
+            timestamp: now,
+            fullMetadata: metadata
+        });
+        
+        // Save to database
+        if (config.FEATURES.FIREBASE_INTEGRATION) {
+            try {
+                const db = require('./firebaseConfig.js');
+                await db.collection('group_admins').doc(groupId).set({
+                    adminList,
+                    lastUpdated: now,
+                    groupName: metadata.subject || 'Unknown Group',
+                    fullMetadata: metadata
+                });
+            } catch (error) {
+                console.warn('Failed to save full metadata to DB:', error.message);
+            }
+        }
+        
+        return metadata;
+        
+    } catch (error) {
+        console.error('Failed to get group metadata:', error);
+        throw error;
+    }
+}
+
+// Hourly admin list refresh (background task)
+function startAdminRefreshScheduler(sock) {
+    setInterval(async () => {
+        if (!config.FEATURES.FIREBASE_INTEGRATION) return;
+        
+        try {
+            console.log('🔄 Starting hourly admin list refresh...');
+            const db = require('./firebaseConfig.js');
+            const snapshot = await db.collection('group_admins').get();
+            
+            let refreshCount = 0;
+            for (const doc of snapshot.docs) {
+                const groupId = doc.id;
+                const data = doc.data();
+                const age = Date.now() - data.lastUpdated;
+                
+                // Refresh if older than 1 hour
+                if (age > DB_UPDATE_INTERVAL) {
+                    try {
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // Spread out API calls
+                        const metadata = await sock.groupMetadata(groupId);
+                        const adminList = metadata.participants
+                            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                            .map(p => p.id);
+                        
+                        await doc.ref.set({
+                            adminList,
+                            lastUpdated: Date.now(),
+                            groupName: metadata.subject || 'Unknown Group',
+                            fullMetadata: metadata
+                        });
+                        
+                        // Update memory cache too
+                        groupAdminCache.set(groupId, {
+                            admins: new Set(adminList),
+                            timestamp: Date.now(),
+                            fullMetadata: metadata
+                        });
+                        
+                        refreshCount++;
+                    } catch (error) {
+                        console.warn(`Failed to refresh admin list for ${groupId}:`, error.message);
+                    }
+                }
+            }
+            
+            console.log(`✅ Refreshed admin lists for ${refreshCount} groups`);
+        } catch (error) {
+            console.error('Admin refresh scheduler error:', error);
+        }
+    }, DB_UPDATE_INTERVAL); // Run every hour
+}
 if (config.FEATURES.FIREBASE_INTEGRATION) {
     const blacklistModule = require('./services/blacklistService');
     const whitelistModule = require('./services/whitelistService');
@@ -291,6 +494,9 @@ async function startBot() {
             error515Count = 0;
             lastConnectionTime = Date.now();
             
+            // Start the hourly admin refresh scheduler
+            startAdminRefreshScheduler(sock);
+            
             console.log(`\n[${getTimestamp()}] ✅ Bot connected successfully!`);
             console.log(`Bot ID: ${sock.user.id}`);
             console.log(`Bot Name: ${sock.user.name}`);
@@ -517,26 +723,18 @@ async function handleMessage(sock, msg, commandHandler) {
         return;
     }
 
-    // Get group metadata for admin checking
-    let groupMetadata, isAdmin = false, isSuperAdmin = false;
+    // Check admin status using smart caching system (DB + Memory Cache)
+    let isAdmin = false, isSuperAdmin = false;
     try {
-        groupMetadata = await sock.groupMetadata(groupId);
-        
-        // Check if sender is admin
-        const senderParticipant = groupMetadata.participants.find(p => p.id === senderId);
-        isAdmin = senderParticipant && (
-            senderParticipant.admin === 'admin' || 
-            senderParticipant.admin === 'superadmin' ||
-            senderParticipant.isAdmin || 
-            senderParticipant.isSuperAdmin
-        );
-        isSuperAdmin = senderParticipant && (
-            senderParticipant.admin === 'superadmin' ||
-            senderParticipant.isSuperAdmin
-        );
+        isAdmin = await isUserAdmin(sock, groupId, senderId);
+        // For now, treat all admins as potentially super admin
+        // TODO: Implement separate super admin tracking if needed
+        isSuperAdmin = isAdmin;
     } catch (error) {
-        console.error('Failed to get group metadata:', error);
-        return;
+        console.error('Failed to check admin status:', error);
+        // Continue processing as non-admin if check fails
+        isAdmin = false;
+        isSuperAdmin = false;
     }
 
     // Check if group is muted (only allow admin messages)
