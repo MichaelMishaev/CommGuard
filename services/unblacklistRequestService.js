@@ -41,6 +41,13 @@ function normalizeUserId(userId) {
 async function canMakeRequest(userId) {
     const normalizedId = normalizeUserId(userId);
     
+    // Bypass cooldown for test numbers
+    const testNumbers = ['972555030746', '+972555030746'];
+    if (testNumbers.includes(normalizedId) || testNumbers.includes(userId.replace('@s.whatsapp.net', ''))) {
+        console.log(`[${getTimestamp()}] 🧪 Test number ${normalizedId} - bypassing cooldown`);
+        return { canRequest: true };
+    }
+    
     // Check cache first
     if (cacheLoaded && requestCache.has(normalizedId)) {
         const request = requestCache.get(normalizedId);
