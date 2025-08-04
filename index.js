@@ -704,10 +704,18 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`[${getTimestamp()}] ⚠️ Bot admin check bypassed due to LID format issue`);
         console.log(`[${getTimestamp()}] ⚡ Attempting admin actions...`);
         
-        // Check if sender is admin
+        // Check if sender is admin (using comprehensive admin detection)
         const senderParticipant = groupMetadata.participants.find(p => p.id === senderId);
-        if (senderParticipant?.admin) {
+        const senderIsAdmin = senderParticipant && (
+            senderParticipant.admin === 'admin' || 
+            senderParticipant.admin === 'superadmin' ||
+            senderParticipant.isAdmin || 
+            senderParticipant.isSuperAdmin
+        );
+        
+        if (senderIsAdmin) {
             console.log('✅ Sender is admin, ignoring invite link');
+            console.log(`   Admin properties: admin="${senderParticipant.admin}", isAdmin=${senderParticipant.isAdmin}, isSuperAdmin=${senderParticipant.isSuperAdmin}`);
             return;
         }
         
