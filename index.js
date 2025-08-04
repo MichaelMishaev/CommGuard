@@ -932,14 +932,27 @@ async function handleMessage(sock, msg, commandHandler) {
             console.error('❌ Failed to delete message:', deleteError.message);
         }
         
-        // Add to blacklist
-        await blacklistService.addToBlacklist(senderId, 'Sent invite link spam');
+        // Add to blacklist first - must succeed before kicking
+        const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Sent invite link spam');
+        if (!blacklistSuccess) {
+            console.error('❌ Failed to blacklist user - aborting kick to prevent "kicked but not blacklisted" scenario');
+            return;
+        }
         
-        // Kick the user
+        // Kick the user (only if blacklisting succeeded)
         try {
             await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
             console.log('✅ Kicked user:', senderId);
             kickCooldown.set(senderId, Date.now());
+            
+            // Verify blacklisting is consistent after kick
+            const isBlacklisted = await blacklistService.isBlacklisted(senderId);
+            if (!isBlacklisted) {
+                console.error('🚨 CRITICAL: User was kicked but not found in blacklist - attempting to re-blacklist');
+                await blacklistService.addToBlacklist(senderId, 'Sent invite link spam - post-kick verification');
+            } else {
+                console.log('✅ Verified: User is properly blacklisted after kick');
+            }
             
             // Get group invite link
             let groupInviteLink = 'N/A';

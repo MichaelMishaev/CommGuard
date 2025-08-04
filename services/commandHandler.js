@@ -842,11 +842,17 @@ class CommandHandler {
 
             console.log(`[${require('../utils/logger').getTimestamp()}] 🚫 Admin ban: ${targetUserId} from ${groupId}`);
 
-            // Add to blacklist first
+            // Add to blacklist first - must succeed before kicking
             const { addToBlacklist } = require('./blacklistService');
-            await addToBlacklist(targetUserId, 'Banned by admin command');
+            const blacklistSuccess = await addToBlacklist(targetUserId, 'Banned by admin command');
+            if (!blacklistSuccess) {
+                await this.sock.sendMessage(groupId, { 
+                    text: '❌ Failed to add user to blacklist. Ban command aborted.' 
+                });
+                return true;
+            }
 
-            // Then kick the user if they're still in group
+            // Then kick the user if they're still in group (only if blacklisting succeeded)
             if (targetParticipant) {
                 await this.sock.groupParticipantsUpdate(groupId, [targetUserId], 'remove');
                 
