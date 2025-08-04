@@ -52,7 +52,7 @@ async function canMakeRequest(userId) {
             return {
                 canRequest: false,
                 hoursLeft: hoursLeft,
-                reason: `You can request again in ${hoursLeft} hours`
+                reason: `⏰ You can request again in ${hoursLeft} hours.\n\n⏰ אתה יכול לבקש שוב בעוד ${hoursLeft} שעות.`
             };
         }
     }
@@ -74,7 +74,7 @@ async function canMakeRequest(userId) {
                 return {
                     canRequest: false,
                     hoursLeft: hoursLeft,
-                    reason: `You can request again in ${hoursLeft} hours`
+                    reason: `⏰ You can request again in ${hoursLeft} hours.\n\n⏰ אתה יכול לבקש שוב בעוד ${hoursLeft} שעות.`
                 };
             }
         }
