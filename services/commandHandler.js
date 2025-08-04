@@ -1025,19 +1025,19 @@ Thank you for your cooperation.`;
                 
                 console.log(`📊 ${phoneNumber}: starts1=${startsWithOne}, starts+1=${startsWithPlusOne}, starts6=${startsWithSix}, starts+6=${startsWithPlusSix}, len=${phoneNumber.length}, israeli=${isIsraeliNumber}, 10digitUS=${isTenDigitUSNumber}, isLID=${isLidFormat}`);
                 
-                // Handle LID format numbers (often 14-15 digits starting with country code)
-                const isLidUSNumber = isLidFormat && phoneNumber.startsWith('1') && phoneNumber.length >= 11;
-                const isLidSEAsiaNumber = isLidFormat && phoneNumber.startsWith('6') && phoneNumber.length >= 10;
+                // CRITICAL FIX: LID format users are exempt from country code restrictions
+                // @lid identifiers are encrypted privacy IDs, NOT phone numbers
+                if (isLidFormat) {
+                    console.log(`🔒 LID format user exempt from country restrictions: ${phoneNumber} (encrypted privacy ID)`);
+                }
                 
-                // Only match if it's clearly a US/Canada or Southeast Asian number AND NOT Israeli
-                if (!isIsraeliNumber && 
+                // Only match if it's clearly a US/Canada or Southeast Asian number AND NOT Israeli AND NOT LID format
+                if (!isIsraeliNumber && !isLidFormat && 
                     ((startsWithOne && lengthEleven) || // US/Canada format with 1
                      (startsWithPlusOne && lengthTwelve) || // US/Canada with +1
                      isTenDigitUSNumber || // US format without country code (10 digits)
-                     isLidUSNumber || // LID format US numbers
                      (startsWithSix && lengthTenToTwelve) || // Southeast Asia
-                     (startsWithPlusSix && lengthElevenToThirteen) || // Southeast Asia with +
-                     isLidSEAsiaNumber)) { // LID format SE Asia numbers
+                     (startsWithPlusSix && lengthElevenToThirteen))) { // Southeast Asia with +
                     
                     console.log(`🌍 Adding to kick list: ${phoneNumber} (length: ${phoneNumber.length})`);
                     usersToKick.push({
@@ -1198,7 +1198,7 @@ Thank you for your cooperation.`;
                 debugReport += `   Starts with 972: ${phoneNumber.startsWith('972')}\n`;
                 debugReport += `   Admin: ${isAdmin}\n`;
                 debugReport += `   10-digit US pattern: ${phoneNumber.length === 10 && /^[2-9]\d{9}$/.test(phoneNumber)}\n`;
-                debugReport += `   LID US pattern: ${isLidFormat && phoneNumber.startsWith('1') && phoneNumber.length >= 11}\n\n`;
+                debugReport += `   LID exempt: ${isLidFormat ? 'Yes (encrypted privacy ID)' : 'No'}\n\n`;
                 
                 // Break if message gets too long
                 if (debugReport.length > 3000) {
@@ -1932,7 +1932,12 @@ Thank you for your cooperation.`;
                                   `✅ You have been removed from the blacklist.\n` +
                                   `📱 You can now rejoin groups.\n\n` +
                                   `⚠️ *Important:* Remember your agreement to never share invite links in groups.\n` +
-                                  `🚫 Sharing invite links will result in immediate re-blacklisting.` 
+                                  `🚫 Sharing invite links will result in immediate re-blacklisting.\n\n` +
+                                  `🎉 *הבקשה אושרה!*\n\n` +
+                                  `✅ הוסרת מהרשימה השחורה.\n` +
+                                  `📱 אתה יכול עכשיו להצטרף לקבוצות.\n\n` +
+                                  `⚠️ *חשוב:* זכור את ההסכם שלך לעולם לא לשלוח קישורי הזמנה בקבוצות.\n` +
+                                  `🚫 שליחת קישורי הזמנה תגרום להכנסה מיידית לרשימה השחורה.` 
                         }).catch(() => {
                             console.log(`Could not notify user ${normalizedUserId} - they may have blocked the bot`);
                         });
@@ -1956,7 +1961,11 @@ Thank you for your cooperation.`;
                         text: `❌ *Request Denied*\n\n` +
                               `🚫 Your unblacklist request has been denied.\n` +
                               `📅 You can submit a new request in 24 hours.\n\n` +
-                              `💡 Please ensure you understand and agree to follow all group rules before requesting again.` 
+                              `💡 Please ensure you understand and agree to follow all group rules before requesting again.\n\n` +
+                              `❌ *הבקשה נדחתה*\n\n` +
+                              `🚫 בקשת הסרה מהרשימה השחורה שלך נדחתה.\n` +
+                              `📅 אתה יכול להגיש בקשה חדשה בעוד 24 שעות.\n\n` +
+                              `💡 אנא ודא שאתה מבין ומסכים לכל כללי הקבוצה לפני הגשת בקשה שוב.` 
                     }).catch(() => {
                         console.log(`Could not notify user ${normalizedUserId} - they may have blocked the bot`);
                     });

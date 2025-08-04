@@ -915,17 +915,18 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 console.log(`🇮🇱 Protecting Israeli number on join: ${phoneNumber}`);
             }
             
-            // Handle LID format detection
-            const isLidUSNumber = isLidFormat && phoneNumber.startsWith('1') && phoneNumber.length >= 11;
-            const isLidSEAsiaNumber = isLidFormat && phoneNumber.startsWith('6') && phoneNumber.length >= 10;
+            // CRITICAL FIX: LID format users are exempt from country code restrictions
+            // @lid identifiers are encrypted privacy IDs, NOT phone numbers
+            // The first digit has NO relationship to country codes
+            if (isLidFormat) {
+                console.log(`🔒 LID format user exempt from country restrictions: ${phoneNumber} (encrypted privacy ID)`);
+            }
             
-            if (config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !addedByAdmin &&
+            if (config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !addedByAdmin && !isLidFormat &&
                 ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || // US/Canada format
                  (phoneNumber.startsWith('+1') && phoneNumber.length === 12) || // US/Canada with +
-                 isLidUSNumber || // LID format US numbers
                  (phoneNumber.startsWith('6') && phoneNumber.length >= 10 && phoneNumber.length <= 12) || // Southeast Asia
-                 (phoneNumber.startsWith('+6') && phoneNumber.length >= 11 && phoneNumber.length <= 13) || // Southeast Asia with +
-                 isLidSEAsiaNumber)) { // LID format SE Asia numbers
+                 (phoneNumber.startsWith('+6') && phoneNumber.length >= 11 && phoneNumber.length <= 13))) { // Southeast Asia with +
                 
                 console.log(`🚫 Restricted country code detected: ${participantId} (${phoneNumber}, length: ${phoneNumber.length})`);
                 
@@ -966,7 +967,7 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 } catch (error) {
                     console.error('❌ Failed to kick user with restricted country code:', error);
                 }
-            } else if (addedByAdmin && config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber &&
+            } else if (addedByAdmin && config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !isLidFormat &&
                       ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || 
                        (phoneNumber.startsWith('6') && phoneNumber.length >= 10 && phoneNumber.length <= 12))) {
                 console.log(`⚠️ Restricted country code user ${participantId} allowed to join - added by admin`);
