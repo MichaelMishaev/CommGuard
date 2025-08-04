@@ -1823,11 +1823,16 @@ Thank you for your cooperation.`;
                           `📋 Your request has been sent to the admin for review.\n` +
                           `⏰ You will be notified once a decision is made.\n` +
                           `🕒 Next request allowed in 24 hours.\n\n` +
-                          `By submitting this request, you agree to follow all group rules and never share invite links.` 
+                          `By submitting this request, you agree to follow all group rules and never share invite links.\n\n` +
+                          `✅ *בקשת הסרה מהרשימה השחורה נשלחה בהצלחה!*\n\n` +
+                          `📋 הבקשה שלך נשלחה למנהל לבדיקה.\n` +
+                          `⏰ תקבל הודעה ברגע שיתקבל החלטה.\n` +
+                          `🕒 בקשה הבאה מותרת בעוד 24 שעות.\n\n` +
+                          `על ידי שליחת בקשה זו, אתה מסכים לפעול לפי כל כללי הקבוצה ולעולם לא לשלוח קישורי הזמנה.` 
                 });
 
                 // Notify admin
-                const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
+                const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
                 const userPhone = userId.replace('@s.whatsapp.net', '');
                 
                 await this.sock.sendMessage(adminId, { 
