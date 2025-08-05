@@ -329,6 +329,15 @@ async function startBot() {
     await muteService.loadMutedUsers();
     await unblacklistRequestService.loadRequestCache();
     
+    // Initialize motivational phrase service
+    try {
+        const { initialize } = require('./services/motivationalPhraseService');
+        await initialize();
+        console.log('✅ Motivational phrase service initialized');
+    } catch (error) {
+        console.warn('⚠️ Failed to initialize motivational phrase service:', error.message);
+    }
+    
     console.log(`[${getTimestamp()}] 🔄 Starting bot connection (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
     
     // Use multi-file auth state
@@ -865,6 +874,36 @@ async function handleMessage(sock, msg, commandHandler) {
             console.log(`   Result: ❌ Unknown command`);
         }
         if (handled) return;
+    }
+    
+    // Check for "משעמם" messages and respond with funny jokes
+    if (messageText.includes('משעמם')) {
+        console.log(`[${getTimestamp()}] 😴 "משעמם" detected from ${senderId} in ${groupId}`);
+        
+        try {
+            const { motivationalPhraseService } = require('./services/motivationalPhraseService');
+            const joke = await motivationalPhraseService.getRandomPhrase();
+            
+            await sock.sendMessage(groupId, { 
+                text: joke
+            });
+            
+            console.log(`✅ Sent funny response to "משעמם" message`);
+        } catch (error) {
+            console.error('❌ Failed to send motivational phrase:', error.message);
+            
+            // Fallback response if database fails
+            try {
+                await sock.sendMessage(groupId, { 
+                    text: "😴 משעמם? בואו נעשה משהו מעניין! 🎉\nBored? Let's do something interesting! 🎉" 
+                });
+                console.log('✅ Sent fallback response to "משעמם" message');
+            } catch (fallbackError) {
+                console.error('❌ Failed to send fallback response:', fallbackError.message);
+            }
+        }
+        
+        // Continue processing (don't return, let other checks happen too)
     }
     
     // Check for invite links

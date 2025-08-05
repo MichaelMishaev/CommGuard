@@ -118,6 +118,9 @@ class CommandHandler {
                 case '#sessioncheck':
                     return await this.handleSessionCheck(msg, isAdmin);
                     
+                case '#jokestats':
+                    return await this.handleJokeStats(msg, isAdmin);
+                    
                 case '#botadmin':
                     return await this.handleBotAdminCheck(msg, isAdmin);
                     
@@ -227,6 +230,10 @@ class CommandHandler {
 • *#search <query>* - Search the web (rate limited: 5/minute)
 • *#verify <url>* - Verify if a link is safe
 
+*🎭 Entertainment Commands:*
+• *#jokestats* - View motivational phrase usage statistics
+• **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes
+
 *🚨 AUTO-PROTECTION FEATURES:*
 1. **Invite Link Detection** ✅
    - Detects: chat.whatsapp.com links
@@ -244,6 +251,11 @@ class CommandHandler {
 4. **Whitelist Bypass** ✅
    - Whitelisted users bypass ALL restrictions
    - Never kicked for any reason
+
+5. **Anti-Boredom System** ✅
+   - Auto-detects: Messages containing "משעמם" 
+   - Actions: Responds with random funny Hebrew jokes
+   - Features: Smart rotation, usage tracking, 50+ jokes
 
 *⚙️ SPECIAL BEHAVIORS:*
 • Bot needs admin to work (bypass enabled for LID issues)
@@ -305,18 +317,22 @@ class CommandHandler {
 • *#sweep* - Clean up inactive users (superadmin)
 • *#sessioncheck* - Check for session decryption errors
 • *#botadmin* - Check if bot has admin privileges
+• *#jokestats* - View joke usage statistics
 
 *🚨 Auto-Protection Features:*
 • **Invite Link Detection** - Auto-kick + blacklist
 • **Blacklist Enforcement** - Auto-kick banned users
 • **Country Code Restriction** - Auto-kick +1 and +6 numbers
 • **Whitelist Protection** - Bypass all restrictions
+• **Anti-Boredom System** - Responds to "משעמם" with Hebrew jokes
 
 *💡 Usage Examples:*
 • Kick user: Reply to their message + type \`#kick\`
 • Mute group: \`#mute 30\` (30 minutes)
 • Add to whitelist: \`#whitelist 972555123456\`
 • Remove all foreign users: \`#botforeign\`
+• Get jokes: Any message with "משעמם" → Bot responds with humor
+• View joke stats: \`#jokestats\`
 
 *⚠️ Important Notes:*
 • Most commands require admin privileges
@@ -2000,6 +2016,47 @@ Thank you for your cooperation.`;
             console.error(`❌ Error handling admin approval:`, error);
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: '❌ Error processing admin response. Please try again.' 
+            });
+        }
+
+        return true;
+    }
+
+    async handleJokeStats(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Only admins can view joke statistics.' 
+            });
+            return true;
+        }
+
+        try {
+            const { motivationalPhraseService } = require('./motivationalPhraseService');
+            const stats = await motivationalPhraseService.getPhraseStats();
+
+            let report = `📊 *Joke Statistics*\n\n`;
+            report += `📚 Total Phrases: ${stats.totalPhrases}\n`;
+            report += `✅ Used Phrases: ${stats.usedPhrases}\n`;
+            report += `🎭 Total Usage: ${stats.totalUsages}\n\n`;
+
+            if (stats.mostUsed) {
+                report += `🏆 *Most Popular:*\n`;
+                report += `"${stats.mostUsed.text}" (${stats.mostUsed.count} times)\n\n`;
+            }
+
+            if (stats.leastUsed) {
+                report += `🆕 *Least Used:*\n`;
+                report += `"${stats.leastUsed.text}" (${stats.leastUsed.count} times)\n\n`;
+            }
+
+            report += `💡 *Usage:* Reply to "משעמם" messages triggers random jokes`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: report });
+
+        } catch (error) {
+            console.error('❌ Error fetching joke stats:', error.message);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error fetching joke statistics. Please try again.' 
             });
         }
 
