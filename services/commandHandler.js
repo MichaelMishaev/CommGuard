@@ -121,6 +121,18 @@ class CommandHandler {
                 case '#jokestats':
                     return await this.handleJokeStats(msg, isAdmin);
                     
+                case '#warnings':
+                    return await this.handleWarningsView(msg, args, isAdmin);
+                    
+                case '#clearwarnings':
+                    return await this.handleWarningsClear(msg, args, isAdmin);
+                    
+                case '#warningstats':
+                    return await this.handleWarningsStats(msg, isAdmin);
+                    
+                case '#rejoinlinks':
+                    return await this.handleRejoinLinks(msg, args, isAdmin);
+                    
                 case '#botadmin':
                     return await this.handleBotAdminCheck(msg, isAdmin);
                     
@@ -130,9 +142,8 @@ class CommandHandler {
                 case '#verify':
                     return await this.handleVerifyLink(msg, args, isAdmin);
                     
-                case '#free':
-                    return await this.handleFreeRequest(msg);
-                    
+                // #free system removed - use admin #unblacklist instead
+                
                 default:
                     // Check for admin approval patterns (yes/no userId)
                     if (isAdmin && (cmd === 'yes' || cmd === 'no')) {
@@ -232,12 +243,19 @@ class CommandHandler {
 
 *🎭 Entertainment Commands:*
 • *#jokestats* - View motivational phrase usage statistics
-• **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes
+• **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (95+ jokes)
+
+*⚠️ Warning System Commands:*
+• *#warnings [phone]* - View warnings for specific user
+• *#clearwarnings [phone]* - Clear all warnings for user
+• *#warningstats* - View warning system statistics
 
 *🚨 AUTO-PROTECTION FEATURES:*
-1. **Invite Link Detection** ✅
+1. **Invite Link Detection with Israeli Priority** ✅
+   - 🇮🇱 Israeli users (+972): First violation = Warning (7 days), Second = Kick + Blacklist
+   - 🌍 Non-Israeli users: Immediate kick + blacklist (no warning)
+   - Always: Message deleted + Admin alert
    - Detects: chat.whatsapp.com links
-   - Actions: Deletes message → Kicks user → Adds to blacklist → Alerts admin
 
 2. **Blacklist Auto-Kick** ✅
    - When blacklisted user joins → Instant kick
@@ -255,7 +273,7 @@ class CommandHandler {
 5. **Anti-Boredom System** ✅
    - Auto-detects: Messages containing "משעמם" 
    - Actions: Responds with random funny Hebrew jokes
-   - Features: Smart rotation, usage tracking, 50+ jokes
+   - Features: Smart rotation, usage tracking, 95+ modern Hebrew jokes
 
 *⚙️ SPECIAL BEHAVIORS:*
 • Bot needs admin to work (bypass enabled for LID issues)
@@ -272,7 +290,7 @@ class CommandHandler {
 • Admin phone: ${config.ADMIN_PHONE}
 
 *📱 BOT STATUS:*
-• Version: 2.0 (Baileys)
+• Version: 2.1 (Baileys + Enhanced Nationality System)
 • Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'}
 • Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? 'Enabled' : 'Disabled'}
 • Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Enabled' : 'Disabled'}
@@ -1812,108 +1830,7 @@ Thank you for your cooperation.`;
         return true;
     }
 
-    /**
-     * Handle #free command - user request to be unblacklisted
-     */
-    async handleFreeRequest(msg) {
-        const messageId = msg.key.id;
-        const userId = msg.key.remoteJid;
-        
-        // Check if we already processed this exact message
-        if (CommandHandler.processedMessages.has(messageId)) {
-            console.log(`[${getTimestamp()}] ⚠️ Duplicate #free message ignored: ${messageId}`);
-            return true;
-        }
-        
-        // Mark message as processed
-        CommandHandler.processedMessages.add(messageId);
-        
-        // Clean up old message IDs (keep only last 100)
-        if (CommandHandler.processedMessages.size > 100) {
-            const oldestIds = Array.from(CommandHandler.processedMessages).slice(0, 50);
-            oldestIds.forEach(id => CommandHandler.processedMessages.delete(id));
-            console.log(`[${getTimestamp()}] 🧹 Cleaned up ${oldestIds.length} old message IDs`);
-        }
-        
-        console.log(`[${getTimestamp()}] 🆘 #free command received from ${userId}`);
-        
-        // Only allow in private chats
-        if (!this.isPrivateChat(msg)) {
-            console.log(`[${getTimestamp()}] ❌ #free command rejected - not in private chat`);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #free command can only be used in private messages to the bot.' 
-            });
-            return true;
-        }
-        
-        console.log(`[${getTimestamp()}] ✅ #free command in private chat - processing...`);
-
-        try {
-            // Check if user is actually blacklisted
-            if (!await isBlacklisted(userId)) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: '✅ You are not on the blacklist. No action needed.' 
-                });
-                return true;
-            }
-
-            // Check if user can make a request (24h cooldown)
-            const eligibility = await unblacklistRequestService.canMakeRequest(userId);
-            
-            if (!eligibility.canRequest) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: `⏰ ${eligibility.reason || 'You must wait before making another request.'}` 
-                });
-                return true;
-            }
-
-            // Create the unblacklist request
-            const requestCreated = await unblacklistRequestService.createRequest(userId);
-            
-            if (requestCreated) {
-                // Notify user
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: `✅ *Unblacklist request submitted successfully!*\n\n` +
-                          `📋 Your request has been sent to the admin for review.\n` +
-                          `⏰ You will be notified once a decision is made.\n` +
-                          `🕒 Next request allowed in 24 hours.\n\n` +
-                          `By submitting this request, you agree to follow all group rules and never share invite links.\n\n` +
-                          `✅ *בקשת הסרה מהרשימה השחורה נשלחה בהצלחה!*\n\n` +
-                          `📋 הבקשה שלך נשלחה למנהל לבדיקה.\n` +
-                          `⏰ תקבל הודעה ברגע שיתקבל החלטה.\n` +
-                          `🕒 בקשה הבאה מותרת בעוד 24 שעות.\n\n` +
-                          `על ידי שליחת בקשה זו, אתה מסכים לפעול לפי כל כללי הקבוצה ולעולם לא לשלוח קישורי הזמנה.` 
-                });
-
-                // Notify admin
-                const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                const userPhone = userId.replace('@s.whatsapp.net', '');
-                
-                await this.sock.sendMessage(adminId, { 
-                    text: `🔔 *New Unblacklist Request*\n\n` +
-                          `👤 User: ${userPhone}\n` +
-                          `⏰ Time: ${getTimestamp()}\n\n` +
-                          `*To approve:* Reply \`yes ${userPhone}\`\n` +
-                          `*To deny:* Reply \`no ${userPhone}\`\n\n` +
-                          `⚠️ User has agreed to follow group rules and not share invite links.` 
-                });
-
-                console.log(`[${getTimestamp()}] 📨 Unblacklist request created for ${userPhone}`);
-            } else {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: '❌ Failed to submit request. Please try again later.' 
-                });
-            }
-
-        } catch (error) {
-            console.error(`❌ Error handling #free request:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Error processing your request. Please try again later.' 
-            });
-        }
-
-        return true;
-    }
+    // #free system removed - users must contact admin directly
 
     /**
      * Handle admin approval commands (ok/NO userId)
@@ -1960,18 +1877,77 @@ Thank you for your cooperation.`;
                                   `📨 User has been notified.` 
                         });
 
+                        // Get rejoin links for user
+                        let rejoinMessage = `🎉 *Request Approved!*\n\n` +
+                                          `✅ You have been removed from the blacklist.\n` +
+                                          `📱 You can now rejoin groups.\n\n`;
+
+                        try {
+                            const { kickedUserService } = require('./kickedUserService');
+                            // Get recent kicks only (last 30 days) for invite link spam
+                            const rejoinInfo = await kickedUserService.getRejoinInfo(fullUserId, true, 'invite link');
+                            
+                            if (rejoinInfo && rejoinInfo.length > 0) {
+                                // Only show the MOST RECENT group (first in sorted array)
+                                const lastKick = rejoinInfo[0];
+                                
+                                if (lastKick.groupInviteLink && lastKick.groupInviteLink !== 'N/A') {
+                                    const kickDate = new Date(lastKick.kickedAt).toLocaleDateString();
+                                    rejoinMessage += `🔗 *Rejoin Your Last Group:*\n\n`;
+                                    rejoinMessage += `📱 *${lastKick.groupName}*\n`;
+                                    rejoinMessage += `📅 Kicked: ${kickDate}\n`;
+                                    rejoinMessage += `🔗 ${lastKick.groupInviteLink}\n\n`;
+                                    
+                                    // Include admin list if available
+                                    if (lastKick.adminList && lastKick.adminList.length > 0) {
+                                        rejoinMessage += `👥 *Group Admins (if link fails):*\n`;
+                                        lastKick.adminList.slice(0, 3).forEach((admin, index) => {
+                                            if (admin.isLID) {
+                                                rejoinMessage += `${index + 1}️⃣ ${admin.name} (${admin.phone})\n`;
+                                            } else {
+                                                rejoinMessage += `${index + 1}️⃣ ${admin.name}\n`;
+                                            }
+                                        });
+                                        
+                                        if (lastKick.adminList.length > 3) {
+                                            rejoinMessage += `   ...and ${lastKick.adminList.length - 3} more admins\n`;
+                                        }
+                                        rejoinMessage += '\n';
+                                    }
+                                    
+                                    rejoinMessage += `⚠️ *Important Notes:*\n`;
+                                    rejoinMessage += `• Link may require admin approval\n`;
+                                    rejoinMessage += `• Link may have expired - contact group admin if it fails\n`;
+                                    rejoinMessage += `• Wait a few minutes before attempting to rejoin\n\n`;
+                                    
+                                    if (rejoinInfo.length > 1) {
+                                        rejoinMessage += `📋 For other groups, contact your admin or use group search.\n\n`;
+                                    }
+                                } else {
+                                    rejoinMessage += `⚠️ *Last group's invite link is not available.*\n\n`;
+                                }
+                            } else {
+                                rejoinMessage += `ℹ️ *No recent rejoin links available.*\n`;
+                                rejoinMessage += `This may be because:\n`;
+                                rejoinMessage += `• No recent kicks for invite link violations\n`;
+                                rejoinMessage += `• Group invite links have expired\n`;
+                                rejoinMessage += `• More than 30 days have passed\n\n`;
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ Failed to get rejoin links:', error.message);
+                        }
+
+                        rejoinMessage += `⚠️ *Important:* Remember your agreement to never share invite links in groups.\n` +
+                                       `🚫 Sharing invite links will result in immediate re-blacklisting.\n\n` +
+                                       `🎉 *הבקשה אושרה!*\n\n` +
+                                       `✅ הוסרת מהרשימה השחורה.\n` +
+                                       `📱 אתה יכול עכשיו להצטרף לקבוצות.\n\n` +
+                                       `⚠️ *חשוב:* זכור את ההסכם שלך לעולם לא לשלוח קישורי הזמנה בקבוצות.\n` +
+                                       `🚫 שליחת קישורי הזמנה תגרום להכנסה מיידית לרשימה השחורה.`;
+
                         // Notify user
                         await this.sock.sendMessage(fullUserId, { 
-                            text: `🎉 *Request Approved!*\n\n` +
-                                  `✅ You have been removed from the blacklist.\n` +
-                                  `📱 You can now rejoin groups.\n\n` +
-                                  `⚠️ *Important:* Remember your agreement to never share invite links in groups.\n` +
-                                  `🚫 Sharing invite links will result in immediate re-blacklisting.\n\n` +
-                                  `🎉 *הבקשה אושרה!*\n\n` +
-                                  `✅ הוסרת מהרשימה השחורה.\n` +
-                                  `📱 אתה יכול עכשיו להצטרף לקבוצות.\n\n` +
-                                  `⚠️ *חשוב:* זכור את ההסכם שלך לעולם לא לשלוח קישורי הזמנה בקבוצות.\n` +
-                                  `🚫 שליחת קישורי הזמנה תגרום להכנסה מיידית לרשימה השחורה.` 
+                            text: rejoinMessage 
                         }).catch(() => {
                             console.log(`Could not notify user ${normalizedUserId} - they may have blocked the bot`);
                         });
@@ -2057,6 +2033,202 @@ Thank you for your cooperation.`;
             console.error('❌ Error fetching joke stats:', error.message);
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: '❌ Error fetching joke statistics. Please try again.' 
+            });
+        }
+
+        return true;
+    }
+
+    async handleRejoinLinks(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Only admins can manage rejoin links.' 
+            });
+            return true;
+        }
+
+        if (!args) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '⚠️ Usage: #rejoinlinks <phone_number>\nExample: #rejoinlinks 972555123456' 
+            });
+            return true;
+        }
+
+        try {
+            const phoneNumber = args.trim();
+            const userId = `${phoneNumber}@s.whatsapp.net`;
+            const { kickedUserService } = require('./kickedUserService');
+
+            // Get all kick records for this user
+            const allKicks = await kickedUserService.getRejoinInfo(userId, false); // Get all, not just recent
+            
+            if (!allKicks || allKicks.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `ℹ️ No kick records found for ${phoneNumber}` 
+                });
+                return true;
+            }
+
+            let report = `📋 *Rejoin Links for ${phoneNumber}*\n\n`;
+            
+            allKicks.forEach((kick, index) => {
+                const kickDate = new Date(kick.kickedAt).toLocaleDateString();
+                const canRejoinStatus = kick.canRejoin ? '✅ Ready' : '⏳ Pending approval';
+                
+                report += `${index + 1}️⃣ *${kick.groupName}*\n`;
+                report += `   📅 Kicked: ${kickDate}\n`;
+                report += `   🔍 Reason: ${kick.reason}\n`;
+                report += `   🎯 Status: ${canRejoinStatus}\n`;
+                
+                if (kick.canRejoin && kick.groupInviteLink && kick.groupInviteLink !== 'N/A') {
+                    report += `   🔗 Link: ${kick.groupInviteLink}\n`;
+                }
+                
+                report += '\n';
+            });
+
+            report += `📊 *Summary:* ${allKicks.length} total kicks, ${allKicks.filter(k => k.canRejoin).length} ready for rejoin`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: report });
+
+        } catch (error) {
+            console.error('❌ Error fetching rejoin links:', error.message);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error fetching rejoin links. Please try again.' 
+            });
+        }
+
+        return true;
+    }
+
+    async handleWarningsView(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Only admins can view warnings.' 
+            });
+            return true;
+        }
+
+        try {
+            const { warningService } = require('./warningService');
+            
+            if (!args || args.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '📱 Usage: #warnings <phone_number>\nExample: #warnings 972555123456' 
+                });
+                return true;
+            }
+
+            const phoneNumber = args[0].replace(/[\+\-\s]/g, '');
+            const userId = `${phoneNumber}@s.whatsapp.net`;
+            
+            const userWarnings = await warningService.getUserWarnings(userId);
+            
+            if (!userWarnings || userWarnings.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `✅ No warnings found for user: ${phoneNumber}` 
+                });
+                return true;
+            }
+
+            let warningText = `⚠️ *Warnings for ${phoneNumber}*\n\n`;
+            
+            userWarnings.forEach((warning, index) => {
+                const warningDate = new Date(warning.lastWarned).toLocaleDateString();
+                const expiryDate = new Date(warning.expiresAt).toLocaleDateString();
+                const isExpired = new Date() > new Date(warning.expiresAt);
+                
+                warningText += `${index + 1}️⃣ **${warning.groupName}**\n`;
+                warningText += `   📅 Date: ${warningDate}\n`;
+                warningText += `   📊 Count: ${warning.warningCount}\n`;
+                warningText += `   ⏰ Expires: ${expiryDate} ${isExpired ? '(EXPIRED)' : ''}\n`;
+                warningText += `   🔗 Link: ${warning.inviteLink}\n\n`;
+            });
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: warningText });
+            
+        } catch (error) {
+            console.error('Error viewing warnings:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error retrieving warnings.' 
+            });
+        }
+
+        return true;
+    }
+
+    async handleWarningsClear(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Only admins can clear warnings.' 
+            });
+            return true;
+        }
+
+        try {
+            const { warningService } = require('./warningService');
+            
+            if (!args || args.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '📱 Usage: #clearwarnings <phone_number>\nExample: #clearwarnings 972555123456' 
+                });
+                return true;
+            }
+
+            const phoneNumber = args[0].replace(/[\+\-\s]/g, '');
+            const userId = `${phoneNumber}@s.whatsapp.net`;
+            
+            // Clear all warnings for this user
+            await warningService.clearWarnings(userId);
+            
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `✅ Cleared all warnings for user: ${phoneNumber}` 
+            });
+            
+        } catch (error) {
+            console.error('Error clearing warnings:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error clearing warnings.' 
+            });
+        }
+
+        return true;
+    }
+
+    async handleWarningsStats(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Only admins can view warning statistics.' 
+            });
+            return true;
+        }
+
+        try {
+            const { warningService } = require('./warningService');
+            const stats = await warningService.getWarningStats();
+            
+            let statsText = `📊 *Warning System Statistics*\n\n`;
+            statsText += `⚠️ Active Warnings: ${stats.totalActiveWarnings}\n`;
+            statsText += `⏰ Expiring Soon (24h): ${stats.expiringSoon}\n`;
+            statsText += `📅 Warning Duration: ${stats.warningExpiryDays} days\n\n`;
+            
+            if (stats.topGroups && stats.topGroups.length > 0) {
+                statsText += `🏆 *Top Groups by Warnings:*\n`;
+                stats.topGroups.forEach(([groupName, count], index) => {
+                    statsText += `${index + 1}. ${groupName}: ${count} warnings\n`;
+                });
+            } else {
+                statsText += `✅ No active warnings in any groups!\n`;
+            }
+            
+            statsText += `\n🔄 Warning system automatically cleans expired warnings`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: statsText });
+            
+        } catch (error) {
+            console.error('Error getting warning stats:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Error retrieving warning statistics.' 
             });
         }
 

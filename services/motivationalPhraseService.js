@@ -1,4 +1,5 @@
 const db = require('../firebaseConfig.js');
+const admin = require('firebase-admin');
 const { getTimestamp } = require('../utils/logger');
 
 /**
@@ -25,8 +26,8 @@ class MotivationalPhraseService {
 
         try {
             const snapshot = await db.collection('motivational_phrases')
-                .where('active', '==', true)
-                .where('trigger', '==', 'משעמם')
+                .where('isActive', '==', true)
+                .where('category', '==', 'boredom_response')
                 .get();
             
             this.phraseCache = [];
@@ -88,7 +89,7 @@ class MotivationalPhraseService {
         // Update usage tracking
         await this.updatePhraseUsage(selectedPhrase.id);
         
-        return selectedPhrase.text;
+        return selectedPhrase.phrase;
     }
 
     /**
@@ -104,7 +105,7 @@ class MotivationalPhraseService {
             const now = new Date().toISOString();
             await db.collection('motivational_phrases').doc(phraseId).update({
                 lastUsed: now,
-                usageCount: db.FieldValue.increment(1)
+                usageCount: admin.firestore.FieldValue.increment(1)
             });
 
             // Update local cache too
@@ -138,8 +139,8 @@ class MotivationalPhraseService {
             totalPhrases,
             usedPhrases,
             totalUsages,
-            mostUsed: mostUsed ? { text: mostUsed.text.substring(0, 50) + '...', count: mostUsed.usageCount || 0 } : null,
-            leastUsed: leastUsed ? { text: leastUsed.text.substring(0, 50) + '...', count: leastUsed.usageCount || 0 } : null
+            mostUsed: mostUsed ? { text: mostUsed.phrase.substring(0, 50) + '...', count: mostUsed.usageCount || 0 } : null,
+            leastUsed: leastUsed ? { text: leastUsed.phrase.substring(0, 50) + '...', count: leastUsed.usageCount || 0 } : null
         };
     }
 }

@@ -338,6 +338,24 @@ async function startBot() {
         console.warn('⚠️ Failed to initialize motivational phrase service:', error.message);
     }
     
+    // Initialize kicked user service for rejoin links
+    try {
+        const { initialize } = require('./services/kickedUserService');
+        await initialize();
+        console.log('✅ Kicked user service initialized');
+    } catch (error) {
+        console.warn('⚠️ Failed to initialize kicked user service:', error.message);
+    }
+    
+    // Initialize warning service for invite link warnings
+    try {
+        const { initialize } = require('./services/warningService');
+        await initialize();
+        console.log('✅ Warning service initialized');
+    } catch (error) {
+        console.warn('⚠️ Failed to initialize warning service:', error.message);
+    }
+    
     console.log(`[${getTimestamp()}] 🔄 Starting bot connection (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
     
     // Use multi-file auth state
@@ -620,8 +638,17 @@ async function startBot() {
     // Handle group participant updates
     sock.ev.on('group-participants.update', async ({ id, participants, action, author }) => {
         if (action === 'add') {
-            // The 'author' field contains who added the participants
-            await handleGroupJoin(sock, id, participants, author);
+            // Check if the bot itself was added to the group
+            const botJid = sock.user.id;
+            const botAddedToGroup = participants.some(p => p === botJid);
+            
+            if (botAddedToGroup) {
+                // Bot was added to a new group - send welcome message
+                await handleBotWelcome(sock, id, author);
+            } else {
+                // Regular users were added - handle normal join logic
+                await handleGroupJoin(sock, id, participants, author);
+            }
         }
     });
     
@@ -683,8 +710,8 @@ async function handleMessage(sock, msg, commandHandler) {
             const command = parts[0];
             const args = parts.slice(1).join(' ');
             
-            // Handle #free command for all users, other commands require admin
-            if (command === '#free' || isAdmin) {
+            // Only admins can use bot commands
+            if (isAdmin) {
                 const handled = await commandHandler.handleCommand(msg, command, args, isAdmin, isAdmin);
                 if (handled) {
                     console.log(`   Command Handled: ✅ Successfully`);
@@ -694,7 +721,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 // Non-admin tried to use admin command
                 console.log(`   Command Rejected: ❌ Non-admin user`);
                 await sock.sendMessage(chatId, { 
-                    text: '❌ Only admins can use bot commands (except #free).' 
+                    text: '❌ Only admins can use bot commands.' 
                 });
                 return;
             }
@@ -919,28 +946,6 @@ async function handleMessage(sock, msg, commandHandler) {
         // Get group metadata
         const groupMetadata = await sock.groupMetadata(groupId);
         
-        // Debug: Log all participants to see how bot appears
-        console.log(`\n[${getTimestamp()}] 📋 Group participants:`, groupMetadata.participants.map(p => ({ 
-            id: p.id, 
-            admin: p.admin || p.isAdmin || p.isSuperAdmin,
-            phone: p.id.split('@')[0]
-        })));
-        
-        // Multiple ways to identify the bot
-        const botPhone = sock.user.id.split(':')[0];
-        const botId = sock.user.id;
-        
-        console.log(`[${getTimestamp()}] 🤖 Looking for bot with:`);
-        console.log(`   - Full ID: ${botId}`);
-        console.log(`   - Phone: ${botPhone}`);
-        
-        // In multi-device mode, the bot might have a LID instead of phone number
-        // Let's implement a workaround: assume bot is admin if we can execute admin actions
-        let botIsAdmin = true; // Assume true and verify by trying admin actions
-        
-        console.log(`[${getTimestamp()}] ⚠️ Bot admin check bypassed due to LID format issue`);
-        console.log(`[${getTimestamp()}] ⚡ Attempting admin actions...`);
-        
         // Check if sender is admin (using comprehensive admin detection)
         const senderParticipant = groupMetadata.participants.find(p => p.id === senderId);
         const senderIsAdmin = senderParticipant && (
@@ -963,7 +968,7 @@ async function handleMessage(sock, msg, commandHandler) {
             return;
         }
         
-        // Delete the message
+        // Delete the message first (always delete invite links)
         try {
             await sock.sendMessage(groupId, { delete: msg.key });
             console.log('✅ Deleted invite link message');
@@ -971,97 +976,359 @@ async function handleMessage(sock, msg, commandHandler) {
             console.error('❌ Failed to delete message:', deleteError.message);
         }
         
-        // Add to blacklist first - must succeed before kicking
-        const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Sent invite link spam');
-        if (!blacklistSuccess) {
-            console.error('❌ Failed to blacklist user - aborting kick to prevent "kicked but not blacklisted" scenario');
-            return;
-        }
+        // Check if user is Israeli (phone starts with 972)
+        const userPhone = senderId.split('@')[0];
+        const isIsraeliUser = userPhone.startsWith('972');
         
-        // Kick the user (only if blacklisting succeeded)
-        try {
-            await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-            console.log('✅ Kicked user:', senderId);
-            kickCooldown.set(senderId, Date.now());
+        console.log(`[${getTimestamp()}] 🇮🇱 User origin check: ${userPhone} - Israeli: ${isIsraeliUser}`);
+        
+        if (!isIsraeliUser) {
+            // Non-Israeli user - immediate kick without warning
+            console.log(`[${getTimestamp()}] 🚨 Non-Israeli user sending invite link - immediate kick`);
             
-            // Verify blacklisting is consistent after kick
-            const isBlacklisted = await blacklistService.isBlacklisted(senderId);
-            if (!isBlacklisted) {
-                console.error('🚨 CRITICAL: User was kicked but not found in blacklist - attempting to re-blacklist');
-                await blacklistService.addToBlacklist(senderId, 'Sent invite link spam - post-kick verification');
-            } else {
-                console.log('✅ Verified: User is properly blacklisted after kick');
+            // Add to blacklist first - must succeed before kicking
+            const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Non-Israeli user sent invite link - immediate kick');
+            if (!blacklistSuccess) {
+                console.error('❌ Failed to blacklist non-Israeli user - aborting kick to prevent "kicked but not blacklisted" scenario');
+                return;
             }
             
-            // Get group invite link
-            let groupInviteLink = 'N/A';
+            // Kick the user immediately
             try {
-                const inviteCode = await sock.groupInviteCode(groupId);
-                groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
-            } catch (err) {
-                console.log('Could not get group invite link:', err.message);
-            }
+                await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                console.log('✅ Kicked non-Israeli user immediately:', senderId);
+                kickCooldown.set(senderId, Date.now());
+                
+                // Verify blacklisting is consistent after kick
+                const isBlacklisted = await blacklistService.isBlacklisted(senderId);
+                if (!isBlacklisted) {
+                    console.error('🚨 CRITICAL: Non-Israeli user was kicked but not found in blacklist - attempting to re-blacklist');
+                    await blacklistService.addToBlacklist(senderId, 'Non-Israeli invite link violation - post-kick verification');
+                } else {
+                    console.log('✅ Verified: Non-Israeli user is properly blacklisted after kick');
+                }
+                
+                // Send admin alert about immediate kick
+                const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+                const alertMessage = `🚨 *Non-Israeli User Kicked (Immediate)*\n\n` +
+                                   `📍 Group: ${groupMetadata.subject}\n` +
+                                   `👤 User: ${senderId}\n` +
+                                   `📞 Phone: ${userPhone}\n` +
+                                   `🌍 Origin: Non-Israeli (not +972)\n` +
+                                   `🔗 Spam Links: ${matches.join(', ')}\n` +
+                                   `⏰ Time: ${getTimestamp()}\n\n` +
+                                   `✅ Actions taken:\n` +
+                                   `• Message deleted\n` +
+                                   `• User blacklisted\n` +
+                                   `• User kicked immediately (non-Israeli policy)`;
+                
+                try {
+                    await sock.sendMessage(adminId, { text: alertMessage });
+                    console.log('✅ Sent immediate kick alert to admin');
+                } catch (adminError) {
+                    console.error('❌ Failed to send admin alert:', adminError.message);
+                }
+                
+                // Get group invite link for rejoin system
+                let groupInviteLink = 'N/A';
+                try {
+                    const inviteCode = await sock.groupInviteCode(groupId);
+                    groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                } catch (err) {
+                    console.log('Could not get group invite link for non-Israeli user:', err.message);
+                }
 
-            // Send alert to alert phone
-            const userPhone = senderId.split('@')[0];
-            await sendKickAlert(sock, {
-                userPhone: userPhone,
-                userName: `User ${userPhone}`,
-                groupName: groupMetadata?.subject || 'Unknown Group',
-                groupId: groupId,
-                reason: 'invite_link',
-                additionalInfo: `Sent unauthorized invite link`,
-                spamLink: matches[0], // The actual spam link that was sent
-                groupInviteLink: groupInviteLink
-            });
+                // Record kicked non-Israeli user for potential #free system usage
+                try {
+                    const { kickedUserService } = require('./services/kickedUserService');
+                    
+                    // Extract admin information from group metadata
+                    const adminList = [];
+                    if (groupMetadata && groupMetadata.participants) {
+                        groupMetadata.participants
+                            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                            .forEach(admin => {
+                                const adminId = admin.id;
+                                let adminName = 'Admin';
+                                let adminPhone = 'Unknown';
+                                
+                                if (adminId.includes('@s.whatsapp.net')) {
+                                    adminPhone = adminId.split('@')[0];
+                                    adminName = `+${adminPhone}`;
+                                } else if (adminId.includes('@lid')) {
+                                    adminName = 'Admin (LID)';
+                                    adminPhone = adminId.split('@')[0].substring(0, 8) + '...';
+                                }
+                                
+                                adminList.push({
+                                    id: adminId,
+                                    name: adminName,
+                                    phone: adminPhone,
+                                    isLID: adminId.includes('@lid')
+                                });
+                            });
+                    }
+                    
+                    await kickedUserService.recordKickedUser(
+                        senderId,
+                        groupId,
+                        groupMetadata?.subject || 'Unknown Group',
+                        groupInviteLink,
+                        'Non-Israeli user - Immediate kick for invite link',
+                        adminList
+                    );
+                    console.log('✅ Recorded kicked non-Israeli user for potential #free usage');
+                } catch (error) {
+                    console.error('⚠️ Failed to record kicked non-Israeli user:', error.message);
+                }
+                
+                // Non-Israeli users get NO MESSAGE - silent kick only
+                console.log('🔇 Non-Israeli user kicked silently - no message sent');
+                
+            } catch (kickError) {
+                console.error('❌ Failed to kick non-Israeli user:', kickError.message);
+            }
             
-            // Send policy message with unblacklist option
-            const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
-                                 `📋 *To request removal from blacklist:*\n` +
-                                 `1️⃣ Agree to NEVER share invite links in groups\n` +
-                                 `2️⃣ Send *#free* to this bot\n` +
-                                 `3️⃣ Wait for admin approval\n\n` +
-                                 `⏰ You can request once every 24 hours.\n` +
-                                 `⚠️ By sending #free, you agree to follow group rules.\n\n` +
-                                 `🚫 הוסרת אוטומטית מ${groupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לוואטסאפ.\n\n` +
-                                 `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
-                                 `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
-                                 `2️⃣ שלח *#free* לבוט הזה\n` +
-                                 `3️⃣ חכה לאישור מנהל\n\n` +
-                                 `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
-                                 `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
-            await sock.sendMessage(senderId, { text: policyMessage }).catch(() => {});
-        } catch (kickError) {
-            console.error('❌ Failed to kick user:', kickError.message);
+        } else {
+            // Israeli user - use warning system
+            console.log(`[${getTimestamp()}] 🇮🇱 Israeli user - applying warning system`);
+            
+            const { warningService } = require('./services/warningService');
+            const violationCheck = await warningService.checkInviteLinkViolation(senderId, groupId);
+            
+            console.log(`[${getTimestamp()}] ⚖️ Warning check result:`, violationCheck);
+            
+            if (violationCheck.action === 'warn') {
+                // First violation - send warning
+                console.log(`[${getTimestamp()}] ⚠️ First violation - sending warning to Israeli user`);
+                
+                // Record the warning
+                await warningService.recordWarning(
+                    senderId, 
+                    groupId, 
+                    groupMetadata.subject, 
+                    matches.join(', ')
+                );
+                
+                // Send warning message in Hebrew and English
+                const warningMessage = `⚠️ *אזהרה / Warning* ⚠️\n\n` +
+                                     `🚫 שליחת קישורי הזמנה לקבוצות אסורה\n` +
+                                     `🚫 Sending group invite links is not allowed\n\n` +
+                                     `🔴 *זהו אזהרה ראשונה* - הפעם הבאה תעף מהקבוצה\n` +
+                                     `🔴 *This is your first warning* - next time you'll be kicked\n\n` +
+                                     `✅ האזהרה תפוג תוך 7 ימים\n` +
+                                     `✅ Warning expires in 7 days\n\n` +
+                                     `📋 כללי הקבוצה: איסור על קישורי הזמנה\n` +
+                                     `📋 Group rules: No invite links allowed`;
+                
+                try {
+                    await sock.sendMessage(groupId, { text: warningMessage });
+                    console.log('✅ Sent warning message to group');
+                } catch (warnError) {
+                    console.error('❌ Failed to send warning message:', warnError.message);
+                }
+                
+                // Send admin alert about warning
+                const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+                const alertMessage = `⚠️ *Warning Issued (Israeli User)*\n\n` +
+                                   `📍 Group: ${groupMetadata.subject}\n` +
+                                   `👤 User: ${senderId}\n` +
+                                   `📞 Phone: ${userPhone} (🇮🇱 Israeli)\n` +
+                                   `🔗 Links: ${matches.join(', ')}\n` +
+                                   `📊 Warning Count: ${violationCheck.warningCount + 1}\n` +
+                                   `⏰ Time: ${getTimestamp()}\n\n` +
+                                   `🚨 Next violation will result in automatic kick`;
+                
+                try {
+                    await sock.sendMessage(adminId, { text: alertMessage });
+                    console.log('✅ Sent warning alert to admin');
+                } catch (adminError) {
+                    console.error('❌ Failed to send admin alert:', adminError.message);
+                }
+                
+            } else if (violationCheck.action === 'kick') {
+                // Second violation - kick Israeli user
+                console.log(`[${getTimestamp()}] 🚨 Israeli user second violation - kicking user`);
+                
+                // Clear warnings (they've been kicked now)
+                await warningService.clearWarnings(senderId, groupId);
+                
+                // Add to blacklist first - must succeed before kicking
+                const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Israeli user - Second invite link violation - kicked after warning');
+                if (!blacklistSuccess) {
+                    console.error('❌ Failed to blacklist Israeli user - aborting kick to prevent "kicked but not blacklisted" scenario');
+                    return;
+                }
+                
+                // Kick the Israeli user (only if blacklisting succeeded)
+                try {
+                    await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                    console.log('✅ Kicked Israeli user after second violation:', senderId);
+                    kickCooldown.set(senderId, Date.now());
+                    
+                    // Verify blacklisting is consistent after kick
+                    const isBlacklisted = await blacklistService.isBlacklisted(senderId);
+                    if (!isBlacklisted) {
+                        console.error('🚨 CRITICAL: Israeli user was kicked but not found in blacklist - attempting to re-blacklist');
+                        await blacklistService.addToBlacklist(senderId, 'Israeli user - Second invite link violation - post-kick verification');
+                    } else {
+                        console.log('✅ Verified: Israeli user is properly blacklisted after kick');
+                    }
+                    
+                    // Get group invite link
+                    let groupInviteLink = 'N/A';
+                    try {
+                        const inviteCode = await sock.groupInviteCode(groupId);
+                        groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                    } catch (err) {
+                        console.log('Could not get group invite link:', err.message);
+                    }
+
+                    // Record kicked user for future rejoin assistance
+                    try {
+                        const { kickedUserService } = require('./services/kickedUserService');
+                        
+                        // Extract admin information from group metadata
+                        const adminList = [];
+                        if (groupMetadata && groupMetadata.participants) {
+                            groupMetadata.participants
+                                .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                                .forEach(admin => {
+                                    // Try to extract readable info from admin ID
+                                    const adminId = admin.id;
+                                    let adminName = 'Admin';
+                                    let adminPhone = 'Unknown';
+                                    
+                                    // Extract phone if possible (not LID)
+                                    if (adminId.includes('@s.whatsapp.net')) {
+                                        adminPhone = adminId.split('@')[0];
+                                        adminName = `+${adminPhone}`;
+                                    } else if (adminId.includes('@lid')) {
+                                        adminName = 'Admin (LID)';
+                                        adminPhone = adminId.split('@')[0].substring(0, 8) + '...';
+                                    }
+                                    
+                                    adminList.push({
+                                        id: adminId,
+                                        name: adminName,
+                                        phone: adminPhone,
+                                        isLID: adminId.includes('@lid')
+                                    });
+                                });
+                        }
+                        
+                        await kickedUserService.recordKickedUser(
+                            senderId,
+                            groupId,
+                            groupMetadata?.subject || 'Unknown Group',
+                            groupInviteLink,
+                            'Israeli user - Second invite link violation',
+                            adminList
+                        );
+                        console.log('✅ Recorded kicked Israeli user for potential rejoin with admin info');
+                    } catch (error) {
+                        console.error('⚠️ Failed to record kicked Israeli user:', error.message);
+                    }
+
+                    // Send alert to alert phone using existing alert service
+                    const userPhone = senderId.split('@')[0];
+                    await sendKickAlert(sock, {
+                        userPhone: userPhone,
+                        userName: `User ${userPhone}`,
+                        groupName: groupMetadata?.subject || 'Unknown Group',
+                        groupId: groupId,
+                        reason: 'israeli_user_second_violation',
+                        additionalInfo: `🇮🇱 Israeli user - Second invite link violation - kicked after warning`,
+                        spamLink: matches[0], // The actual spam link that was sent
+                        groupInviteLink: groupInviteLink
+                    });
+                    
+                    // Send policy message with unblacklist option
+                    const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} for repeat violation of group rules (invite links).\n\n` +
+                                         `⚠️ *This was your second warning* - you were previously warned about this\n\n` +
+                                         `📋 *To request removal from blacklist:*\n` +
+                                         `1️⃣ Agree to NEVER share invite links in groups\n` +
+                                         `2️⃣ Contact admin directly for appeal\n` +
+                                         `3️⃣ Wait for admin decision\n\n` +
+                                         `⚠️ No automated appeals - admin contact required.\n\n` +
+                                         `🚫 הוסרת אוטומטית מ${groupMetadata.subject} בגלל הפרה חוזרת של כללי הקבוצה (קישורי הזמנה).\n\n` +
+                                         `⚠️ *זו הייתה האזהרה השנייה שלך* - בעבר הוזהרת בנוגע לזה\n\n` +
+                                         `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
+                                         `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
+                                         `2️⃣ צור קשר עם המנהל ישירות לערעור\n` +
+                                         `3️⃣ חכה להחלטת המנהל\n\n` +
+                                         `⚠️ אין ערעורים אוטומטיים - נדרש קשר עם המנהל.`;
+                    await sock.sendMessage(senderId, { text: policyMessage }).catch(() => {});
+                    
+                } catch (kickError) {
+                    console.error('❌ Failed to kick Israeli user:', kickError.message);
+                }
+            }
         }
-        
-        // Send alert to admin
-        const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-        
-        // Try to get group invite link
-        let groupLink = 'N/A';
-        try {
-            const inviteCode = await sock.groupInviteCode(groupId);
-            groupLink = `https://chat.whatsapp.com/${inviteCode}`;
-        } catch (err) {
-            console.log('Could not get group invite link:', err.message);
-        }
-        
-        const alertMessage = `🚨 *Invite Spam Detected*\n\n` +
-                           `📍 Group: ${groupMetadata.subject}\n` +
-                           `🔗 Group Link: ${groupLink}\n` +
-                           `👤 User: ${senderId}\n` +
-                           `🔗 Spam Links: ${matches.join(', ')}\n` +
-                           `⏰ Time: ${getTimestamp()}\n\n` +
-                           `✅ Actions taken:\n` +
-                           `• Message deleted\n` +
-                           `• User blacklisted\n` +
-                           `• User kicked from group`;
-        
-        await sock.sendMessage(adminId, { text: alertMessage });
         
     } catch (error) {
         console.error('❌ Error handling invite spam:', error);
+    }
+}
+
+// Handle bot welcome when added to a group
+async function handleBotWelcome(sock, groupId, addedBy) {
+    try {
+        console.log(`[${getTimestamp()}] 🎉 Bot was added to group: ${groupId}`);
+        console.log(`[${getTimestamp()}] 👤 Added by: ${addedBy || 'Unknown'}`);
+        
+        // Get group metadata
+        const groupMetadata = await sock.groupMetadata(groupId);
+        const groupName = groupMetadata.subject || 'Unknown Group';
+        
+        console.log(`[${getTimestamp()}] 🎯 Group name: ${groupName}`);
+        
+        // Send welcome message to the group
+        const welcomeMessage = `ברור! קבל גרסה עם יותר הומור:
+
+כל מי שישלח קישור הזמנה לוואטסאפ —
+יעוף מהקבוצה מהר יותר מההודעה של "אמא בדרך"! 🚀🤣
+
+רק האדמינים מחלקים קישורים,
+אז תשאירו את הקישורים בארון, יחד עם הגרביים הלא תואמות 🧦😉
+
+תחסכו לנו סצנות, ותישארו איתנו בצחוקים! 😜🔗🍬`;
+        
+        await sock.sendMessage(groupId, { text: welcomeMessage });
+        
+        // Alert admin about new group
+        const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+        const addedByPhone = addedBy ? addedBy.split('@')[0] : 'Unknown';
+        
+        const adminAlert = `🎉 *Bot Added to New Group!*
+
+` +
+            `🎯 **Group:** ${groupName}
+` +
+            `🆔 **Group ID:** ${groupId}
+` +
+            `👤 **Added by:** ${addedByPhone}
+` +
+            `👥 **Members:** ${groupMetadata.participants.length}
+` +
+            `⏰ **Time:** ${getTimestamp()}
+
+` +
+            `🔍 **Next steps:**
+` +
+            `1️⃣ Check if bot has admin privileges
+` +
+            `2️⃣ Test bot commands if needed
+` +
+            `3️⃣ Monitor group for first few hours
+
+` +
+            `🛡️ *Protection is now active in this group!*`;
+        
+        await sock.sendMessage(adminId, { text: adminAlert });
+        
+    } catch (error) {
+        console.error(`❌ Error in bot welcome handler:`, error);
     }
 }
 
@@ -1124,17 +1391,15 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
                                          `📋 *To request removal from blacklist:*\n` +
                                          `1️⃣ Agree to NEVER share invite links in groups\n` +
-                                         `2️⃣ Send *#free* to this bot\n` +
-                                         `3️⃣ Wait for admin approval\n\n` +
-                                         `⏰ You can request once every 24 hours.\n` +
-                                         `⚠️ By sending #free, you agree to follow group rules.\n\n` +
+                                         `2️⃣ Contact admin directly for appeal\n` +
+                                         `3️⃣ Wait for admin decision\n\n` +
+                                         `⚠️ No automated appeals - admin contact required.\n\n` +
                                          `🚫 הוסרת אוטומטית מ${groupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לוואטסאפ.\n\n` +
                                          `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
                                          `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
-                                         `2️⃣ שלח *#free* לבוט הזה\n` +
-                                         `3️⃣ חכה לאישור מנהל\n\n` +
-                                         `⏰ אתה יכול לבקש פעם כל 24 שעות.\n` +
-                                         `⚠️ על ידי שליחת #free, אתה מסכים לפעול לפי כללי הקבוצה.`;
+                                         `2️⃣ צור קשר עם המנהל ישירות לערעור\n` +
+                                         `3️⃣ חכה להחלטת המנהל\n\n` +
+                                         `⚠️ אין ערעורים אוטומטיים - נדרש קשר עם המנהל.`;
                     await sock.sendMessage(participantId, { text: policyMessage }).catch(() => {});
                     
                     // Alert admin

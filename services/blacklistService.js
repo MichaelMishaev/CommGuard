@@ -101,6 +101,16 @@ async function removeFromBlacklist(userId) {
   try {
     await db.collection('blacklist').doc(normalizedId).delete();
     console.log(`✅ Removed ${normalizedId} from blacklist`);
+    
+    // Enable rejoin for this user
+    try {
+      const { kickedUserService } = require('./kickedUserService');
+      await kickedUserService.enableRejoin(userId);
+      console.log(`✅ Enabled rejoin links for ${normalizedId}`);
+    } catch (error) {
+      console.warn('⚠️ Failed to enable rejoin:', error.message);
+    }
+    
     return true;
   } catch (error) {
     console.error('❌ Error removing from blacklist:', error.message);
