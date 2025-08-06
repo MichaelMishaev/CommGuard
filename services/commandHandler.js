@@ -623,7 +623,7 @@ class CommandHandler {
         
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can kick users.' 
+                text: 'מה אני עובד אצלך??' 
             });
             return true;
         }
@@ -754,7 +754,7 @@ class CommandHandler {
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to kick user:`, error);
             await this.sock.sendMessage(groupId, { 
-                text: '❌ Failed to kick user. Make sure the bot has admin privileges.' 
+                text: '❌ Need to be an admin' 
             });
         }
 
@@ -836,7 +836,7 @@ class CommandHandler {
     async handleBan(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can ban users.' 
+                text: 'מה אני עובד אצלך??' 
             });
             return true;
         }
@@ -944,7 +944,7 @@ class CommandHandler {
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to ban user:`, error);
             await this.sock.sendMessage(groupId, { 
-                text: '❌ Failed to ban user. Make sure the bot has admin privileges.' 
+                text: '❌ Need to be an admin' 
             });
         }
 
@@ -954,7 +954,7 @@ class CommandHandler {
     async handleWarn(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can warn users.' 
+                text: 'מה אני עובד אצלך??' 
             });
             return true;
         }
@@ -1200,7 +1200,7 @@ Thank you for your cooperation.`;
         } catch (error) {
             console.error('❌ Error in botforeign command:', error);
             await this.sock.sendMessage(groupId, { 
-                text: '❌ Failed to execute botforeign command. Make sure the bot has admin privileges.' 
+                text: '❌ Need to be an admin' 
             });
         }
         
@@ -1596,7 +1596,7 @@ Thank you for your cooperation.`;
         } catch (error) {
             console.error('❌ Error in botkick command:', error);
             await this.sock.sendMessage(groupId, { 
-                text: '❌ Failed to scan for blacklisted users. Make sure the bot has admin privileges.' 
+                text: '❌ Need to be an admin' 
             });
         }
         
