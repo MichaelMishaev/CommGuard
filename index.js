@@ -911,8 +911,6 @@ async function handleMessage(sock, msg, commandHandler) {
     }
     
     // Check for "משעמם" messages and respond with funny jokes
-    // DISABLED: Joke response functionality has been disabled
-    /*
     if (messageText.includes('משעמם')) {
         console.log(`[${getTimestamp()}] 😴 "משעמם" detected from ${senderId} in ${groupId}`);
         
@@ -941,7 +939,6 @@ async function handleMessage(sock, msg, commandHandler) {
         
         // Continue processing (don't return, let other checks happen too)
     }
-    */
     
     // Check for invite links
     const matches = messageText.match(config.PATTERNS.INVITE_LINK);
