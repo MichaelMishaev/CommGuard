@@ -640,7 +640,14 @@ async function startBot() {
         if (action === 'add') {
             // Check if the bot itself was added to the group
             const botJid = sock.user.id;
-            const botAddedToGroup = participants.some(p => p === botJid);
+            const botPhone = sock.user.id.split(':')[0].split('@')[0];
+            
+            // Check for bot using multiple matching patterns (handles LID format)
+            const botAddedToGroup = participants.some(p => {
+                return p === botJid || 
+                       p.includes(botPhone) || 
+                       p.startsWith(botPhone);
+            });
             
             if (botAddedToGroup) {
                 // Bot was added to a new group - send welcome message
@@ -904,6 +911,8 @@ async function handleMessage(sock, msg, commandHandler) {
     }
     
     // Check for "משעמם" messages and respond with funny jokes
+    // DISABLED: Joke response functionality has been disabled
+    /*
     if (messageText.includes('משעמם')) {
         console.log(`[${getTimestamp()}] 😴 "משעמם" detected from ${senderId} in ${groupId}`);
         
@@ -932,6 +941,7 @@ async function handleMessage(sock, msg, commandHandler) {
         
         // Continue processing (don't return, let other checks happen too)
     }
+    */
     
     // Check for invite links
     const matches = messageText.match(config.PATTERNS.INVITE_LINK);
