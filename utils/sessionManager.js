@@ -3,12 +3,16 @@ const { getTimestamp } = require('./logger');
 
 // Track failed decryption attempts
 const failedDecryptions = new Map();
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 2000; // 2 seconds
+const MAX_RETRIES = 2; // Reduced from 3 to 2
+const RETRY_DELAY = 500; // Reduced from 2000ms to 500ms
 
 // Track session errors per user
 const sessionErrors = new Map();
-const SESSION_ERROR_THRESHOLD = 5;
+const SESSION_ERROR_THRESHOLD = 3; // Reduced from 5 to 3
+
+// Startup session optimization
+const STARTUP_TIMEOUT = 10000; // 10 seconds max for session issues during startup
+const PROBLEMATIC_USERS = new Set(); // Track users to skip during startup
 
 // Clean up old entries every hour
 setInterval(() => {
@@ -29,7 +33,7 @@ setInterval(() => {
 }, 3600000);
 
 // Track session error for a user
-function trackSessionError(userId) {
+function trackSessionError(userId, isStartup = false) {
     if (!sessionErrors.has(userId)) {
         sessionErrors.set(userId, []);
     }
@@ -37,8 +41,13 @@ function trackSessionError(userId) {
     
     // Check if user has too many errors
     const errors = sessionErrors.get(userId);
-    if (errors.length >= SESSION_ERROR_THRESHOLD) {
-        console.log(`⚠️ User ${userId} has ${errors.length} session errors - may need session reset`);
+    const threshold = isStartup ? 1 : SESSION_ERROR_THRESHOLD; // More aggressive during startup
+    
+    if (errors.length >= threshold) {
+        console.log(`⚠️ User ${userId} has ${errors.length} session errors - ${isStartup ? 'marking as problematic for startup' : 'may need session reset'}`);
+        if (isStartup) {
+            PROBLEMATIC_USERS.add(userId);
+        }
         return true; // Indicates problematic session
     }
     return false;
@@ -102,18 +111,41 @@ function extractMessageText(msg) {
            '';
 }
 
-// Handle session error with recovery
-async function handleSessionError(sock, error, msg) {
+// Check if user should be skipped during startup
+function shouldSkipUser(userId) {
+    return PROBLEMATIC_USERS.has(userId);
+}
+
+// Clear problematic users after successful startup
+function clearProblematicUsers() {
+    const count = PROBLEMATIC_USERS.size;
+    PROBLEMATIC_USERS.clear();
+    if (count > 0) {
+        console.log(`[${getTimestamp()}] 🧹 Cleared ${count} problematic users from startup blacklist`);
+    }
+}
+
+// Handle session error with fast recovery
+async function handleSessionError(sock, error, msg, isStartup = false) {
     const userId = msg.key.participant || msg.key.remoteJid;
     const messageId = msg.key.id;
     
-    console.log(`[${getTimestamp()}] 🔒 Session error for ${userId}: ${error.message}`);
+    // During startup, be less verbose
+    if (!isStartup) {
+        console.log(`[${getTimestamp()}] 🔒 Session error for ${userId}: ${error.message}`);
+    }
     
     // Track the error
-    const isProblematic = trackSessionError(userId);
+    const isProblematic = trackSessionError(userId, isStartup);
+    
+    // During startup, skip problematic users immediately
+    if (isStartup && isProblematic) {
+        console.log(`🚫 Skipping problematic user during startup: ${userId}`);
+        return { skip: true, userId: userId };
+    }
     
     // Auto-reset session for users with excessive errors
-    if (isProblematic) {
+    if (isProblematic && !isStartup) {
         console.log(`🔧 Attempting session reset for problematic user: ${userId}`);
         try {
             // Try to clear the specific user's session data
@@ -130,8 +162,8 @@ async function handleSessionError(sock, error, msg) {
         }
     }
     
-    // Check if we should retry
-    if (shouldRetryMessage(messageId, userId)) {
+    // Check if we should retry (no retries during startup)
+    if (!isStartup && shouldRetryMessage(messageId, userId)) {
         console.log(`🔄 Retrying message ${messageId} from ${userId}`);
         
         // For group messages with potential invite links, take immediate action
@@ -147,12 +179,12 @@ async function handleSessionError(sock, error, msg) {
             };
         }
         
-        // Wait before retry
+        // Wait before retry (shorter delay)
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
         return { retry: true };
     }
     
-    return { retry: false, suspicious: false };
+    return { retry: false, suspicious: false, skip: isStartup };
 }
 
 module.exports = {
@@ -162,6 +194,10 @@ module.exports = {
     mightContainInviteLink,
     extractMessageText,
     handleSessionError,
+    shouldSkipUser,
+    clearProblematicUsers,
     sessionErrors,
-    failedDecryptions
+    failedDecryptions,
+    PROBLEMATIC_USERS,
+    STARTUP_TIMEOUT
 };

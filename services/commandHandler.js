@@ -6,6 +6,7 @@ const { getTimestamp } = require('../utils/logger');
 const { sendKickAlert } = require('../utils/alertService');
 const searchService = require('./searchService');
 const { translationService } = require('./translationService');
+const groupJokeSettingsService = require('./groupJokeSettingsService');
 
 // Conditionally load unblacklist request service
 let unblacklistRequestService;
@@ -153,6 +154,15 @@ class CommandHandler {
                 case '#translation':
                     return await this.handleTranslationToggle(msg, args, isAdmin);
                     
+                case '#jokeson':
+                    return await this.handleJokesOn(msg, isAdmin);
+                    
+                case '#jokesoff':
+                    return await this.handleJokesOff(msg, isAdmin);
+                    
+                case '#jokesstatus':
+                    return await this.handleJokesStatus(msg, isAdmin);
+                    
                 // #free system removed - use admin #unblacklist instead
                 
                 default:
@@ -262,6 +272,9 @@ class CommandHandler {
 
 *🎭 Entertainment Commands:*
 • *#jokestats* - View motivational phrase usage statistics
+• *#jokeson* - Enable משעמם jokes for this group
+• *#jokesoff* - Disable משעמם jokes for this group
+• *#jokesstatus* - Show joke settings for this group
 • **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (125+ jokes)
 
 *⚠️ Warning System Commands:*
@@ -293,6 +306,7 @@ class CommandHandler {
    - Auto-detects: Messages containing "משעמם" 
    - Actions: Responds with random funny Hebrew jokes
    - Features: Smart rotation, usage tracking, 125+ modern Hebrew jokes
+   - Group Control: Can enable/disable per group (#jokeson/#jokesoff)
 
 *⚙️ SPECIAL BEHAVIORS:*
 • Bot needs admin to work (bypass enabled for LID issues)
@@ -356,12 +370,17 @@ class CommandHandler {
 • *#botadmin* - Check if bot has admin privileges
 • *#jokestats* - View joke usage statistics
 
+*🎭 Joke Control Commands:*
+• *#jokeson* - Enable משעמם jokes in this group
+• *#jokesoff* - Disable משעמם jokes in this group
+• *#jokesstatus* - Show joke settings for this group
+
 *🚨 Auto-Protection Features:*
 • **Invite Link Detection** - Auto-kick + blacklist
 • **Blacklist Enforcement** - Auto-kick banned users
 • **Country Code Restriction** - Auto-kick +1 and +6 numbers
 • **Whitelist Protection** - Bypass all restrictions
-• **Anti-Boredom System** - Responds to "משעמם" with Hebrew jokes
+• **Anti-Boredom System** - Responds to "משעמם" with Hebrew jokes (per-group control)
 
 *💡 Usage Examples:*
 • Kick user: Reply to their message + type \`#kick\`
@@ -370,6 +389,9 @@ class CommandHandler {
 • Remove all foreign users: \`#botforeign\`
 • Get jokes: Any message with "משעמם" → Bot responds with humor
 • View joke stats: \`#jokestats\`
+• Control jokes: \`#jokesoff\` → Disable jokes in this group
+• Enable jokes: \`#jokeson\` → Enable jokes in this group
+• Check joke status: \`#jokesstatus\` → Show current settings
 • Translate text: \`#translate שלום עולם\` → "Hello world" ✅ READY
 • Translate to Hebrew: \`#translate he Good morning\` → "בוקר טוב" ✅ READY
 • Auto-translate: Reply to "Hello world" → Bot shows Hebrew translation ✅ ACTIVE
@@ -423,7 +445,7 @@ class CommandHandler {
     async handleMute(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can use the mute command.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -463,9 +485,7 @@ class CommandHandler {
         groupMuteStatus.set(groupId, muteUntil);
 
         await this.sock.sendMessage(groupId, { 
-            text: `🔇 Group muted for ${minutes} minutes\n` +
-                  `👮‍♂️ Only admins can send messages\n\n` +
-                  `🔇 הקבוצה הושתקה ל-${minutes} דקות\n` +
+            text: `🔇 הקבוצה הושתקה ל-${minutes} דקות\n` +
                   `👮‍♂️ רק מנהלים יכולים לשלוח הודעות`
         });
 
@@ -553,7 +573,7 @@ class CommandHandler {
     async handleStats(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can view statistics.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -789,7 +809,7 @@ class CommandHandler {
     async handleClear(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can clear messages.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -811,7 +831,7 @@ class CommandHandler {
     async handleWhitelist(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can manage whitelist.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -839,7 +859,7 @@ class CommandHandler {
     async handleWhitelistList(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can view whitelist.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1035,7 +1055,7 @@ Thank you for your cooperation.`;
     async handleBotForeign(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can use the botforeign command.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1235,7 +1255,7 @@ Thank you for your cooperation.`;
     async handleDebugNumbers(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can use the debug command.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1299,7 +1319,7 @@ Thank you for your cooperation.`;
     async handleUnmute(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can unmute.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1351,7 +1371,7 @@ Thank you for your cooperation.`;
     async handleUnwhitelist(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can manage whitelist.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1378,7 +1398,7 @@ Thank you for your cooperation.`;
     async handleBlacklistAdd(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can manage blacklist.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1407,7 +1427,7 @@ Thank you for your cooperation.`;
     async handleBlacklistRemove(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can manage blacklist.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1436,7 +1456,7 @@ Thank you for your cooperation.`;
     async handleBlacklistList(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can view blacklist.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1480,7 +1500,7 @@ Thank you for your cooperation.`;
     async handleBotKick(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can use the botkick command.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1631,7 +1651,7 @@ Thank you for your cooperation.`;
     async handleSessionCheck(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can check sessions.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -1678,7 +1698,7 @@ Thank you for your cooperation.`;
     async handleBotAdminCheck(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can check bot status.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -2226,7 +2246,7 @@ Thank you for your cooperation.`;
     async handleJokeStats(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can view joke statistics.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -2267,7 +2287,7 @@ Thank you for your cooperation.`;
     async handleRejoinLinks(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can manage rejoin links.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -2330,7 +2350,7 @@ Thank you for your cooperation.`;
     async handleWarningsView(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can view warnings.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -2386,7 +2406,7 @@ Thank you for your cooperation.`;
     async handleWarningsClear(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can clear warnings.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -2424,7 +2444,7 @@ Thank you for your cooperation.`;
     async handleWarningsStats(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can view warning statistics.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
@@ -2455,6 +2475,174 @@ Thank you for your cooperation.`;
             console.error('Error getting warning stats:', error);
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: '❌ Error retrieving warning statistics.' 
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle jokes enable command
+     */
+    async handleJokesOn(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Only administrators can manage joke settings.' 
+            });
+            return true;
+        }
+
+        // Only works in groups
+        if (!msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '⚠️ This command can only be used in groups.' 
+            });
+            return true;
+        }
+
+        try {
+            const groupId = msg.key.remoteJid;
+            const senderPhone = (msg.key.participant || msg.key.remoteJid).split('@')[0];
+            
+            // Get group metadata for name
+            let groupName = 'Unknown';
+            try {
+                const groupMetadata = await this.getCachedGroupMetadata(groupId);
+                groupName = groupMetadata.subject || 'Unknown';
+            } catch (error) {
+                console.log(`Could not get group metadata: ${error.message}`);
+            }
+
+            const success = await groupJokeSettingsService.setJokesEnabled(groupId, true, senderPhone, groupName);
+            
+            if (success) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `🎭✅ בדיחות משעמם הופעלו בקבוצה!\n\nכשמישהו כותב "משעמם", הבוט יענה עם בדיחה.` 
+                });
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `⚠️ בדיחות הופעלו מקומית, אך עדכון Firebase נכשל. ההגדרה תאבד בהפעלה מחדש.` 
+                });
+            }
+        } catch (error) {
+            console.error('Error enabling jokes:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ שגיאה בהפעלת בדיחות. נסה שוב.' 
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle jokes disable command
+     */
+    async handleJokesOff(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: 'מה אני עובד אצלך?!' 
+            });
+            return true;
+        }
+
+        // Only works in groups
+        if (!msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '⚠️ הפקודה הזו פועלת רק בקבוצות.' 
+            });
+            return true;
+        }
+
+        try {
+            const groupId = msg.key.remoteJid;
+            const senderPhone = (msg.key.participant || msg.key.remoteJid).split('@')[0];
+            
+            // Get group metadata for name
+            let groupName = 'Unknown';
+            try {
+                const groupMetadata = await this.getCachedGroupMetadata(groupId);
+                groupName = groupMetadata.subject || 'Unknown';
+            } catch (error) {
+                console.log(`Could not get group metadata: ${error.message}`);
+            }
+
+            const success = await groupJokeSettingsService.setJokesEnabled(groupId, false, senderPhone, groupName);
+            
+            if (success) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `🎭❌ בדיחות משעמם כובו בקבוצה!\n\nהבוט יתעלם מהודעות "משעמם" בקבוצה זו.` 
+                });
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: `⚠️ בדיחות כובו מקומית, אך עדכון Firebase נכשל. ההגדרה תאבד בהפעלה מחדש.` 
+                });
+            }
+        } catch (error) {
+            console.error('Error disabling jokes:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ שגיאה בכיבוי בדיחות. נסה שוב.' 
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle jokes status command
+     */
+    async handleJokesStatus(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: 'מה אני עובד אצלך?!' 
+            });
+            return true;
+        }
+
+        // Only works in groups
+        if (!msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '⚠️ הפקודה הזו פועלת רק בקבוצות.' 
+            });
+            return true;
+        }
+
+        try {
+            const groupId = msg.key.remoteJid;
+            
+            // Get group metadata for name
+            let groupName = 'Unknown';
+            try {
+                const groupMetadata = await this.getCachedGroupMetadata(groupId);
+                groupName = groupMetadata.subject || 'Unknown';
+            } catch (error) {
+                console.log(`Could not get group metadata: ${error.message}`);
+            }
+
+            const jokesEnabled = await groupJokeSettingsService.areJokesEnabled(groupId);
+            const settings = await groupJokeSettingsService.getGroupSettings(groupId);
+            
+            let statusText = `🎭 *סטטוס בדיחות עבור: ${groupName}*\n\n`;
+            statusText += `מצב: ${jokesEnabled ? '✅ מופעל' : '❌ כבוי'}\n`;
+            
+            if (settings.updated_at) {
+                const updateDate = new Date(settings.updated_at).toLocaleString('he-IL');
+                statusText += `עודכן לאחרונה: ${updateDate}\n`;
+                statusText += `עודכן על ידי: +${settings.updated_by}\n`;
+            } else {
+                statusText += `מצב: ברירת מחדל (ללא שינויים)\n`;
+            }
+            
+            statusText += `\n💡 *פקודות:*\n`;
+            statusText += `• #jokeson - הפעל בדיחות משעמם\n`;
+            statusText += `• #jokesoff - כבה בדיחות משעמם\n`;
+            statusText += `• #jokesstatus - הצג מצב נוכחי`;
+            
+            await this.sock.sendMessage(msg.key.remoteJid, { text: statusText });
+            
+        } catch (error) {
+            console.error('Error getting joke status:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ שגיאה באחזור סטטוס בדיחות. נסה שוב.' 
             });
         }
 

@@ -8,6 +8,7 @@ const pino = require('pino');
 const { logger, getTimestamp } = require('./utils/logger');
 const config = require('./config');
 const SingleInstance = require('./single-instance');
+const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT } = require('./utils/sessionManager');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -269,7 +270,7 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
 }
 
 const CommandHandler = require('./services/commandHandler');
-const { handleSessionError, clearSessionErrors, mightContainInviteLink, extractMessageText } = require('./utils/sessionManager');
+const { clearSessionErrors, mightContainInviteLink, extractMessageText } = require('./utils/sessionManager');
 const { sendKickAlert, sendSecurityAlert } = require('./utils/alertService');
 
 // Track kicked users to prevent spam
@@ -527,6 +528,11 @@ async function startBot() {
             // Start the hourly admin refresh scheduler
             startAdminRefreshScheduler(sock);
             
+            // Initialize startup phase timer
+            if (!startupTimer) {
+                startupTimer = setTimeout(clearStartupPhase, STARTUP_TIMEOUT);
+            }
+            
             console.log(`\n[${getTimestamp()}] ✅ Bot connected successfully!`);
             console.log(`Bot ID: ${sock.user.id}`);
             console.log(`Bot Name: ${sock.user.name}`);
@@ -538,14 +544,16 @@ async function startBot() {
             console.log(`Bot Phone: ${botPhone}`);
             
             console.log(`\n🛡️ CommGuard Bot (Baileys Edition) is now protecting your groups!`);
-            console.log(`🔧 Enhanced Error 515 protection active`);
+            console.log(`🔧 Enhanced session error recovery active`);
+            console.log(`⚡ Fast startup mode enabled (${STARTUP_TIMEOUT / 1000}s)`);
             
             // Send startup notification with error status
             try {
                 const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
                 const statusMessage = `🟢 CommGuard Bot Started\n\n` +
                                     `✅ Bot is now online and monitoring groups\n` +
-                                    `🔧 Enhanced Error 515 protection enabled\n` +
+                                    `🔧 Enhanced session error recovery enabled\n` +
+                                    `⚡ Fast startup mode active\n` +
                                     `📊 Connection stable after ${reconnectAttempts} attempts\n` +
                                     `⏰ Time: ${getTimestamp()}`;
                 await sock.sendMessage(adminId, { text: statusMessage });
@@ -584,12 +592,38 @@ async function startBot() {
     sock.sendMessageWithRetry = sendMessageWithRetry;
 
     // Handle incoming messages with improved error handling
+    // Track startup phase to optimize session handling
+    let isStartupPhase = true;
+    let startupTimer = null;
+    
+    // Clear startup phase after timeout
+    const clearStartupPhase = () => {
+        if (isStartupPhase) {
+            isStartupPhase = false;
+            clearProblematicUsers();
+            console.log(`[${getTimestamp()}] 🚀 Startup phase completed - normal operation mode`);
+        }
+    };
+
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         // Only process new messages
         if (type !== 'notify') return;
         
+        // Clear startup phase timer on first real message
+        if (isStartupPhase && startupTimer) {
+            clearTimeout(startupTimer);
+            startupTimer = setTimeout(clearStartupPhase, STARTUP_TIMEOUT);
+        }
+        
         for (const msg of messages) {
             try {
+                const userId = msg.key.participant || msg.key.remoteJid;
+                
+                // Skip problematic users during startup
+                if (isStartupPhase && shouldSkipUser(userId)) {
+                    continue;
+                }
+                
                 await handleMessage(sock, msg, commandHandler);
             } catch (error) {
                 // Handle session errors specifically
@@ -597,7 +631,13 @@ async function startBot() {
                     error.message?.includes('session') ||
                     error.message?.includes('Bad MAC')) {
                     
-                    const result = await handleSessionError(sock, error, msg);
+                    const result = await handleSessionError(sock, error, msg, isStartupPhase);
+                    
+                    // During startup, skip problematic users
+                    if (result.skip && isStartupPhase) {
+                        console.log(`⚡ Skipped session error during startup: ${result.userId}`);
+                        continue;
+                    }
                     
                     // If suspicious activity detected, take action
                     if (result.suspicious && msg.key.remoteJid.endsWith('@g.us')) {
@@ -623,8 +663,8 @@ async function startBot() {
                         }
                     }
                     
-                    // Retry if needed
-                    if (result.retry) {
+                    // Retry if needed (not during startup)
+                    if (result.retry && !isStartupPhase) {
                         try {
                             await handleMessage(sock, msg, commandHandler);
                         } catch (retryError) {
@@ -758,7 +798,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 // Non-admin tried to use admin command
                 console.log(`   Command Rejected: ❌ Non-admin user`);
                 await sock.sendMessage(chatId, { 
-                    text: '❌ Only admins can use bot commands.' 
+                    text: 'מה אני עובד אצלך?!' 
                 });
                 return;
             }
@@ -926,7 +966,7 @@ async function handleMessage(sock, msg, commandHandler) {
         if (!isAdmin) {
             console.log(`   Result: ❌ Non-admin tried to use command`);
             await sock.sendMessage(groupId, { 
-                text: '❌ Only admins can use bot commands.' 
+                text: 'מה אני עובד אצלך?!' 
             });
             return;
         }
@@ -1019,6 +1059,15 @@ async function handleMessage(sock, msg, commandHandler) {
         
         // Mark message as processed for "משעמם" responses
         CommandHandler.processedMessages.add(messageId + '_boring');
+        
+        // Check if jokes are enabled for this group
+        const groupJokeSettingsService = require('./services/groupJokeSettingsService');
+        const jokesEnabled = await groupJokeSettingsService.areJokesEnabled(groupId);
+        
+        if (!jokesEnabled) {
+            console.log(`[${getTimestamp()}] 🎭 "משעמם" jokes disabled for group ${groupId} - ignoring message`);
+            return; // Skip joke response if disabled for this group
+        }
         
         console.log(`[${getTimestamp()}] 😴 "משעמם" detected from ${senderId} in ${groupId}`);
         
