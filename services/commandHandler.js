@@ -5,6 +5,7 @@ const { addMutedUser, removeMutedUser, isMuted, getMutedUsers } = require('./mut
 const { getTimestamp } = require('../utils/logger');
 const { sendKickAlert } = require('../utils/alertService');
 const searchService = require('./searchService');
+const { translationService } = require('./translationService');
 
 // Conditionally load unblacklist request service
 let unblacklistRequestService;
@@ -142,6 +143,16 @@ class CommandHandler {
                 case '#verify':
                     return await this.handleVerifyLink(msg, args, isAdmin);
                     
+                case '#translate':
+                    return await this.handleTranslate(msg, args, isAdmin);
+                    
+                case '#langs':
+                    return await this.handleLanguageList(msg, isAdmin);
+                    
+                case '#autotranslate':
+                case '#translation':
+                    return await this.handleTranslationToggle(msg, args, isAdmin);
+                    
                 // #free system removed - use admin #unblacklist instead
                 
                 default:
@@ -241,9 +252,17 @@ class CommandHandler {
 • *#search <query>* - Search the web (rate limited: 5/minute)
 • *#verify <url>* - Verify if a link is safe
 
+*🌐 Translation Commands (✅ CONFIGURED & READY):*
+• *#translate <text>* - Translate to English (auto-detect source)
+• *#translate <lang> <text>* - Translate to specific language
+• *#langs* - Show supported language codes (20+ languages)
+• *#autotranslate <on/off/status>* - Control auto-translation feature globally
+• **Auto-Translation** - Reply to non-Hebrew messages → Bot translates to Hebrew automatically
+• **Smart Detection** - Only translates pure non-Hebrew (ignores mixed Hebrew/English)
+
 *🎭 Entertainment Commands:*
 • *#jokestats* - View motivational phrase usage statistics
-• **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (95+ jokes)
+• **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (125+ jokes)
 
 *⚠️ Warning System Commands:*
 • *#warnings [phone]* - View warnings for specific user
@@ -273,7 +292,7 @@ class CommandHandler {
 5. **Anti-Boredom System** ✅
    - Auto-detects: Messages containing "משעמם" 
    - Actions: Responds with random funny Hebrew jokes
-   - Features: Smart rotation, usage tracking, 95+ modern Hebrew jokes
+   - Features: Smart rotation, usage tracking, 125+ modern Hebrew jokes
 
 *⚙️ SPECIAL BEHAVIORS:*
 • Bot needs admin to work (bypass enabled for LID issues)
@@ -351,6 +370,10 @@ class CommandHandler {
 • Remove all foreign users: \`#botforeign\`
 • Get jokes: Any message with "משעמם" → Bot responds with humor
 • View joke stats: \`#jokestats\`
+• Translate text: \`#translate שלום עולם\` → "Hello world" ✅ READY
+• Translate to Hebrew: \`#translate he Good morning\` → "בוקר טוב" ✅ READY
+• Auto-translate: Reply to "Hello world" → Bot shows Hebrew translation ✅ ACTIVE
+• Control auto-translate: \`#autotranslate off\` → Disable globally ✅ READY
 
 *⚠️ Important Notes:*
 • Most commands require admin privileges
@@ -1827,6 +1850,178 @@ Thank you for your cooperation.`;
             });
         }
 
+        return true;
+    }
+
+    /**
+     * Handle translation command
+     */
+    async handleTranslate(msg, args, isAdmin) {
+        if (args.length === 0) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Please provide text to translate\n\n📝 *Usage:*\n• #translate <text> - Translate to English\n• #translate <lang> <text> - Translate to specific language\n\n🌐 Example:\n• #translate שלום עולם\n• #translate he Hello world\n• #translate fr Bonjour le monde\n\nUse #langs to see supported languages' 
+            });
+            return true;
+        }
+
+        try {
+            // Initialize translation service
+            await translationService.initialize();
+            
+            let targetLang = 'en';
+            let textToTranslate = args.join(' ');
+            const userId = msg.key.participant || msg.key.remoteJid;
+            
+            // Check if first argument is a language code
+            const possibleLangCode = translationService.parseLanguageCode(args[0]);
+            if (possibleLangCode && args.length > 1) {
+                targetLang = possibleLangCode;
+                textToTranslate = args.slice(1).join(' ');
+            }
+            
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `🌐 Translating to ${translationService.getSupportedLanguages()[targetLang] || targetLang}...` 
+            });
+            
+            const result = await translationService.translateText(textToTranslate, targetLang, null, userId);
+            
+            let response = `🌐 *Translation Result*\n\n`;
+            response += `📝 *Original:* ${result.originalText}\n`;
+            response += `🔤 *Detected:* ${translationService.getSupportedLanguages()[result.detectedLanguage] || result.detectedLanguage}\n`;
+            response += `🎯 *Target:* ${translationService.getSupportedLanguages()[result.targetLanguage]}\n\n`;
+            response += `✨ *Translation:* ${result.translatedText}`;
+            
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: response 
+            });
+            
+            console.log(`[${getTimestamp()}] ✅ Translation completed: ${result.detectedLanguage} → ${targetLang}`);
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Translation failed:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: `❌ Translation failed: ${error.message}\n\n💡 Note: Translation requires Google Translate API setup. Add GOOGLE_TRANSLATE_API_KEY to your environment.` 
+            });
+        }
+        
+        return true;
+    }
+
+    /**
+     * Handle language list command
+     */
+    async handleLanguageList(msg, isAdmin) {
+        try {
+            const languages = translationService.getSupportedLanguages();
+            
+            let response = `🌐 *Supported Languages*\n\n`;
+            response += `Use these codes with #translate:\n\n`;
+            
+            // Group languages for better readability
+            const entries = Object.entries(languages);
+            for (let i = 0; i < entries.length; i += 2) {
+                const [code1, name1] = entries[i];
+                const line = entries[i + 1] 
+                    ? `• ${code1} = ${name1}\n• ${entries[i + 1][0]} = ${entries[i + 1][1]}\n`
+                    : `• ${code1} = ${name1}\n`;
+                response += line;
+            }
+            
+            response += `\n💡 *Examples:*\n`;
+            response += `• #translate he Hello world\n`;
+            response += `• #translate עברית Good morning\n`;
+            response += `• #translate fr Bonjour`;
+            
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: response 
+            });
+            
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Language list failed:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Failed to get language list. Please try again later.' 
+            });
+        }
+        
+        return true;
+    }
+
+    /**
+     * Handle translation toggle command (admin only)
+     */
+    async handleTranslationToggle(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ This command is admin only.' 
+            });
+            return true;
+        }
+
+        const command = args.toLowerCase();
+        const config = require('../config');
+        
+        try {
+            if (command === 'on' || command === 'enable') {
+                config.FEATURES.AUTO_TRANSLATION = true;
+                
+                let response = `✅ *Auto-Translation Enabled*\n\n`;
+                response += `🌐 Bot will now automatically translate non-Hebrew replies to Hebrew\n\n`;
+                response += `📋 *How it works:*\n`;
+                response += `• When someone replies to a non-Hebrew message\n`;
+                response += `• Bot detects if ALL words are non-Hebrew\n`;
+                response += `• Bot translates the quoted text to Hebrew\n`;
+                response += `• Mixed Hebrew/non-Hebrew messages are ignored\n\n`;
+                response += `⚙️ Use \`#autotranslate off\` to disable`;
+                
+                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                console.log(`[${getTimestamp()}] ✅ Auto-translation enabled by admin`);
+                
+            } else if (command === 'off' || command === 'disable') {
+                config.FEATURES.AUTO_TRANSLATION = false;
+                
+                let response = `❌ *Auto-Translation Disabled*\n\n`;
+                response += `🚫 Bot will no longer automatically translate replies\n\n`;
+                response += `💡 Manual translation commands still work:\n`;
+                response += `• \`#translate <text>\` - Translate to English\n`;
+                response += `• \`#translate <lang> <text>\` - Translate to specific language\n\n`;
+                response += `⚙️ Use \`#autotranslate on\` to re-enable`;
+                
+                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                console.log(`[${getTimestamp()}] ❌ Auto-translation disabled by admin`);
+                
+            } else if (command === 'status' || command === '') {
+                const isEnabled = config.FEATURES.AUTO_TRANSLATION;
+                
+                let response = `🌐 *Auto-Translation Status*\n\n`;
+                response += `📊 Current Status: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}\n\n`;
+                
+                if (isEnabled) {
+                    response += `🎯 *Active Settings:*\n`;
+                    response += `• Translates non-Hebrew replies → Hebrew\n`;
+                    response += `• Strict detection: ALL words must be non-Hebrew\n`;
+                    response += `• Rate limited: 10 translations/minute per user\n`;
+                    response += `• Minimum text length: 5 characters\n\n`;
+                    response += `⚙️ Use \`#autotranslate off\` to disable`;
+                } else {
+                    response += `💡 *Available Commands:*\n`;
+                    response += `• \`#autotranslate on\` - Enable auto-translation\n`;
+                    response += `• \`#translate <text>\` - Manual translation still works\n`;
+                }
+                
+                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '❌ Invalid option. Use:\n• `#autotranslate on` - Enable\n• `#autotranslate off` - Disable\n• `#autotranslate status` - Check status' 
+                });
+            }
+            
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Translation toggle failed:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Failed to toggle auto-translation. Please try again later.' 
+            });
+        }
+        
         return true;
     }
 

@@ -201,6 +201,9 @@ Create a `.env` file for sensitive data:
 GOOGLE_SEARCH_API_KEY=your-key-here
 GOOGLE_SEARCH_ENGINE_ID=your-id-here
 
+# Google Translate API
+GOOGLE_TRANSLATE_API_KEY=your-translate-key-here
+
 # Puppeteer Options
 PUPPETEER_HEADLESS=true
 PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
@@ -217,8 +220,67 @@ MCP_LOG_LEVEL=info
 4. Create search result formatting
 5. Add search history/logging
 
+# Google Translate API Setup
+
+The bot includes translation features using Google Translate API.
+
+## 1. Get Google Translate API Key
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable the "Cloud Translation API"
+4. Go to "Credentials" and create an API key
+5. Copy your API key
+
+## 2. Configure Translation Service
+
+Add your API key to the environment:
+
+```bash
+export GOOGLE_TRANSLATE_API_KEY="your-actual-api-key"
+```
+
+Or add it to your `.env` file:
+
+```env
+GOOGLE_TRANSLATE_API_KEY=your-actual-api-key
+```
+
+## 3. Available Translation Commands
+
+- `#translate <text>` - Translate to English (auto-detect source)
+- `#translate <lang> <text>` - Translate to specific language
+- `#langs` - Show supported language codes
+- **Auto-Translation** - Reply to non-Hebrew messages → Bot translates to Hebrew automatically
+
+### Examples:
+- `#translate שלום עולם` → "Hello world"
+- `#translate he Good morning` → "בוקר טוב"
+- `#translate fr Bonjour` → "Hello"
+
+### Auto-Translation Example:
+1. User A: "Hello everyone, how are you today?"
+2. User B: [Replies to the above message]
+3. Bot automatically responds: 
+   ```
+   🌐 תרגום לעברית:
+   
+   "שלום לכולם, איך אתם היום?"
+   
+   📝 מקור: English
+   ```
+
+## 4. Supported Languages
+
+The service supports 20+ languages including:
+- Hebrew (he), Arabic (ar), English (en)
+- Spanish (es), French (fr), German (de)
+- Russian (ru), Chinese (zh), Japanese (ja)
+- And many more (use `#langs` command)
+
 ## Resources
 
 - [MCP Documentation](https://modelcontextprotocol.io/docs)
 - [Puppeteer Documentation](https://pptr.dev/)
 - [Google Custom Search API](https://developers.google.com/custom-search/v1/introduction)
+- [Google Translate API](https://cloud.google.com/translate/docs)

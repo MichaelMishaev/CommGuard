@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+require('dotenv').config();
+
 const { makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
@@ -662,6 +665,33 @@ async function startBot() {
     return sock;
 }
 
+// Helper function to check if ALL text is non-Hebrew (strict detection)
+function isTextAllNonHebrew(text) {
+    if (!text || text.trim().length === 0) return false;
+    
+    // Split text into words and check each word
+    const words = text.trim().split(/\s+/);
+    const hebrewRegex = /[\u0590-\u05FF]/;
+    let hasNonHebrewWords = false;
+    
+    for (const word of words) {
+        // Skip pure punctuation, numbers, or very short words
+        const cleanWord = word.replace(/[^\w\u0590-\u05FF]/g, '');
+        if (cleanWord.length === 0 || /^\d+$/.test(cleanWord)) continue;
+        
+        // If ANY word contains Hebrew characters, reject the entire text
+        if (hebrewRegex.test(word)) {
+            return false;
+        }
+        
+        // Mark that we found at least one valid non-Hebrew word
+        hasNonHebrewWords = true;
+    }
+    
+    // Only return true if we have actual non-Hebrew words (not just numbers/punctuation)
+    return hasNonHebrewWords;
+}
+
 // Handle incoming messages
 async function handleMessage(sock, msg, commandHandler) {
     // Check if it's a group or private message
@@ -908,6 +938,71 @@ async function handleMessage(sock, msg, commandHandler) {
             console.log(`   Result: ❌ Unknown command`);
         }
         if (handled) return;
+    }
+    
+    // Check for replies to non-Hebrew messages and translate them to Hebrew
+    if (config.FEATURES.AUTO_TRANSLATION && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.quotedMessage) {
+        try {
+            const quotedMessage = msg.message.extendedTextMessage.contextInfo.quotedMessage;
+            let quotedText = '';
+            
+            // Extract text from quoted message (handle different message types)
+            if (quotedMessage.conversation) {
+                quotedText = quotedMessage.conversation;
+            } else if (quotedMessage.extendedTextMessage && quotedMessage.extendedTextMessage.text) {
+                quotedText = quotedMessage.extendedTextMessage.text;
+            }
+            
+            if (quotedText && quotedText.trim().length > 5) { // Only translate meaningful text
+                // Strict Hebrew detection - ALL words must be non-Hebrew
+                const isAllNonHebrew = isTextAllNonHebrew(quotedText);
+                
+                if (isAllNonHebrew) { // Only translate if ALL text is non-Hebrew
+                    console.log(`[${getTimestamp()}] 🌐 Non-Hebrew quoted message detected from ${senderId}`);
+                    console.log(`   Quoted text: "${quotedText.substring(0, 50)}..."`);
+                    
+                    // Import translation service
+                    const { translationService } = require('./services/translationService');
+                    await translationService.initialize();
+                    
+                    if (translationService.initialized) {
+                        const userId = senderId;
+                        
+                        try {
+                            // Check rate limiting for translation
+                            translationService.checkRateLimit(userId);
+                            
+                            // Translate to Hebrew
+                            const result = await translationService.translateText(quotedText, 'he', null, userId);
+                            
+                            // Send translation as reply
+                            let translationResponse = `🌐 *תרגום לעברית:*\n\n`;
+                            translationResponse += `"${result.translatedText}"\n\n`;
+                            translationResponse += `📝 *מקור:* ${translationService.getSupportedLanguages()[result.detectedLanguage] || result.detectedLanguage}`;
+                            
+                            await sock.sendMessage(groupId, { 
+                                text: translationResponse,
+                                contextInfo: {
+                                    quotedMessage: msg.message,
+                                    participant: senderId
+                                }
+                            });
+                            
+                            console.log(`✅ Sent Hebrew translation for ${result.detectedLanguage} text`);
+                            
+                        } catch (translationError) {
+                            if (translationError.message.includes('Rate limit')) {
+                                console.log(`   ⏳ Translation skipped: Rate limited for user ${userId}`);
+                            } else {
+                                console.error(`❌ Translation failed:`, translationError.message);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Reply translation error:`, error.message);
+        }
     }
     
     // Check for "משעמם" messages and respond with funny jokes
