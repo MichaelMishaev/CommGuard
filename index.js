@@ -1007,6 +1007,19 @@ async function handleMessage(sock, msg, commandHandler) {
     
     // Check for "משעמם" messages and respond with funny jokes
     if (messageText.includes('משעמם')) {
+        // Use the same deduplication logic as the command handler
+        const CommandHandler = require('./services/commandHandler');
+        const messageId = msg.key.id;
+        
+        // Check if we already processed this "משעמם" message
+        if (CommandHandler.processedMessages.has(messageId + '_boring')) {
+            console.log(`[${getTimestamp()}] ⚠️ Duplicate "משעמם" message ignored: ${messageId}`);
+            return; // Skip processing
+        }
+        
+        // Mark message as processed for "משעמם" responses
+        CommandHandler.processedMessages.add(messageId + '_boring');
+        
         console.log(`[${getTimestamp()}] 😴 "משעמם" detected from ${senderId} in ${groupId}`);
         
         try {
