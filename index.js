@@ -745,7 +745,7 @@ async function handleMessage(sock, msg, commandHandler) {
             
             const parts = messageText.trim().split(/\s+/);
             const command = parts[0];
-            const args = parts.slice(1).join(' ');
+            const args = parts.slice(1); // Keep as array for proper command handling
             
             // Only admins can use bot commands
             if (isAdmin) {
@@ -775,7 +775,7 @@ async function handleMessage(sock, msg, commandHandler) {
             
             const parts = messageText.trim().split(/\s+/);
             const command = parts[0]; // "yes" or "no"  
-            const args = parts.slice(1).join(' '); // "972555030746"
+            const args = parts.slice(1); // Keep as array for proper command handling
             
             const handled = await commandHandler.handleCommand(msg, command, args, isAdmin, isAdmin);
             if (handled) {
@@ -902,7 +902,7 @@ async function handleMessage(sock, msg, commandHandler) {
     if (messageText.startsWith('#')) {
         const parts = messageText.trim().split(/\s+/);
         const command = parts[0];
-        const args = parts.slice(1).join(' ');
+        const args = parts.slice(1); // Keep as array for proper command handling
         
         // Log group commands to console
         const senderPhone = senderId.split('@')[0];

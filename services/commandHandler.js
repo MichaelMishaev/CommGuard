@@ -447,7 +447,8 @@ class CommandHandler {
     }
 
     async handleMuteGroup(msg, args) {
-        const minutes = parseInt(args, 10);
+        const argsString = Array.isArray(args) ? args[0] : args;
+        const minutes = parseInt(argsString, 10);
         if (!minutes || minutes <= 0) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: `⚠️ Please specify valid minutes. Example: #mute 10\n` +
@@ -482,7 +483,8 @@ class CommandHandler {
 
     async handleMuteUser(msg, args) {
         // Implementation for muting specific user
-        const parts = args.split(' ');
+        const argsString = Array.isArray(args) ? args.join(' ') : args;
+        const parts = argsString.split(' ');
         const minutes = parseInt(parts[0], 10) || 60; // Default 1 hour
         
         if (minutes <= 0) {
@@ -1857,9 +1859,22 @@ Thank you for your cooperation.`;
      * Handle translation command
      */
     async handleTranslate(msg, args, isAdmin) {
-        if (args.length === 0) {
+        // Check if replying to a message
+        const quotedMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        let textToTranslateFromQuoted = null;
+        
+        if (quotedMessage) {
+            // Extract text from quoted message
+            textToTranslateFromQuoted = quotedMessage.conversation || 
+                                      quotedMessage.extendedTextMessage?.text ||
+                                      quotedMessage.imageMessage?.caption ||
+                                      quotedMessage.videoMessage?.caption;
+        }
+        
+        // If no args and no quoted message, show help
+        if (args.length === 0 && !textToTranslateFromQuoted) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Please provide text to translate\n\n📝 *Usage:*\n• #translate <text> - Translate to English\n• #translate <lang> <text> - Translate to specific language\n\n🌐 Example:\n• #translate שלום עולם\n• #translate he Hello world\n• #translate fr Bonjour le monde\n\nUse #langs to see supported languages' 
+                text: '❌ Please provide text to translate\n\n📝 *Usage:*\n• #translate <text> - Translate to Hebrew (default)\n• #translate <lang> <text> - Translate to specific language\n• *Reply* to a message with #translate - Translate that message\n• *Reply* to a message with #translate <lang> - Translate to specific language\n\n🌐 Example:\n• #translate Hello world\n• #translate en שלום עולם\n• #translate fr Bonjour le monde\n\nUse #langs to see supported languages' 
             });
             return true;
         }
@@ -1868,15 +1883,32 @@ Thank you for your cooperation.`;
             // Initialize translation service
             await translationService.initialize();
             
-            let targetLang = 'en';
-            let textToTranslate = args.join(' ');
+            let targetLang = 'he'; // Default to Hebrew
+            let textToTranslate;
             const userId = msg.key.participant || msg.key.remoteJid;
             
-            // Check if first argument is a language code
-            const possibleLangCode = translationService.parseLanguageCode(args[0]);
-            if (possibleLangCode && args.length > 1) {
-                targetLang = possibleLangCode;
-                textToTranslate = args.slice(1).join(' ');
+            // Determine what text to translate and target language
+            if (textToTranslateFromQuoted) {
+                // Translating quoted message
+                textToTranslate = textToTranslateFromQuoted;
+                
+                // Check if args specify a target language
+                if (args.length > 0) {
+                    const possibleLangCode = translationService.parseLanguageCode(args[0]);
+                    if (possibleLangCode) {
+                        targetLang = possibleLangCode;
+                    }
+                }
+            } else {
+                // Translating provided text
+                textToTranslate = args.join(' ');
+                
+                // Check if first argument is a language code
+                const possibleLangCode = translationService.parseLanguageCode(args[0]);
+                if (possibleLangCode && args.length > 1) {
+                    targetLang = possibleLangCode;
+                    textToTranslate = args.slice(1).join(' ');
+                }
             }
             
             await this.sock.sendMessage(msg.key.remoteJid, { 
@@ -1885,11 +1917,8 @@ Thank you for your cooperation.`;
             
             const result = await translationService.translateText(textToTranslate, targetLang, null, userId);
             
-            let response = `🌐 *Translation Result*\n\n`;
-            response += `📝 *Original:* ${result.originalText}\n`;
-            response += `🔤 *Detected:* ${translationService.getSupportedLanguages()[result.detectedLanguage] || result.detectedLanguage}\n`;
-            response += `🎯 *Target:* ${translationService.getSupportedLanguages()[result.targetLanguage]}\n\n`;
-            response += `✨ *Translation:* ${result.translatedText}`;
+            // Simple clean response - just the translation
+            const response = result.translatedText;
             
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: response 
@@ -1956,7 +1985,8 @@ Thank you for your cooperation.`;
             return true;
         }
 
-        const command = args.toLowerCase();
+        const argsString = Array.isArray(args) ? args.join(' ') : args;
+        const command = argsString.toLowerCase();
         const config = require('../config');
         
         try {
@@ -2250,7 +2280,8 @@ Thank you for your cooperation.`;
         }
 
         try {
-            const phoneNumber = args.trim();
+            const argsString = Array.isArray(args) ? args.join(' ') : args;
+            const phoneNumber = argsString.trim();
             const userId = `${phoneNumber}@s.whatsapp.net`;
             const { kickedUserService } = require('./kickedUserService');
 
