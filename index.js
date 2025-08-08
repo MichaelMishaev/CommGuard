@@ -18,6 +18,19 @@ const groupAdminCache = new Map(); // Memory cache for speed
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
 const DB_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour DB updates
 
+// Startup phase management for session optimization
+let isStartupPhase = true;
+let startupTimer = null;
+
+// Clear startup phase after timeout
+const clearStartupPhase = () => {
+    if (isStartupPhase) {
+        isStartupPhase = false;
+        clearProblematicUsers();
+        console.log(`[${getTimestamp()}] 🚀 Startup phase completed - normal operation mode`);
+    }
+};
+
 // Smart admin checking system (DB + Cache)
 async function isUserAdmin(sock, groupId, userId) {
     const now = Date.now();
@@ -592,18 +605,7 @@ async function startBot() {
     sock.sendMessageWithRetry = sendMessageWithRetry;
 
     // Handle incoming messages with improved error handling
-    // Track startup phase to optimize session handling
-    let isStartupPhase = true;
-    let startupTimer = null;
-    
-    // Clear startup phase after timeout
-    const clearStartupPhase = () => {
-        if (isStartupPhase) {
-            isStartupPhase = false;
-            clearProblematicUsers();
-            console.log(`[${getTimestamp()}] 🚀 Startup phase completed - normal operation mode`);
-        }
-    };
+    // Startup phase is managed globally
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         // Only process new messages
