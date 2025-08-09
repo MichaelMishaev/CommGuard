@@ -22,12 +22,41 @@ const DB_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour DB updates
 let isStartupPhase = true;
 let startupTimer = null;
 
+// Track bot startup time to ignore old messages from while bot was down
+const BOT_START_TIME = Date.now();
+const MESSAGE_GRACE_PERIOD = 60000; // 60 seconds grace period for clock differences
+let skippedOldMessagesCount = 0;
+
+// Check if message is from before bot startup (should be ignored)
+function shouldIgnoreOldMessage(msg) {
+    if (!msg.messageTimestamp) {
+        return false; // No timestamp, process normally
+    }
+    
+    const messageTime = msg.messageTimestamp * 1000; // Convert to milliseconds
+    const cutoffTime = BOT_START_TIME - MESSAGE_GRACE_PERIOD;
+    
+    if (messageTime < cutoffTime) {
+        const messageAge = Math.floor((BOT_START_TIME - messageTime) / 1000);
+        skippedOldMessagesCount++;
+        
+        // Only log every 10th skipped message to avoid spam
+        if (skippedOldMessagesCount % 10 === 0) {
+            console.log(`⏭️ Skipped ${skippedOldMessagesCount} old messages (latest: ${messageAge}s old)`);
+        }
+        return true;
+    }
+    
+    return false;
+}
+
 // Clear startup phase after timeout
 const clearStartupPhase = () => {
     if (isStartupPhase) {
         isStartupPhase = false;
         clearProblematicUsers();
         console.log(`[${getTimestamp()}] 🚀 Startup phase completed - normal operation mode`);
+        console.log(`[${getTimestamp()}] 📊 Startup summary: Skipped ${skippedOldMessagesCount} old messages from downtime`);
     }
 };
 
@@ -324,6 +353,12 @@ const baileysLogger = {
                 
                 // Track decryption failures for monitoring
                 const userId = args[0].key?.participant || args[0].key?.remoteJid || 'unknown';
+                
+                // Suppress @lid failures - they're handled elsewhere
+                if (userId && userId.includes('@lid')) {
+                    return; // Silently ignore @lid decryption errors to prevent log spam
+                }
+                
                 console.log(`[${getTimestamp()}] 🔐 Decryption failed for ${userId} - ${err.message || msg}`);
                 return; // Don't spam logs with full error details
             }
@@ -551,6 +586,11 @@ async function startBot() {
             console.log(`Bot Name: ${sock.user.name}`);
             console.log(`Bot Platform: ${sock.user.platform || 'Unknown'}`);
             
+            // Log timestamp filtering info
+            const cutoffTime = new Date(BOT_START_TIME - MESSAGE_GRACE_PERIOD);
+            console.log(`⏭️ Ignoring messages older than: ${cutoffTime.toLocaleString()}`);
+            console.log(`⚡ This will skip message backlog from while bot was down`);
+            
             // Store bot phone for later use
             const botPhone = sock.user.id.split(':')[0].split('@')[0];
             sock.botPhone = botPhone;
@@ -559,6 +599,55 @@ async function startBot() {
             console.log(`\n🛡️ CommGuard Bot (Baileys Edition) is now protecting your groups!`);
             console.log(`🔧 Enhanced session error recovery active`);
             console.log(`⚡ Fast startup mode enabled (${STARTUP_TIMEOUT / 1000}s)`);
+            
+            // NUCLEAR: Clear ALL sessions to force completely fresh start
+            try {
+                if (sock.authState && sock.authState.keys) {
+                    let clearedCount = 0;
+                    
+                    // Clear ALL sessions
+                    if (sock.authState.keys.sessions) {
+                        const sessionCount = Object.keys(sock.authState.keys.sessions).length;
+                        sock.authState.keys.sessions = {};
+                        clearedCount += sessionCount;
+                    }
+                    
+                    // Clear sender keys
+                    if (sock.authState.keys.senderKeys) {
+                        const senderKeyCount = Object.keys(sock.authState.keys.senderKeys).length;
+                        sock.authState.keys.senderKeys = {};
+                        clearedCount += senderKeyCount;
+                    }
+                    
+                    console.log(`🚨 NUCLEAR: Cleared ALL ${clearedCount} sessions for fresh start`);
+                    console.log(`⏰ Ignoring ALL messages for next 10 minutes to prevent session corruption`);
+                    
+                    // ULTIMATE FIX: Override Baileys decryption function during startup
+                    const originalDecrypt = sock.decryptMessage;
+                    if (originalDecrypt) {
+                        sock.decryptMessage = async function(msg) {
+                            const userId = msg.key?.participant || msg.key?.remoteJid;
+                            
+                            // Block ALL decryption during startup phase
+                            if (isStartupPhase) {
+                                return null; // Return null instead of decrypted content
+                            }
+                            
+                            // Block @lid users permanently 
+                            if (userId && userId.includes('@lid')) {
+                                return null; // Block all @lid decryption
+                            }
+                            
+                            // Allow normal decryption for regular users after startup
+                            return originalDecrypt.call(this, msg);
+                        };
+                        
+                        console.log(`🚫 OVERRODE Baileys decryption to block problematic messages`);
+                    }
+                }
+            } catch (error) {
+                console.log('⚠️ Could not clear sessions:', error.message);
+            }
             
             // Send startup notification with error status
             try {
@@ -611,19 +700,18 @@ async function startBot() {
         // Only process new messages
         if (type !== 'notify') return;
         
-        // Clear startup phase timer on first real message
-        if (isStartupPhase && startupTimer) {
-            clearTimeout(startupTimer);
-            startupTimer = setTimeout(clearStartupPhase, STARTUP_TIMEOUT);
-        }
-        
         for (const msg of messages) {
             try {
+                // Skip old messages from before bot startup (much faster than session error handling)
+                if (shouldIgnoreOldMessage(msg)) {
+                    continue;
+                }
+                
                 const userId = msg.key.participant || msg.key.remoteJid;
                 
-                // Skip problematic users during startup
-                if (isStartupPhase && shouldSkipUser(userId)) {
-                    continue;
+                // Skip @lid users during startup to prevent issues
+                if (isStartupPhase && userId && userId.includes('@lid')) {
+                    continue; // @lid users blocked during startup only
                 }
                 
                 await handleMessage(sock, msg, commandHandler);
@@ -710,6 +798,23 @@ async function startBot() {
 // Helper function to check if ALL text is non-Hebrew (strict detection)
 function isTextAllNonHebrew(text) {
     if (!text || text.trim().length === 0) return false;
+    
+    // Skip URLs - don't translate URLs or messages that are primarily URLs
+    const urlRegex = /(?:https?:\/\/|www\.|ftp:\/\/|[\w-]+\.[\w.-]+(?:\/[\w\-._~:/?#[\]@!$&'()*+,;=]*)?)/gi;
+    const urls = text.match(urlRegex) || [];
+    
+    // If text contains URLs, don't translate
+    if (urls.length > 0) {
+        console.log(`[${getTimestamp()}] 🔗 Skipping translation - text contains URLs`);
+        return false;
+    }
+    
+    // Skip email addresses
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+    if (emailRegex.test(text)) {
+        console.log(`[${getTimestamp()}] 📧 Skipping translation - text contains email addresses`);
+        return false;
+    }
     
     // Split text into words and check each word
     const words = text.trim().split(/\s+/);

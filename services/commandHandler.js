@@ -681,15 +681,31 @@ class CommandHandler {
             return true;
         }
 
-        // Check if this is a reply to another message
-        const quotedMsg = msg.message?.extendedTextMessage?.contextInfo;
-        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 Quoted message context:`, {
+        // Check if this is a reply to another message - check multiple message types
+        let quotedMsg = null;
+        let targetUserId = null;
+        
+        // Try different message structures for quoted messages
+        if (msg.message?.extendedTextMessage?.contextInfo) {
+            quotedMsg = msg.message.extendedTextMessage.contextInfo;
+            targetUserId = quotedMsg.participant;
+        } else if (msg.message?.textMessage?.contextInfo) {
+            quotedMsg = msg.message.textMessage.contextInfo;
+            targetUserId = quotedMsg.participant;
+        } else if (msg.message?.conversation && msg.contextInfo) {
+            quotedMsg = msg.contextInfo;
+            targetUserId = quotedMsg.participant;
+        }
+        
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 Kick command analysis:`, {
             hasQuotedMsg: !!quotedMsg,
-            hasParticipant: !!quotedMsg?.participant,
-            participant: quotedMsg?.participant
+            hasParticipant: !!targetUserId,
+            participant: targetUserId,
+            messageType: Object.keys(msg.message || {})[0],
+            hasContextInfo: !!(msg.message?.extendedTextMessage?.contextInfo || msg.message?.textMessage?.contextInfo || msg.contextInfo)
         });
         
-        if (!quotedMsg || !quotedMsg.participant) {
+        if (!quotedMsg || !targetUserId) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick' 
             });
@@ -697,7 +713,7 @@ class CommandHandler {
         }
 
         const groupId = msg.key.remoteJid;
-        const targetUserId = quotedMsg.participant;
+        // targetUserId already assigned above
         
         try {
             // Get group metadata to check permissions
@@ -722,21 +738,37 @@ class CommandHandler {
 
             console.log(`[${require('../utils/logger').getTimestamp()}] 👢 Admin kick: ${targetUserId} from ${groupId}`);
 
-            // Delete the replied-to message first
-            if (quotedMsg.stanzaId) {
+            // Delete the replied-to message first - try multiple ID formats
+            const messageId = quotedMsg.stanzaId || quotedMsg.id;
+            if (messageId) {
                 try {
                     await this.sock.sendMessage(groupId, { 
                         delete: {
                             remoteJid: groupId,
                             fromMe: false,
-                            id: quotedMsg.stanzaId,
+                            id: messageId,
                             participant: targetUserId
                         }
                     });
-                    console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted target user's message`);
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted target user's message (ID: ${messageId})`);
                 } catch (deleteError) {
-                    console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete target message:`, deleteError);
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete target message:`, deleteError.message);
+                    // Try alternative deletion method
+                    try {
+                        await this.sock.sendMessage(groupId, { 
+                            delete: {
+                                remoteJid: groupId,
+                                fromMe: false,
+                                id: messageId
+                            }
+                        });
+                        console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted target message (alternative method)`);
+                    } catch (altError) {
+                        console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Both deletion methods failed:`, altError.message);
+                    }
                 }
+            } else {
+                console.log(`[${require('../utils/logger').getTimestamp()}] ⚠️ No message ID found for deletion - skipping message deletion`);
             }
 
             // Delete the #kick command message
@@ -1929,6 +1961,24 @@ Thank you for your cooperation.`;
                     targetLang = possibleLangCode;
                     textToTranslate = args.slice(1).join(' ');
                 }
+            }
+            
+            // Check if text contains URLs or emails - skip translation
+            const urlRegex = /(?:https?:\/\/|www\.|ftp:\/\/|[\w-]+\.[\w.-]+(?:\/[\w\-._~:/?#[\]@!$&'()*+,;=]*)?)/gi;
+            const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+            
+            if (urlRegex.test(textToTranslate)) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '🔗 Cannot translate URLs. Please provide regular text instead.' 
+                });
+                return true;
+            }
+            
+            if (emailRegex.test(textToTranslate)) {
+                await this.sock.sendMessage(msg.key.remoteJid, { 
+                    text: '📧 Cannot translate email addresses. Please provide regular text instead.' 
+                });
+                return true;
             }
             
             await this.sock.sendMessage(msg.key.remoteJid, { 

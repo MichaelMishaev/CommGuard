@@ -11,8 +11,9 @@ const sessionErrors = new Map();
 const SESSION_ERROR_THRESHOLD = 3; // Reduced from 5 to 3
 
 // Startup session optimization
-const STARTUP_TIMEOUT = 10000; // 10 seconds max for session issues during startup
+const STARTUP_TIMEOUT = 15000; // 15 seconds max for session issues during startup
 const PROBLEMATIC_USERS = new Set(); // Track users to skip during startup
+const LID_STARTUP_BLOCK = true; // Emergency: Block ALL @lid users during startup to prevent delays
 
 // Clean up old entries every hour
 setInterval(() => {
@@ -112,7 +113,13 @@ function extractMessageText(msg) {
 }
 
 // Check if user should be skipped during startup
-function shouldSkipUser(userId) {
+function shouldSkipUser(userId, isStartup = false) {
+    // Emergency: Block ALL @lid users during startup to prevent massive decryption delays
+    if (LID_STARTUP_BLOCK && isStartup && userId && userId.includes('@lid')) {
+        console.log(`🚫 Emergency blocking @lid user during startup: ${userId.substring(0, 20)}...`);
+        return true;
+    }
+    
     return PROBLEMATIC_USERS.has(userId);
 }
 
@@ -130,10 +137,16 @@ async function handleSessionError(sock, error, msg, isStartup = false) {
     const userId = msg.key.participant || msg.key.remoteJid;
     const messageId = msg.key.id;
     
-    // During startup, be less verbose
+    // Skip @lid users during startup - they're problematic
+    if (isStartup && userId && userId.includes('@lid')) {
+        return { skip: true, userId: userId };
+    }
+    
+    // During startup, be less verbose for other errors
     if (!isStartup) {
         console.log(`[${getTimestamp()}] 🔒 Session error for ${userId}: ${error.message}`);
     }
+    
     
     // Track the error
     const isProblematic = trackSessionError(userId, isStartup);
