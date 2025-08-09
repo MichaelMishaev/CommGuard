@@ -81,8 +81,6 @@ class CommandHandler {
                 case '#ban':
                     return await this.handleBan(msg, isAdmin);
                     
-                case '#warn':
-                    return await this.handleWarn(msg, isAdmin);
                     
                 case '#whitelist':
                     return await this.handleWhitelist(msg, args, isAdmin);
@@ -123,14 +121,6 @@ class CommandHandler {
                 case '#jokestats':
                     return await this.handleJokeStats(msg, isAdmin);
                     
-                case '#warnings':
-                    return await this.handleWarningsView(msg, args, isAdmin);
-                    
-                case '#clearwarnings':
-                    return await this.handleWarningsClear(msg, args, isAdmin);
-                    
-                case '#warningstats':
-                    return await this.handleWarningsStats(msg, isAdmin);
                     
                 case '#rejoinlinks':
                     return await this.handleRejoinLinks(msg, args, isAdmin);
@@ -152,7 +142,7 @@ class CommandHandler {
                     
                 case '#autotranslate':
                 case '#translation':
-                    return await this.handleTranslationToggle(msg, args, isAdmin);
+                    return await this.handleTranslationToggle(msg, args);
                     
                 case '#jokeson':
                     return await this.handleJokesOn(msg, isAdmin);
@@ -228,7 +218,6 @@ class CommandHandler {
 *👮 Moderation Commands:*
 • *#kick* - Reply to message → Kicks user + deletes their message + adds to blacklist
 • *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
-• *#warn* - Reply to message → Sends private warning to user
 • *#clear* - ⚠️ NOT IMPLEMENTED (will show "not yet implemented")
 
 *🔇 Mute Commands:*
@@ -266,8 +255,8 @@ class CommandHandler {
 • *#translate <text>* - Translate to English (auto-detect source)
 • *#translate <lang> <text>* - Translate to specific language
 • *#langs* - Show supported language codes (20+ languages)
-• *#autotranslate <on/off/status>* - Control auto-translation feature globally
-• **Auto-Translation** - Reply to non-Hebrew messages → Bot translates to Hebrew automatically
+• *#autotranslate <on/off/status>* - Control auto-translation (bot only)
+• **Auto-Translation** - Bot automatically translates non-Hebrew messages to Hebrew immediately
 • **Smart Detection** - Only translates pure non-Hebrew (ignores mixed Hebrew/English)
 
 *🎭 Entertainment Commands:*
@@ -277,15 +266,9 @@ class CommandHandler {
 • *#jokesstatus* - Show joke settings for this group
 • **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (125+ jokes)
 
-*⚠️ Warning System Commands:*
-• *#warnings [phone]* - View warnings for specific user
-• *#clearwarnings [phone]* - Clear all warnings for user
-• *#warningstats* - View warning system statistics
-
 *🚨 AUTO-PROTECTION FEATURES:*
-1. **Invite Link Detection with Israeli Priority** ✅
-   - 🇮🇱 Israeli users (+972): First violation = Warning (7 days), Second = Kick + Blacklist
-   - 🌍 Non-Israeli users: Immediate kick + blacklist (no warning)
+1. **Invite Link Detection** ✅
+   - All users: Immediate kick + blacklist (no warnings)
    - Always: Message deleted + Admin alert
    - Detects: chat.whatsapp.com links
 
@@ -342,7 +325,6 @@ class CommandHandler {
 *👮 Moderation Commands:* (Reply to message)
 • *#kick* - Remove user from group + blacklist
 • *#ban* - Permanently ban user from group
-• *#warn* - Send private warning to user
 • *#clear* - Clear messages (not yet implemented)
 
 *🔇 Mute Commands:*
@@ -394,8 +376,8 @@ class CommandHandler {
 • Check joke status: \`#jokesstatus\` → Show current settings
 • Translate text: \`#translate שלום עולם\` → "Hello world" ✅ READY
 • Translate to Hebrew: \`#translate he Good morning\` → "בוקר טוב" ✅ READY
-• Auto-translate: Reply to "Hello world" → Bot shows Hebrew translation ✅ ACTIVE
-• Control auto-translate: \`#autotranslate off\` → Disable globally ✅ READY
+• Auto-translate: Send "Hello world" → Bot shows Hebrew translation immediately ✅ ACTIVE
+• Control auto-translate: \`#autotranslate off\` → Bot only ✅ READY
 
 *⚠️ Important Notes:*
 • Most commands require admin privileges
@@ -1028,61 +1010,6 @@ class CommandHandler {
         return true;
     }
 
-    async handleWarn(msg, isAdmin) {
-        if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך??' 
-            });
-            return true;
-        }
-
-        // Check if in private chat
-        if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #warn command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #warn' 
-            });
-            return true;
-        }
-
-        // Check if this is a reply to another message
-        const quotedMsg = msg.message?.extendedTextMessage?.contextInfo;
-        if (!quotedMsg || !quotedMsg.participant) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please reply to a message from the user you want to warn.\n\nUsage: Reply to a user\'s message and type #warn' 
-            });
-            return true;
-        }
-
-        const targetUserId = quotedMsg.participant;
-        
-        try {
-            const warningMessage = `⚠️ *Warning from Group Admin*
-
-Please follow the group rules and guidelines. 
-
-This is an official warning. Continued violations may result in removal from the group.
-
-Thank you for your cooperation.`;
-
-            // Send warning to the user privately
-            await this.sock.sendMessage(targetUserId, { text: warningMessage });
-            
-            // Confirm in group
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: `⚠️ Warning sent to user privately.` 
-            });
-
-            console.log(`[${require('../utils/logger').getTimestamp()}] ⚠️ Warning sent to: ${targetUserId}`);
-
-        } catch (error) {
-            console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to warn user:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Failed to send warning.' 
-            });
-        }
-
-        return true;
-    }
 
     async handleBotForeign(msg, isAdmin) {
         if (!isAdmin) {
@@ -2045,12 +1972,13 @@ Thank you for your cooperation.`;
     }
 
     /**
-     * Handle translation toggle command (admin only)
+     * Handle translation toggle command (bot only)
      */
-    async handleTranslationToggle(msg, args, isAdmin) {
-        if (!isAdmin) {
+    async handleTranslationToggle(msg, args) {
+        // Check if message is from the bot itself
+        if (!msg.key.fromMe) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ This command is admin only.' 
+                text: '🤖 Auto-translation settings can only be changed by the bot itself.' 
             });
             return true;
         }
@@ -2064,11 +1992,11 @@ Thank you for your cooperation.`;
                 config.FEATURES.AUTO_TRANSLATION = true;
                 
                 let response = `✅ *Auto-Translation Enabled*\n\n`;
-                response += `🌐 Bot will now automatically translate non-Hebrew replies to Hebrew\n\n`;
+                response += `🌐 Bot will now automatically translate non-Hebrew messages to Hebrew immediately\n\n`;
                 response += `📋 *How it works:*\n`;
-                response += `• When someone replies to a non-Hebrew message\n`;
+                response += `• When someone sends a non-Hebrew message\n`;
                 response += `• Bot detects if ALL words are non-Hebrew\n`;
-                response += `• Bot translates the quoted text to Hebrew\n`;
+                response += `• Bot translates the message to Hebrew immediately\n`;
                 response += `• Mixed Hebrew/non-Hebrew messages are ignored\n\n`;
                 response += `⚙️ Use \`#autotranslate off\` to disable`;
                 
@@ -2079,7 +2007,7 @@ Thank you for your cooperation.`;
                 config.FEATURES.AUTO_TRANSLATION = false;
                 
                 let response = `❌ *Auto-Translation Disabled*\n\n`;
-                response += `🚫 Bot will no longer automatically translate replies\n\n`;
+                response += `🚫 Bot will no longer automatically translate messages\n\n`;
                 response += `💡 Manual translation commands still work:\n`;
                 response += `• \`#translate <text>\` - Translate to English\n`;
                 response += `• \`#translate <lang> <text>\` - Translate to specific language\n\n`;
@@ -2096,7 +2024,7 @@ Thank you for your cooperation.`;
                 
                 if (isEnabled) {
                     response += `🎯 *Active Settings:*\n`;
-                    response += `• Translates non-Hebrew replies → Hebrew\n`;
+                    response += `• Translates non-Hebrew messages → Hebrew immediately\n`;
                     response += `• Strict detection: ALL words must be non-Hebrew\n`;
                     response += `• Rate limited: 10 translations/minute per user\n`;
                     response += `• Minimum text length: 5 characters\n\n`;
@@ -2397,139 +2325,6 @@ Thank you for your cooperation.`;
         return true;
     }
 
-    async handleWarningsView(msg, args, isAdmin) {
-        if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
-            });
-            return true;
-        }
-
-        try {
-            const { warningService } = require('./warningService');
-            
-            if (!args || args.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: '📱 Usage: #warnings <phone_number>\nExample: #warnings 972555123456' 
-                });
-                return true;
-            }
-
-            const phoneNumber = args[0].replace(/[\+\-\s]/g, '');
-            const userId = `${phoneNumber}@s.whatsapp.net`;
-            
-            const userWarnings = await warningService.getUserWarnings(userId);
-            
-            if (!userWarnings || userWarnings.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: `✅ No warnings found for user: ${phoneNumber}` 
-                });
-                return true;
-            }
-
-            let warningText = `⚠️ *Warnings for ${phoneNumber}*\n\n`;
-            
-            userWarnings.forEach((warning, index) => {
-                const warningDate = new Date(warning.lastWarned).toLocaleDateString();
-                const expiryDate = new Date(warning.expiresAt).toLocaleDateString();
-                const isExpired = new Date() > new Date(warning.expiresAt);
-                
-                warningText += `${index + 1}️⃣ **${warning.groupName}**\n`;
-                warningText += `   📅 Date: ${warningDate}\n`;
-                warningText += `   📊 Count: ${warning.warningCount}\n`;
-                warningText += `   ⏰ Expires: ${expiryDate} ${isExpired ? '(EXPIRED)' : ''}\n`;
-                warningText += `   🔗 Link: ${warning.inviteLink}\n\n`;
-            });
-
-            await this.sock.sendMessage(msg.key.remoteJid, { text: warningText });
-            
-        } catch (error) {
-            console.error('Error viewing warnings:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Error retrieving warnings.' 
-            });
-        }
-
-        return true;
-    }
-
-    async handleWarningsClear(msg, args, isAdmin) {
-        if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
-            });
-            return true;
-        }
-
-        try {
-            const { warningService } = require('./warningService');
-            
-            if (!args || args.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
-                    text: '📱 Usage: #clearwarnings <phone_number>\nExample: #clearwarnings 972555123456' 
-                });
-                return true;
-            }
-
-            const phoneNumber = args[0].replace(/[\+\-\s]/g, '');
-            const userId = `${phoneNumber}@s.whatsapp.net`;
-            
-            // Clear all warnings for this user
-            await warningService.clearWarnings(userId);
-            
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: `✅ Cleared all warnings for user: ${phoneNumber}` 
-            });
-            
-        } catch (error) {
-            console.error('Error clearing warnings:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Error clearing warnings.' 
-            });
-        }
-
-        return true;
-    }
-
-    async handleWarningsStats(msg, isAdmin) {
-        if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
-            });
-            return true;
-        }
-
-        try {
-            const { warningService } = require('./warningService');
-            const stats = await warningService.getWarningStats();
-            
-            let statsText = `📊 *Warning System Statistics*\n\n`;
-            statsText += `⚠️ Active Warnings: ${stats.totalActiveWarnings}\n`;
-            statsText += `⏰ Expiring Soon (24h): ${stats.expiringSoon}\n`;
-            statsText += `📅 Warning Duration: ${stats.warningExpiryDays} days\n\n`;
-            
-            if (stats.topGroups && stats.topGroups.length > 0) {
-                statsText += `🏆 *Top Groups by Warnings:*\n`;
-                stats.topGroups.forEach(([groupName, count], index) => {
-                    statsText += `${index + 1}. ${groupName}: ${count} warnings\n`;
-                });
-            } else {
-                statsText += `✅ No active warnings in any groups!\n`;
-            }
-            
-            statsText += `\n🔄 Warning system automatically cleans expired warnings`;
-
-            await this.sock.sendMessage(msg.key.remoteJid, { text: statsText });
-            
-        } catch (error) {
-            console.error('Error getting warning stats:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Error retrieving warning statistics.' 
-            });
-        }
-
-        return true;
-    }
 
     /**
      * Handle jokes enable command

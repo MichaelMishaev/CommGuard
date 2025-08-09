@@ -399,14 +399,6 @@ async function startBot() {
         console.warn('⚠️ Failed to initialize kicked user service:', error.message);
     }
     
-    // Initialize warning service for invite link warnings
-    try {
-        const { initialize } = require('./services/warningService');
-        await initialize();
-        console.log('✅ Warning service initialized');
-    } catch (error) {
-        console.warn('⚠️ Failed to initialize warning service:', error.message);
-    }
     
     console.log(`[${getTimestamp()}] 🔄 Starting bot connection (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
     
@@ -1087,68 +1079,56 @@ async function handleMessage(sock, msg, commandHandler) {
         if (handled) return;
     }
     
-    // Check for replies to non-Hebrew messages and translate them to Hebrew
-    if (config.FEATURES.AUTO_TRANSLATION && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.quotedMessage) {
+    // Check for immediate auto-translation of non-Hebrew messages
+    if (config.FEATURES.AUTO_TRANSLATION && messageText && messageText.trim().length > 5) {
         try {
-            const quotedMessage = msg.message.extendedTextMessage.contextInfo.quotedMessage;
-            let quotedText = '';
+            // Strict Hebrew detection - ALL words must be non-Hebrew
+            const isAllNonHebrew = isTextAllNonHebrew(messageText);
             
-            // Extract text from quoted message (handle different message types)
-            if (quotedMessage.conversation) {
-                quotedText = quotedMessage.conversation;
-            } else if (quotedMessage.extendedTextMessage && quotedMessage.extendedTextMessage.text) {
-                quotedText = quotedMessage.extendedTextMessage.text;
-            }
-            
-            if (quotedText && quotedText.trim().length > 5) { // Only translate meaningful text
-                // Strict Hebrew detection - ALL words must be non-Hebrew
-                const isAllNonHebrew = isTextAllNonHebrew(quotedText);
+            if (isAllNonHebrew) { // Only translate if ALL text is non-Hebrew
+                console.log(`[${getTimestamp()}] 🌐 Non-Hebrew message detected from ${senderId}`);
+                console.log(`   Message text: "${messageText.substring(0, 50)}..."`);
                 
-                if (isAllNonHebrew) { // Only translate if ALL text is non-Hebrew
-                    console.log(`[${getTimestamp()}] 🌐 Non-Hebrew quoted message detected from ${senderId}`);
-                    console.log(`   Quoted text: "${quotedText.substring(0, 50)}..."`);
+                // Import translation service
+                const { translationService } = require('./services/translationService');
+                await translationService.initialize();
+                
+                if (translationService.initialized) {
+                    const userId = senderId;
                     
-                    // Import translation service
-                    const { translationService } = require('./services/translationService');
-                    await translationService.initialize();
-                    
-                    if (translationService.initialized) {
-                        const userId = senderId;
+                    try {
+                        // Check rate limiting for translation
+                        translationService.checkRateLimit(userId);
                         
-                        try {
-                            // Check rate limiting for translation
-                            translationService.checkRateLimit(userId);
-                            
-                            // Translate to Hebrew
-                            const result = await translationService.translateText(quotedText, 'he', null, userId);
-                            
-                            // Send translation as reply
-                            let translationResponse = `🌐 *תרגום לעברית:*\n\n`;
-                            translationResponse += `"${result.translatedText}"\n\n`;
-                            translationResponse += `📝 *מקור:* ${translationService.getSupportedLanguages()[result.detectedLanguage] || result.detectedLanguage}`;
-                            
-                            await sock.sendMessage(groupId, { 
-                                text: translationResponse,
-                                contextInfo: {
-                                    quotedMessage: msg.message,
-                                    participant: senderId
-                                }
-                            });
-                            
-                            console.log(`✅ Sent Hebrew translation for ${result.detectedLanguage} text`);
-                            
-                        } catch (translationError) {
-                            if (translationError.message.includes('Rate limit')) {
-                                console.log(`   ⏳ Translation skipped: Rate limited for user ${userId}`);
-                            } else {
-                                console.error(`❌ Translation failed:`, translationError.message);
+                        // Translate to Hebrew
+                        const result = await translationService.translateText(messageText, 'he', null, userId);
+                        
+                        // Send translation as reply to the original message
+                        let translationResponse = `🌐 *תרגום לעברית:*\n\n`;
+                        translationResponse += `"${result.translatedText}"\n\n`;
+                        translationResponse += `📝 *מקור:* ${translationService.getSupportedLanguages()[result.detectedLanguage] || result.detectedLanguage}`;
+                        
+                        await sock.sendMessage(groupId, { 
+                            text: translationResponse,
+                            contextInfo: {
+                                quotedMessage: msg.message,
+                                participant: senderId
                             }
+                        });
+                        
+                        console.log(`✅ Sent immediate Hebrew translation for ${result.detectedLanguage} text`);
+                        
+                    } catch (translationError) {
+                        if (translationError.message.includes('Rate limit')) {
+                            console.log(`   ⏳ Translation skipped: Rate limited for user ${userId}`);
+                        } else {
+                            console.error(`❌ Translation failed:`, translationError.message);
                         }
                     }
                 }
             }
         } catch (error) {
-            console.error(`❌ Reply translation error:`, error.message);
+            console.error(`❌ Auto-translation error:`, error.message);
         }
     }
     
@@ -1361,179 +1341,110 @@ async function handleMessage(sock, msg, commandHandler) {
             }
             
         } else {
-            // Israeli user - use warning system
-            console.log(`[${getTimestamp()}] 🇮🇱 Israeli user - applying warning system`);
+            // Israeli user - immediate kick (same as non-Israeli)
+            console.log(`[${getTimestamp()}] 🚨 Israeli user sending invite link - immediate kick`);
             
-            const { warningService } = require('./services/warningService');
-            const violationCheck = await warningService.checkInviteLinkViolation(senderId, groupId);
+            // Add to blacklist first - must succeed before kicking
+            const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Israeli user sent invite link - immediate kick');
+            if (!blacklistSuccess) {
+                console.error('❌ Failed to blacklist Israeli user - aborting kick to prevent "kicked but not blacklisted" scenario');
+                return;
+            }
             
-            console.log(`[${getTimestamp()}] ⚖️ Warning check result:`, violationCheck);
-            
-            if (violationCheck.action === 'warn') {
-                // First violation - send warning
-                console.log(`[${getTimestamp()}] ⚠️ First violation - sending warning to Israeli user`);
+            // Kick the user immediately
+            try {
+                await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                console.log('✅ Kicked Israeli user immediately:', senderId);
+                kickCooldown.set(senderId, Date.now());
                 
-                // Record the warning
-                await warningService.recordWarning(
-                    senderId, 
-                    groupId, 
-                    groupMetadata.subject, 
-                    matches.join(', ')
-                );
-                
-                // Send warning message in Hebrew and English
-                const warningMessage = `⚠️ *אזהרה / Warning* ⚠️\n\n` +
-                                     `🚫 שליחת קישורי הזמנה לקבוצות אסורה\n` +
-                                     `🚫 Sending group invite links is not allowed\n\n` +
-                                     `🔴 *זהו אזהרה ראשונה* - הפעם הבאה תעף מהקבוצה\n` +
-                                     `🔴 *This is your first warning* - next time you'll be kicked\n\n` +
-                                     `✅ האזהרה תפוג תוך 7 ימים\n` +
-                                     `✅ Warning expires in 7 days\n\n` +
-                                     `📋 כללי הקבוצה: איסור על קישורי הזמנה\n` +
-                                     `📋 Group rules: No invite links allowed`;
-                
-                try {
-                    await sock.sendMessage(groupId, { text: warningMessage });
-                    console.log('✅ Sent warning message to group');
-                } catch (warnError) {
-                    console.error('❌ Failed to send warning message:', warnError.message);
+                // Verify blacklisting is consistent after kick
+                const isBlacklisted = await blacklistService.isBlacklisted(senderId);
+                if (!isBlacklisted) {
+                    console.error('🚨 CRITICAL: Israeli user was kicked but not found in blacklist - attempting to re-blacklist');
+                    await blacklistService.addToBlacklist(senderId, 'Israeli invite link violation - post-kick verification');
+                } else {
+                    console.log('✅ Verified: Israeli user is properly blacklisted after kick');
                 }
                 
-                // Send admin alert about warning
+                // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                const alertMessage = `⚠️ *Warning Issued (Israeli User)*\n\n` +
+                const alertMessage = `🚨 *Israeli User Kicked (Immediate)*\n\n` +
                                    `📍 Group: ${groupMetadata.subject}\n` +
                                    `👤 User: ${senderId}\n` +
-                                   `📞 Phone: ${userPhone} (🇮🇱 Israeli)\n` +
-                                   `🔗 Links: ${matches.join(', ')}\n` +
-                                   `📊 Warning Count: ${violationCheck.warningCount + 1}\n` +
+                                   `📞 Phone: ${userPhone}\n` +
+                                   `🌍 Origin: Israeli (+972)\n` +
+                                   `🔗 Spam Links: ${matches.join(', ')}\n` +
                                    `⏰ Time: ${getTimestamp()}\n\n` +
-                                   `🚨 Next violation will result in automatic kick`;
+                                   `✅ Actions taken:\n` +
+                                   `• Message deleted\n` +
+                                   `• User blacklisted\n` +
+                                   `• User kicked immediately`;
                 
                 try {
                     await sock.sendMessage(adminId, { text: alertMessage });
-                    console.log('✅ Sent warning alert to admin');
+                    console.log('✅ Sent immediate kick alert to admin');
                 } catch (adminError) {
                     console.error('❌ Failed to send admin alert:', adminError.message);
                 }
                 
-            } else if (violationCheck.action === 'kick') {
-                // Second violation - kick Israeli user
-                console.log(`[${getTimestamp()}] 🚨 Israeli user second violation - kicking user`);
-                
-                // Clear warnings (they've been kicked now)
-                await warningService.clearWarnings(senderId, groupId);
-                
-                // Add to blacklist first - must succeed before kicking
-                const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Israeli user - Second invite link violation - kicked after warning');
-                if (!blacklistSuccess) {
-                    console.error('❌ Failed to blacklist Israeli user - aborting kick to prevent "kicked but not blacklisted" scenario');
-                    return;
-                }
-                
-                // Kick the Israeli user (only if blacklisting succeeded)
+                // Get group invite link for rejoin system
+                let groupInviteLink = 'N/A';
                 try {
-                    await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-                    console.log('✅ Kicked Israeli user after second violation:', senderId);
-                    kickCooldown.set(senderId, Date.now());
-                    
-                    // Verify blacklisting is consistent after kick
-                    const isBlacklisted = await blacklistService.isBlacklisted(senderId);
-                    if (!isBlacklisted) {
-                        console.error('🚨 CRITICAL: Israeli user was kicked but not found in blacklist - attempting to re-blacklist');
-                        await blacklistService.addToBlacklist(senderId, 'Israeli user - Second invite link violation - post-kick verification');
-                    } else {
-                        console.log('✅ Verified: Israeli user is properly blacklisted after kick');
-                    }
-                    
-                    // Get group invite link
-                    let groupInviteLink = 'N/A';
-                    try {
-                        const inviteCode = await sock.groupInviteCode(groupId);
-                        groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
-                    } catch (err) {
-                        console.log('Could not get group invite link:', err.message);
-                    }
-
-                    // Record kicked user for future rejoin assistance
-                    try {
-                        const { kickedUserService } = require('./services/kickedUserService');
-                        
-                        // Extract admin information from group metadata
-                        const adminList = [];
-                        if (groupMetadata && groupMetadata.participants) {
-                            groupMetadata.participants
-                                .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
-                                .forEach(admin => {
-                                    // Try to extract readable info from admin ID
-                                    const adminId = admin.id;
-                                    let adminName = 'Admin';
-                                    let adminPhone = 'Unknown';
-                                    
-                                    // Extract phone if possible (not LID)
-                                    if (adminId.includes('@s.whatsapp.net')) {
-                                        adminPhone = adminId.split('@')[0];
-                                        adminName = `+${adminPhone}`;
-                                    } else if (adminId.includes('@lid')) {
-                                        adminName = 'Admin (LID)';
-                                        adminPhone = adminId.split('@')[0].substring(0, 8) + '...';
-                                    }
-                                    
-                                    adminList.push({
-                                        id: adminId,
-                                        name: adminName,
-                                        phone: adminPhone,
-                                        isLID: adminId.includes('@lid')
-                                    });
-                                });
-                        }
-                        
-                        await kickedUserService.recordKickedUser(
-                            senderId,
-                            groupId,
-                            groupMetadata?.subject || 'Unknown Group',
-                            groupInviteLink,
-                            'Israeli user - Second invite link violation',
-                            adminList
-                        );
-                        console.log('✅ Recorded kicked Israeli user for potential rejoin with admin info');
-                    } catch (error) {
-                        console.error('⚠️ Failed to record kicked Israeli user:', error.message);
-                    }
-
-                    // Send alert to alert phone using existing alert service
-                    const userPhone = senderId.split('@')[0];
-                    await sendKickAlert(sock, {
-                        userPhone: userPhone,
-                        userName: `User ${userPhone}`,
-                        groupName: groupMetadata?.subject || 'Unknown Group',
-                        groupId: groupId,
-                        reason: 'israeli_user_second_violation',
-                        additionalInfo: `🇮🇱 Israeli user - Second invite link violation - kicked after warning`,
-                        spamLink: matches[0], // The actual spam link that was sent
-                        groupInviteLink: groupInviteLink
-                    });
-                    
-                    // Send policy message with unblacklist option
-                    const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} for repeat violation of group rules (invite links).\n\n` +
-                                         `⚠️ *This was your second warning* - you were previously warned about this\n\n` +
-                                         `📋 *To request removal from blacklist:*\n` +
-                                         `1️⃣ Agree to NEVER share invite links in groups\n` +
-                                         `2️⃣ Contact admin directly for appeal\n` +
-                                         `3️⃣ Wait for admin decision\n\n` +
-                                         `⚠️ No automated appeals - admin contact required.\n\n` +
-                                         `🚫 הוסרת אוטומטית מ${groupMetadata.subject} בגלל הפרה חוזרת של כללי הקבוצה (קישורי הזמנה).\n\n` +
-                                         `⚠️ *זו הייתה האזהרה השנייה שלך* - בעבר הוזהרת בנוגע לזה\n\n` +
-                                         `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
-                                         `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
-                                         `2️⃣ צור קשר עם המנהל ישירות לערעור\n` +
-                                         `3️⃣ חכה להחלטת המנהל\n\n` +
-                                         `⚠️ אין ערעורים אוטומטיים - נדרש קשר עם המנהל.`;
-                    await sock.sendMessage(senderId, { text: policyMessage }).catch(() => {});
-                    
-                } catch (kickError) {
-                    console.error('❌ Failed to kick Israeli user:', kickError.message);
+                    const inviteCode = await sock.groupInviteCode(groupId);
+                    groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                } catch (err) {
+                    console.log('Could not get group invite link for Israeli user:', err.message);
                 }
+
+                // Record kicked Israeli user for potential #free system usage
+                try {
+                    const { kickedUserService } = require('./services/kickedUserService');
+                    
+                    // Extract admin information from group metadata
+                    const adminList = [];
+                    if (groupMetadata && groupMetadata.participants) {
+                        groupMetadata.participants
+                            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                            .forEach(admin => {
+                                const adminId = admin.id;
+                                let adminName = 'Admin';
+                                let adminPhone = 'Unknown';
+                                
+                                if (adminId.includes('@s.whatsapp.net')) {
+                                    adminPhone = adminId.split('@')[0];
+                                    adminName = `+${adminPhone}`;
+                                } else if (adminId.includes('@lid')) {
+                                    adminName = 'Admin (LID)';
+                                    adminPhone = adminId.split('@')[0].substring(0, 8) + '...';
+                                }
+                                
+                                adminList.push({
+                                    id: adminId,
+                                    name: adminName,
+                                    phone: adminPhone,
+                                    isLID: adminId.includes('@lid')
+                                });
+                            });
+                    }
+                    
+                    await kickedUserService.recordKickedUser(
+                        senderId,
+                        groupId,
+                        groupMetadata?.subject || 'Unknown Group',
+                        groupInviteLink,
+                        'Israeli user - Immediate kick for invite link',
+                        adminList
+                    );
+                    console.log('✅ Recorded kicked Israeli user for potential #free usage');
+                } catch (error) {
+                    console.error('⚠️ Failed to record kicked Israeli user:', error.message);
+                }
+                
+                // Israeli users get NO MESSAGE - silent kick (same as non-Israeli)
+                console.log('🔇 Israeli user kicked silently - no message sent');
+                
+            } catch (kickError) {
+                console.error('❌ Failed to kick Israeli user:', kickError.message);
             }
         }
         
