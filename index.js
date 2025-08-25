@@ -827,6 +827,42 @@ async function startBot() {
 }
 
 // Helper function to check if ALL text is non-Hebrew (strict detection)
+
+// Helper function to detect Russian text
+function isTextRussian(text) {
+    if (!text || text.trim().length === 0) return false;
+    
+    // Russian Unicode ranges
+    // Cyrillic: U+0400-U+04FF
+    // Cyrillic Supplement: U+0500-U+052F
+    // Cyrillic Extended-A: U+2DE0-U+2DFF
+    // Cyrillic Extended-B: U+A640-U+A69F
+    const russianPattern = /[\u0400-\u04FF\u0500-\u052F\u2DE0-\u2DFF\uA640-\uA69F]/;
+    
+    // Check if text contains Russian characters
+    const containsRussian = russianPattern.test(text);
+    
+    if (containsRussian) {
+        // Additional check for common Russian words
+        const commonRussianWords = [
+            'и', 'в', 'не', 'на', 'я', 'быть', 'он', 'с', 'как', 'а',
+            'то', 'все', 'она', 'так', 'его', 'но', 'да', 'ты', 'к', 'у',
+            'же', 'вы', 'за', 'бы', 'по', 'только', 'ее', 'мне', 'было', 'вот',
+            'от', 'меня', 'еще', 'нет', 'о', 'из', 'ему', 'теперь', 'когда', 'даже'
+        ];
+        
+        const words = text.toLowerCase().split(/\s+/);
+        const russianWordCount = words.filter(word => 
+            commonRussianWords.some(russianWord => word.includes(russianWord))
+        ).length;
+        
+        // Consider it Russian if it has Cyrillic characters and some Russian words
+        return russianWordCount > 0;
+    }
+    
+    return false;
+}
+
 function isTextAllNonHebrew(text) {
     if (!text || text.trim().length === 0) return false;
     
@@ -1125,6 +1161,12 @@ async function handleMessage(sock, msg, commandHandler) {
             const isAllNonHebrew = isTextAllNonHebrew(messageText);
             
             if (isAllNonHebrew) { // Only translate if ALL text is non-Hebrew
+                // Check if message is Russian and skip translation
+                const isRussian = isTextRussian(messageText);
+                if (isRussian) {
+                    console.log(`[${getTimestamp()}] 🇷🇺 Russian message detected - skipping translation from ${senderId}`);
+                    return; // Skip translation for Russian messages
+                }
                 console.log(`[${getTimestamp()}] 🌐 Non-Hebrew message detected from ${senderId}`);
                 console.log(`   Message text: "${messageText.substring(0, 50)}..."`);
                 
