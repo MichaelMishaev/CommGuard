@@ -314,6 +314,7 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
 const CommandHandler = require('./services/commandHandler');
 const { clearSessionErrors, mightContainInviteLink, extractMessageText } = require('./utils/sessionManager');
 const { sendKickAlert, sendSecurityAlert } = require('./utils/alertService');
+const { robustKick } = require('./utils/kickHelper');
 
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
@@ -719,6 +720,44 @@ async function startBot() {
                     if (result.skip && isStartupPhase) {
                         console.log(`⚡ Skipped session error during startup: ${result.userId}`);
                         continue;
+                    }
+                    
+                    // SPECIAL HANDLING: Try to process commands even with decryption failure
+                    // This is crucial for @lid users where decryption often fails but commands should work
+                    if (msg.key.remoteJid.endsWith('@g.us') && msg.key.participant?.includes('@lid')) {
+                        try {
+                            console.log(`[${getTimestamp()}] 🔄 Attempting command fallback for @lid user with decryption failure`);
+                            
+                            // Try to extract any raw message content that might be available
+                            let fallbackText = '';
+                            
+                            // Check for any available message content patterns
+                            if (msg.message?.conversation) {
+                                fallbackText = msg.message.conversation;
+                            } else if (msg.message?.extendedTextMessage?.text) {
+                                fallbackText = msg.message.extendedTextMessage.text;
+                            }
+                            
+                            // If we found potential command text, try to process it
+                            if (fallbackText && fallbackText.trim().startsWith('#')) {
+                                console.log(`[${getTimestamp()}] 📝 Found potential command in fallback: ${fallbackText.substring(0, 20)}...`);
+                                
+                                // Create a modified message object for command processing
+                                const fallbackMsg = {
+                                    ...msg,
+                                    message: {
+                                        conversation: fallbackText
+                                    }
+                                };
+                                
+                                // Try to process as command
+                                await handleMessage(sock, fallbackMsg, commandHandler);
+                                console.log(`[${getTimestamp()}] ✅ Successfully processed command via fallback method`);
+                                continue;
+                            }
+                        } catch (fallbackError) {
+                            console.error(`[${getTimestamp()}] ❌ Command fallback failed:`, fallbackError.message);
+                        }
                     }
                     
                     // If suspicious activity detected, take action

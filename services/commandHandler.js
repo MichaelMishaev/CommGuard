@@ -31,6 +31,30 @@ class CommandHandler {
     
     constructor(sock) {
         this.sock = sock;
+        
+        // Sassy Hebrew responses for unauthorized users
+        this.sassyResponses = [
+            'מה אני עובד אצלך?',
+            'תמשיך לנסות, אולי יצליח לך באלף הבא',
+            'אדמין? אתה? 😂',
+            'חלמת שאתה המנהל כאן?',
+            'רק מנהלים יכולים להשתמש בזה, לא כולם',
+            'נחמד לנסות, אבל לא',
+            'אתה מבין שאני רק עובד פה? 🤷‍♂️',
+            'יש לך הרשאות? לא נראה לי...',
+            'תשאל את המנהל בבקשה',
+            'פעם הבאה תקבל הרשאות קודם',
+            'אוקיי, אבל לא',
+            'מה זה השטויות האלה?',
+            'לא נפל לי האסימון...',
+            'אולי תנסה עם אדמין אמיתי?',
+            'נו באמת... 🙄'
+        ];
+    }
+    
+    // Get a random sassy response for unauthorized users
+    getRandomSassyResponse() {
+        return this.sassyResponses[Math.floor(Math.random() * this.sassyResponses.length)];
     }
     
     // TEMPORARY: Use direct API with rate limiting until shared cache is implemented
@@ -118,6 +142,9 @@ class CommandHandler {
                 case '#sessioncheck':
                     return await this.handleSessionCheck(msg, isAdmin);
                     
+                case '#msg1':
+                    return await this.handleMsg1(msg, isAdmin);
+                    
                 case '#jokestats':
                     return await this.handleJokeStats(msg, isAdmin);
                     
@@ -199,7 +226,7 @@ class CommandHandler {
         // In private chat, check if it's the admin
         if (!isAdminPhone) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Unauthorized.' 
+                text: this.getRandomSassyResponse()
             });
             return true;
         }
@@ -214,9 +241,10 @@ class CommandHandler {
 • *#status* - Shows bot online status, ID, version, and configuration
 • *#stats* - Displays group statistics (members, admins, etc)
 • *#help* - This command list (private chat only)
+• *#msg1* - Send pre-written admin warning about invite links
 
 *👮 Moderation Commands:*
-• *#kick* - Reply to message → Kicks user + deletes their message + adds to blacklist
+• *#kick* - Reply to message → Kicks user + deletes their message + adds to blacklist (bot only)
 • *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
 • *#clear* - ⚠️ NOT IMPLEMENTED (will show "not yet implemented")
 
@@ -321,9 +349,10 @@ class CommandHandler {
 *🔧 Basic Commands:*
 • *#status* - Check bot status and configuration
 • *#stats* - Show group statistics
+• *#msg1* - Send admin warning about invite links
 
 *👮 Moderation Commands:* (Reply to message)
-• *#kick* - Remove user from group + blacklist
+• *#kick* - Remove user from group + blacklist (bot only)
 • *#ban* - Permanently ban user from group
 • *#clear* - Clear messages (not yet implemented)
 
@@ -365,7 +394,7 @@ class CommandHandler {
 • **Anti-Boredom System** - Responds to "משעמם" with Hebrew jokes (per-group control)
 
 *💡 Usage Examples:*
-• Kick user: Reply to their message + type \`#kick\`
+• Kick user: Bot-only automated moderation
 • Mute group: \`#mute 30\` (30 minutes)
 • Add to whitelist: \`#whitelist 972555123456\`
 • Remove all foreign users: \`#botforeign\`
@@ -425,6 +454,8 @@ class CommandHandler {
     }
 
     async handleMute(msg, args, isAdmin) {
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🔇 Mute command received from ${msg.key.participant || msg.key.remoteJid}`);
+        
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
                 text: 'מה אני עובד אצלך?!' 
@@ -437,6 +468,13 @@ class CommandHandler {
             await this.sendGroupOnlyMessage(msg, '#mute');
             return true;
         }
+        
+        // Add extra logging for debugging
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 Mute command details:`, {
+            hasQuoted: !!(msg.message?.extendedTextMessage?.contextInfo?.quotedMessage),
+            args: args,
+            messageStructure: Object.keys(msg.message || {})
+        });
 
         const groupId = msg.key.remoteJid;
         const hasQuotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -646,11 +684,12 @@ class CommandHandler {
 
     // Add more command handlers here...
     async handleKick(msg, isAdmin) {
-        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 #kick command received from admin: ${isAdmin}`);
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 #kick command received`);
         
-        if (!isAdmin) {
+        // Check if message is from the bot itself (bot only command)
+        if (!msg.key.fromMe) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך??' 
+                text: '🤖 The #kick command can only be executed by the bot itself.' 
             });
             return true;
         }
@@ -658,7 +697,7 @@ class CommandHandler {
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #kick command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kick' 
+                text: '⚠️ The #kick command can only be used in groups by the bot itself.\n\nNote: This is a bot-only command for automated moderation' 
             });
             return true;
         }
@@ -689,7 +728,7 @@ class CommandHandler {
         
         if (!quotedMsg || !targetUserId) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick' 
+                text: '⚠️ Please reply to a message from the user you want to kick.\n\nNote: This is a bot-only command for automated moderation' 
             });
             return true;
         }
@@ -763,8 +802,58 @@ class CommandHandler {
                 console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete #kick message:`, deleteError);
             }
 
-            // Kick the user
-            await this.sock.groupParticipantsUpdate(groupId, [targetUserId], 'remove');
+            // Kick the user with retry logic for large groups
+            let kickSuccessful = false;
+            let kickError = null;
+            const maxRetries = 3;
+            const retryDelay = 2000; // 2 seconds between retries
+            
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 🦵 Attempting to kick user (attempt ${attempt}/${maxRetries})...`);
+                    
+                    // Set a timeout for the kick operation (10 seconds for large groups)
+                    const kickPromise = this.sock.groupParticipantsUpdate(groupId, [targetUserId], 'remove');
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Kick operation timed out after 10 seconds')), 10000)
+                    );
+                    
+                    await Promise.race([kickPromise, timeoutPromise]);
+                    
+                    kickSuccessful = true;
+                    console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Successfully kicked user on attempt ${attempt}`);
+                    break;
+                } catch (error) {
+                    kickError = error;
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Kick attempt ${attempt} failed:`, error.message);
+                    
+                    if (attempt < maxRetries) {
+                        console.log(`[${require('../utils/logger').getTimestamp()}] ⏳ Waiting ${retryDelay/1000} seconds before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        
+                        // Check if user is still in group before retrying
+                        try {
+                            const updatedMetadata = await this.sock.groupMetadata(groupId);
+                            const stillInGroup = updatedMetadata.participants.some(p => p.id === targetUserId);
+                            if (!stillInGroup) {
+                                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ User already removed from group`);
+                                kickSuccessful = true;
+                                break;
+                            }
+                        } catch (metadataError) {
+                            console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Could not verify group membership:`, metadataError.message);
+                        }
+                    }
+                }
+            }
+            
+            if (!kickSuccessful) {
+                console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to kick user after ${maxRetries} attempts`);
+                await this.sock.sendMessage(groupId, { 
+                    text: `⚠️ Failed to kick user after ${maxRetries} attempts. This sometimes happens in large groups.\n\nError: ${kickError?.message || 'Unknown error'}\n\nPlease try again or kick manually.` 
+                });
+                return true;
+            }
 
             // Add to blacklist (no group message sent)
             const { addToBlacklist } = require('./blacklistService');
@@ -1716,7 +1805,7 @@ class CommandHandler {
     async handleSearch(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ This command is admin only.' 
+                text: this.getRandomSassyResponse()
             });
             return true;
         }
@@ -1771,7 +1860,7 @@ class CommandHandler {
     async handleVerifyLink(msg, args, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ This command is admin only.' 
+                text: this.getRandomSassyResponse()
             });
             return true;
         }
@@ -2332,7 +2421,7 @@ class CommandHandler {
     async handleJokesOn(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only administrators can manage joke settings.' 
+                text: this.getRandomSassyResponse()
             });
             return true;
         }
@@ -2385,7 +2474,7 @@ class CommandHandler {
     async handleJokesOff(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
+                text: this.getRandomSassyResponse()
             });
             return true;
         }
@@ -2438,7 +2527,7 @@ class CommandHandler {
     async handleJokesStatus(msg, isAdmin) {
         if (!isAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
+                text: this.getRandomSassyResponse()
             });
             return true;
         }
@@ -2491,6 +2580,29 @@ class CommandHandler {
             });
         }
 
+        return true;
+    }
+    
+    /**
+     * Handle #msg1 command - Send pre-written admin warning message
+     */
+    async handleMsg1(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { 
+                text: '❌ פקודה זו מיועדת למנהלים בלבד.' 
+            });
+            return true;
+        }
+        
+        const warningMessage = `🚨 אזהרת הבוט! 🚨
+רק מי שיש לו כתר אדמין 👑 יכול לשלוח הזמנה לקבוצת וואטסאפ כאן.
+כל השאר — שלחתם קישור? הבוט מוחק את ההודעה, ואתכם שולח ל"חדר מחשבות" מחוץ לקבוצה 🚪🤔
+עשו לעצמכם טובה, תשאירו את ההזמנות לאדמינים!
+
+🤡🚷
+#רק_אהבה_ולא_הזמנות`;
+
+        await this.sock.sendMessage(msg.key.remoteJid, { text: warningMessage });
         return true;
     }
 }

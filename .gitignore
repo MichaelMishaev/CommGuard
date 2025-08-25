@@ -1,63 +1,260 @@
-# Node modules
+# ========================================
+# CommGuard Bot - Comprehensive .gitignore
+# ========================================
+
+# ===================
+# CRITICAL SECURITY FILES - NEVER COMMIT!
+# ===================
+
+# WhatsApp Authentication & Session Data
+baileys_auth_info/
+baileys_auth_backup/
+session_backup_*/
+**/session-*.json
+
+# QR Codes (contain session tokens)
+qr-code.png
+qr-code.txt
+qr*.png
+qr*.txt
+
+# Firebase Credentials & Configuration
+guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
+guard1-dbkey.json
+guard1-dbkey.json.backup
+*-firebase-adminsdk-*.json
+firebase-adminsdk-*.json
+firebaseConfig.js
+
+# User Data & Phone Numbers
+blacklist.json
+blacklist-backup.json
+whitelist.json
+user-data/
+
+# ===================
+# NODE.JS & DEPENDENCIES
+# ===================
+
+# Dependencies
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+
+# Lock files (uncomment if you want to ignore them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ===================
+# ENVIRONMENT & CONFIG
+# ===================
 
 # Environment variables
 .env
 .env.local
 .env.production
+.env.development
+.env.test
 
-# Authentication data (IMPORTANT - Never commit auth data!)
-baileys_auth_info/
-baileys_auth_backup/
+# Local configuration overrides
+CLAUDE.local.md
+config.local.js
+local.config.js
 
-# Firebase credentials (SENSITIVE - DO NOT COMMIT!)
-guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json
-guard1-dbkey.json
-guard1-dbkey.json.backup
-firebaseConfig.js
+# ===================
+# RUNTIME & PROCESS FILES
+# ===================
 
-# Blacklist data (contains phone numbers)
-blacklist.json
-blacklist-backup.json
+# PM2 Process Manager
+.pm2/
+pids/
+*.pid
+*.seed
+*.pid.lock
+ecosystem.config.local.js
 
-# Test files
-test-blacklist.json
+# Instance lock files
+.commguard.lock
+.bot.lock
+*.lock
 
-# Logs
+# ===================
+# LOGS & MONITORING
+# ===================
+
+# Log files
 logs/
 *.log
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# OS files
+# Runtime data
+.nyc_output/
+coverage/
+
+# ===================
+# DEVELOPMENT & TESTING
+# ===================
+
+# Test files and temporary scripts
+test-*.json
+*-test.js
+temp-*.js
+debug-*.js
+test*.js
+
+# Temporary joke/content scripts
+add*Jokes.js
+*SassyJokes.js
+*BoringJokes.js
+toggle*.js
+
+# QA and testing outputs
+qa-report*.md
+test-output/
+test-results/
+
+# ===================
+# OPERATING SYSTEM
+# ===================
+
+# macOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
+Icon?
+._*
 
-# IDE files
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ===================
+# EDITORS & IDEs
+# ===================
+
+# Visual Studio Code
 .vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains IDEs
 .idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
 *.swp
 *.swo
+*~
+.vimrc.local
+
+# Emacs
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+
+# ===================
+# BUILD & DEPLOYMENT
+# ===================
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+.vuepress/dist/
 
 # Temporary files
 *.tmp
 *.temp
 temp/
 tmp/
+cache/
 
-# PM2
-.pm2/
-pids/
-*.pid
+# Backup files
+*.bak
+*.backup
+*~
 
-# Instance lock file
-.commguard.lock
+# ===================
+# CLOUD & DEPLOYMENT
+# ===================
 
-# Coverage
-coverage/
-.nyc_output/
+# Docker
+.dockerignore
+Dockerfile.local
 
-# Build files
-dist/
-build/
+# Serverless
+.serverless/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# ===================
+# SECURITY & CREDENTIALS
+# ===================
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+
+# SSL/TLS certificates
+*.crt
+*.cert
+*.ca-bundle
+
+# API keys and secrets
+secrets.json
+.secrets
+credentials.json
+service-account.json
+
+# ===================
+# PROJECT SPECIFIC
+# ===================
+
+# MCP (Model Context Protocol) local configs
+mcp.local.json
+
+# SSH deployment docs (contains server info)
+docs/ssh.md
+
+# Final test and regression files
+finalRegressionTest.js
+*RegressionTest.js
