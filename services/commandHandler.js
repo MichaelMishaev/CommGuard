@@ -684,12 +684,12 @@ class CommandHandler {
 
     // Add more command handlers here...
     async handleKick(msg, isAdmin) {
-        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 #kick command received`);
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 #kick command received from ${isAdmin ? 'admin' : 'user'}`);
         
-        // Check if message is from the bot itself (bot only command)
-        if (!msg.key.fromMe) {
+        // Check if user is admin (allow both manual admin kicks and automated bot kicks)
+        if (!isAdmin && !msg.key.fromMe) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '🤖 The #kick command can only be executed by the bot itself.' 
+                text: '❌ Only admins can kick users.' 
             });
             return true;
         }
@@ -697,7 +697,7 @@ class CommandHandler {
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #kick command can only be used in groups by the bot itself.\n\nNote: This is a bot-only command for automated moderation' 
+                text: '⚠️ The #kick command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kick' 
             });
             return true;
         }
@@ -728,7 +728,7 @@ class CommandHandler {
         
         if (!quotedMsg || !targetUserId) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please reply to a message from the user you want to kick.\n\nNote: This is a bot-only command for automated moderation' 
+                text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick' 
             });
             return true;
         }
