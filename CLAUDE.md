@@ -73,6 +73,36 @@ bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. 
 - Commands: `#search <query>`, `#verify <url>` (admin only, rate limited)
 - Requires MCP server setup for full functionality
 
+n## Translation Features
+
+### Auto-Translation
+- **Feature**:  - Automatically translates non-Hebrew messages to Hebrew
+- **Russian Exclusion**: Russian language messages are **NOT translated** to preserve original text
+- **Detection**: Uses Cyrillic character patterns and common Russian word matching
+- **Supported Languages**: All languages except Hebrew (source) and Russian (excluded)
+- **Rate Limiting**: 10 translations per minute per user
+- **Log Indicators**: 
+  - 🌐 for translated messages
+  - 🇷🇺 for skipped Russian messages
+  - 🔗 for skipped URLs
+  - 📧 for skipped email addresses
+
+
+
+## Translation Features
+
+### Auto-Translation
+- **Feature**: AUTO_TRANSLATION - Automatically translates non-Hebrew messages to Hebrew
+- **Russian Exclusion**: Russian language messages are **NOT translated** to preserve original text
+- **Detection**: Uses Cyrillic character patterns and common Russian word matching
+- **Supported Languages**: All languages except Hebrew (source) and Russian (excluded)
+- **Rate Limiting**: 10 translations per minute per user
+- **Log Indicators**: 
+  - 🌐 for translated messages
+  - 🇷🇺 for skipped Russian messages
+  - 🔗 for skipped URLs
+  - 📧 for skipped email addresses
+
 ## Known Issues (from CLAUDE.local.md)
 
 1. **#mute command** - Not working properly, requires bot admin status fixes
