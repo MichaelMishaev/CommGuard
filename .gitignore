@@ -258,3 +258,6 @@ docs/ssh.md
 # Final test and regression files
 finalRegressionTest.js
 *RegressionTest.js
+
+# SSH Configuration (for reference only - do not commit actual keys!)
+# github_ssh_key.txt
