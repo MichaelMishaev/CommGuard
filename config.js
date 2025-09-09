@@ -22,7 +22,7 @@ module.exports = {
     FIREBASE_INTEGRATION: true, // Enable Firebase integration
     RESTRICT_COUNTRY_CODES: true, // Auto-kick +1 and +6 numbers
     BYPASS_BOT_ADMIN_CHECK: true, // Workaround for LID format bot detection issues
-    AUTO_TRANSLATION: true, // Auto-translate non-Hebrew replies to Hebrew
+    AUTO_TRANSLATION: false, // Auto-translate non-Hebrew replies to Hebrew
   },
   
   // Regex patterns
