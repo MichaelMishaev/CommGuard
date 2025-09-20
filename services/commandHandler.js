@@ -335,8 +335,8 @@ class CommandHandler {
 
 *📱 BOT STATUS:*
 • Version: 2.1 (Baileys + Enhanced Nationality System)
-• Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'}
-• Blacklist System: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? 'Enabled' : 'Disabled (Firebase quota reduction)'}
+• Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled (Optimized)' : 'Disabled'}
+• Blacklist System: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? 'Enabled (24hr Cache)' : 'Disabled'}
 • Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? 'Enabled' : 'Disabled'}
 • Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Enabled' : 'Disabled'}
 

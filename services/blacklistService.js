@@ -1,35 +1,80 @@
 const db = require('../firebaseConfig.js');
 
-// Cache for blacklist
+// Enhanced cache for blacklist with persistent storage
 const blacklistCache = new Set();
 let cacheLoaded = false;
+let lastCacheUpdate = 0;
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours cache
+const MEMORY_CACHE_FILE = './blacklist_cache.json';
+
+// Load cache from local file first (fastest)
+function loadLocalCache() {
+  try {
+    const fs = require('fs');
+    if (fs.existsSync(MEMORY_CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(MEMORY_CACHE_FILE, 'utf8'));
+      if (Date.now() - data.timestamp < CACHE_DURATION) {
+        data.blacklist.forEach(id => blacklistCache.add(id));
+        lastCacheUpdate = data.timestamp;
+        cacheLoaded = true;
+        console.log(`✅ Loaded ${blacklistCache.size} blacklisted users from local cache (no Firebase read)`);
+        return true;
+      }
+    }
+  } catch (error) {
+    console.log('📋 No valid local cache found, will load from Firebase');
+  }
+  return false;
+}
+
+// Save cache to local file
+function saveLocalCache() {
+  try {
+    const fs = require('fs');
+    const data = {
+      timestamp: Date.now(),
+      blacklist: Array.from(blacklistCache)
+    };
+    fs.writeFileSync(MEMORY_CACHE_FILE, JSON.stringify(data), 'utf8');
+  } catch (error) {
+    console.warn('⚠️ Failed to save local cache:', error.message);
+  }
+}
 
 // Load blacklist from Firebase into cache
 async function loadBlacklistCache() {
-  if (!db || db.collection === undefined) {
+  // Try local cache first (no Firebase read needed)
+  if (loadLocalCache()) {
+    return; // Successfully loaded from local cache
+  }
+
+  if (!db || db.collection === undefined || global.FIREBASE_QUOTA_EXHAUSTED) {
     console.warn('⚠️ Firebase not available - blacklist features disabled');
     return;
   }
 
   try {
+    console.log('📋 Loading blacklist from Firebase (local cache expired)...');
     const snapshot = await db.collection('blacklist').get();
     blacklistCache.clear();
-    
+
     snapshot.forEach(doc => {
       blacklistCache.add(doc.id);
     });
-    
+
+    lastCacheUpdate = Date.now();
     cacheLoaded = true;
-    console.log(`✅ Loaded ${blacklistCache.size} blacklisted users into cache`);
+
+    // Save to local cache to avoid future Firebase reads
+    saveLocalCache();
+
+    console.log(`✅ Loaded ${blacklistCache.size} blacklisted users from Firebase and cached locally`);
   } catch (error) {
     console.error('❌ Error loading blacklist cache:', error.message);
 
     // Handle Firebase quota exhausted error
     if (error.message && error.message.includes('RESOURCE_EXHAUSTED')) {
-      console.log('🚨 Firebase quota exhausted - switching to memory-only mode');
-      console.log('⚠️ Blacklist data will not persist across restarts until quota resets');
-
-      // Set flag to disable Firebase operations temporarily
+      console.log('🚨 Firebase quota exhausted - using local cache only');
       global.FIREBASE_QUOTA_EXHAUSTED = true;
     }
   }
@@ -83,8 +128,11 @@ async function addToBlacklist(userId, reason = '') {
       reason: reason,
       originalId: userId
     });
-    
-    console.log(`✅ Added ${normalizedId} to blacklist`);
+
+    // Update local cache immediately after successful Firebase write
+    saveLocalCache();
+
+    console.log(`✅ Added ${normalizedId} to blacklist and updated cache`);
     return true;
   } catch (error) {
     console.error('❌ Error adding to blacklist:', error.message);
@@ -94,7 +142,8 @@ async function addToBlacklist(userId, reason = '') {
       console.log('🚨 Firebase quota exhausted during blacklist operation');
       global.FIREBASE_QUOTA_EXHAUSTED = true;
 
-      // User is still in memory cache, so operation partially succeeded
+      // Still update local cache since user is in memory
+      saveLocalCache();
       console.log('✅ User remains blacklisted in memory cache');
       return true;
     }
