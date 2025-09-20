@@ -1213,57 +1213,60 @@ async function handleMessage(sock, msg, commandHandler) {
         }
     }
     
-    // Check for "משעמם" messages and respond with funny jokes
+    // DISABLED: Check for "משעמם" messages and respond with funny jokes
+    // Commenting out this feature as requested
+    /*
     if (messageText.includes('משעמם')) {
         // Use the same deduplication logic as the command handler
         const CommandHandler = require('./services/commandHandler');
         const messageId = msg.key.id;
-        
+
         // Check if we already processed this "משעמם" message
         if (CommandHandler.processedMessages.has(messageId + '_boring')) {
             console.log(`[${getTimestamp()}] ⚠️ Duplicate "משעמם" message ignored: ${messageId}`);
             return; // Skip processing
         }
-        
+
         // Mark message as processed for "משעמם" responses
         CommandHandler.processedMessages.add(messageId + '_boring');
-        
+
         // Check if jokes are enabled for this group
         const groupJokeSettingsService = require('./services/groupJokeSettingsService');
         const jokesEnabled = await groupJokeSettingsService.areJokesEnabled(groupId);
-        
+
         if (!jokesEnabled) {
             console.log(`[${getTimestamp()}] 🎭 "משעמם" jokes disabled for group ${groupId} - ignoring message`);
             return; // Skip joke response if disabled for this group
         }
-        
+
         console.log(`[${getTimestamp()}] 😴 "משעמם" detected from ${senderId} in ${groupId}`);
-        
+
         try {
             const { motivationalPhraseService } = require('./services/motivationalPhraseService');
             const joke = await motivationalPhraseService.getRandomPhrase();
-            
-            await sock.sendMessage(groupId, { 
+
+            await sock.sendMessage(groupId, {
                 text: joke
             });
-            
+
             console.log(`✅ Sent funny response to "משעמם" message`);
         } catch (error) {
             console.error('❌ Failed to send motivational phrase:', error.message);
-            
+
             // Fallback response if database fails
             try {
-                await sock.sendMessage(groupId, { 
-                    text: "😴 משעמם? בואו נעשה משהו מעניין! 🎉\nBored? Let's do something interesting! 🎉" 
+                await sock.sendMessage(groupId, {
+                    text: "😴 משעמם? בואו נעשה משהו מעניין! 🎉\nBored? Let's do something interesting! 🎉"
                 });
                 console.log('✅ Sent fallback response to "משעמם" message');
             } catch (fallbackError) {
                 console.error('❌ Failed to send fallback response:', fallbackError.message);
             }
         }
-        
+
         // Continue processing (don't return, let other checks happen too)
     }
+    */
     
     // Check for invite links
     const matches = messageText.match(config.PATTERNS.INVITE_LINK);
