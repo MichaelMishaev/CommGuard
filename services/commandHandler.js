@@ -336,6 +336,7 @@ class CommandHandler {
 *📱 BOT STATUS:*
 • Version: 2.1 (Baileys + Enhanced Nationality System)
 • Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'}
+• Blacklist System: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? 'Enabled' : 'Disabled (Firebase quota reduction)'}
 • Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? 'Enabled' : 'Disabled'}
 • Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Enabled' : 'Disabled'}
 
@@ -642,7 +643,7 @@ class CommandHandler {
 🚫 *Blacklisted Users:* ${blacklistCache.size}
 ✅ *Whitelisted Users:* ${whitelistCount}
 🔇 *Currently Muted:* ${activeMutes}
-🔥 *Firebase:* Connected (${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'})
+🔥 *Firebase:* ${global.FIREBASE_QUOTA_EXHAUSTED ? 'Quota Exhausted (Memory-only)' : 'Connected'} (${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled' : 'Disabled'})
 🌍 *Country Filter:* ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Active' : 'Inactive'}
 
 ⏰ *Generated:* ${getTimestamp()}`;

@@ -23,6 +23,15 @@ async function loadBlacklistCache() {
     console.log(`✅ Loaded ${blacklistCache.size} blacklisted users into cache`);
   } catch (error) {
     console.error('❌ Error loading blacklist cache:', error.message);
+
+    // Handle Firebase quota exhausted error
+    if (error.message && error.message.includes('RESOURCE_EXHAUSTED')) {
+      console.log('🚨 Firebase quota exhausted - switching to memory-only mode');
+      console.log('⚠️ Blacklist data will not persist across restarts until quota resets');
+
+      // Set flag to disable Firebase operations temporarily
+      global.FIREBASE_QUOTA_EXHAUSTED = true;
+    }
   }
 }
 
@@ -39,8 +48,8 @@ async function isBlacklisted(userId) {
            blacklistCache.has(`${normalizedId}@s.whatsapp.net`);
   }
   
-  // Fallback to Firebase if cache not loaded
-  if (!db || db.collection === undefined) {
+  // Fallback to Firebase if cache not loaded and quota not exhausted
+  if (!db || db.collection === undefined || global.FIREBASE_QUOTA_EXHAUSTED) {
     return false;
   }
   
@@ -61,9 +70,10 @@ async function addToBlacklist(userId, reason = '') {
   blacklistCache.add(normalizedId);
   blacklistCache.add(userId);
   
-  // Add to Firebase if available
-  if (!db || db.collection === undefined) {
-    console.warn('⚠️ Firebase not available - user blacklisted in memory only');
+  // Add to Firebase if available and quota not exhausted
+  if (!db || db.collection === undefined || global.FIREBASE_QUOTA_EXHAUSTED) {
+    const reason = global.FIREBASE_QUOTA_EXHAUSTED ? '⚠️ Firebase quota exhausted' : '⚠️ Firebase not available';
+    console.warn(`${reason} - user blacklisted in memory only`);
     return true;
   }
   
@@ -78,6 +88,17 @@ async function addToBlacklist(userId, reason = '') {
     return true;
   } catch (error) {
     console.error('❌ Error adding to blacklist:', error.message);
+
+    // Handle quota exhausted error
+    if (error.message && error.message.includes('RESOURCE_EXHAUSTED')) {
+      console.log('🚨 Firebase quota exhausted during blacklist operation');
+      global.FIREBASE_QUOTA_EXHAUSTED = true;
+
+      // User is still in memory cache, so operation partially succeeded
+      console.log('✅ User remains blacklisted in memory cache');
+      return true;
+    }
+
     return false;
   }
 }

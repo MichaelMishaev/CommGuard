@@ -1369,30 +1369,14 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`[${getTimestamp()}] 🇮🇱 User origin check: ${userPhone} - Israeli: ${isIsraeliUser}`);
         
         if (!isIsraeliUser) {
-            // Non-Israeli user - immediate kick without warning
-            console.log(`[${getTimestamp()}] 🚨 Non-Israeli user sending invite link - immediate kick`);
-            
-            // Add to blacklist first - must succeed before kicking
-            const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Non-Israeli user sent invite link - immediate kick');
-            if (!blacklistSuccess) {
-                console.error('❌ Failed to blacklist non-Israeli user - aborting kick to prevent "kicked but not blacklisted" scenario');
-                return;
-            }
-            
-            // Kick the user immediately
+            // Non-Israeli user - immediate kick without blacklisting (blacklist disabled)
+            console.log(`[${getTimestamp()}] 🚨 Non-Israeli user sending invite link - immediate kick (no blacklist)`);
+
+            // Kick the user immediately (no blacklisting)
             try {
                 await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-                console.log('✅ Kicked non-Israeli user immediately:', senderId);
+                console.log('✅ Kicked non-Israeli user immediately (no blacklist):', senderId);
                 kickCooldown.set(senderId, Date.now());
-                
-                // Verify blacklisting is consistent after kick
-                const isBlacklisted = await blacklistService.isBlacklisted(senderId);
-                if (!isBlacklisted) {
-                    console.error('🚨 CRITICAL: Non-Israeli user was kicked but not found in blacklist - attempting to re-blacklist');
-                    await blacklistService.addToBlacklist(senderId, 'Non-Israeli invite link violation - post-kick verification');
-                } else {
-                    console.log('✅ Verified: Non-Israeli user is properly blacklisted after kick');
-                }
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
@@ -1476,30 +1460,14 @@ async function handleMessage(sock, msg, commandHandler) {
             }
             
         } else {
-            // Israeli user - immediate kick (same as non-Israeli)
-            console.log(`[${getTimestamp()}] 🚨 Israeli user sending invite link - immediate kick`);
-            
-            // Add to blacklist first - must succeed before kicking
-            const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Israeli user sent invite link - immediate kick');
-            if (!blacklistSuccess) {
-                console.error('❌ Failed to blacklist Israeli user - aborting kick to prevent "kicked but not blacklisted" scenario');
-                return;
-            }
-            
-            // Kick the user immediately
+            // Israeli user - immediate kick without blacklisting (blacklist disabled)
+            console.log(`[${getTimestamp()}] 🚨 Israeli user sending invite link - immediate kick (no blacklist)`);
+
+            // Kick the user immediately (no blacklisting)
             try {
                 await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-                console.log('✅ Kicked Israeli user immediately:', senderId);
+                console.log('✅ Kicked Israeli user immediately (no blacklist):', senderId);
                 kickCooldown.set(senderId, Date.now());
-                
-                // Verify blacklisting is consistent after kick
-                const isBlacklisted = await blacklistService.isBlacklisted(senderId);
-                if (!isBlacklisted) {
-                    console.error('🚨 CRITICAL: Israeli user was kicked but not found in blacklist - attempting to re-blacklist');
-                    await blacklistService.addToBlacklist(senderId, 'Israeli invite link violation - post-kick verification');
-                } else {
-                    console.log('✅ Verified: Israeli user is properly blacklisted after kick');
-                }
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
@@ -1695,56 +1663,9 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 continue; // Skip all checks for whitelisted users
             }
             
-            // Check if user is blacklisted (skip if added by admin)
-            if (!addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
-                console.log(`🚫 Blacklisted user detected: ${participantId}`);
-                
-                try {
-                    // Remove the blacklisted user
-                    await sock.groupParticipantsUpdate(groupId, [participantId], 'remove');
-                    console.log('✅ Kicked blacklisted user');
-                    
-                    // Send policy message with unblacklist option
-                    const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
-                                         `📋 *To request removal from blacklist:*\n` +
-                                         `1️⃣ Agree to NEVER share invite links in groups\n` +
-                                         `2️⃣ Contact admin directly for appeal\n` +
-                                         `3️⃣ Wait for admin decision\n\n` +
-                                         `⚠️ No automated appeals - admin contact required.\n\n` +
-                                         `🚫 הוסרת אוטומטית מ${groupMetadata.subject} כי אתה ברשימה השחורה בגלל שליחת קישורי הזמנה לוואטסאפ.\n\n` +
-                                         `📋 *לבקשת הסרה מהרשימה השחורה:*\n` +
-                                         `1️⃣ הסכים לעולם לא לשלוח קישורי הזמנה בקבוצות\n` +
-                                         `2️⃣ צור קשר עם המנהל ישירות לערעור\n` +
-                                         `3️⃣ חכה להחלטת המנהל\n\n` +
-                                         `⚠️ אין ערעורים אוטומטיים - נדרש קשר עם המנהל.`;
-                    await sock.sendMessage(participantId, { text: policyMessage }).catch(() => {});
-                    
-                    // Alert admin
-                    const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                    
-                    // Try to get group invite link
-                    let groupLink = 'N/A';
-                    try {
-                        const inviteCode = await sock.groupInviteCode(groupId);
-                        groupLink = `https://chat.whatsapp.com/${inviteCode}`;
-                    } catch (err) {
-                        console.log('Could not get group invite link:', err.message);
-                    }
-                    
-                    const alert = `🚨 *Blacklisted User Auto-Kicked*\n\n` +
-                                `📍 Group: ${groupMetadata.subject}\n` +
-                                `🔗 Group Link: ${groupLink}\n` +
-                                `👤 User: ${participantId}\n` +
-                                `⏰ Time: ${getTimestamp()}`;
-                    await sock.sendMessage(adminId, { text: alert });
-                    
-                } catch (error) {
-                    console.error('❌ Failed to kick blacklisted user:', error);
-                }
-                continue; // Skip further checks for this user
-            } else if (addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
-                console.log(`⚠️ Blacklisted user ${participantId} allowed to join - added by admin`);
-            }
+            // BLACKLIST CHECKING DISABLED - Firebase quota reduction
+            // Blacklist logic has been disabled to reduce Firebase usage
+            console.log(`📋 Blacklist checking disabled for user: ${participantId}`);
             
             // Check if phone number starts with +1 or +6 (or just 1 or 6 without +)
             // More precise check: US/Canada (+1) has 11 digits, Southeast Asia (+6x) has varying lengths
