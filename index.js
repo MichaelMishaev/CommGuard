@@ -9,6 +9,7 @@ const { logger, getTimestamp } = require('./utils/logger');
 const config = require('./config');
 const SingleInstance = require('./single-instance');
 const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT } = require('./utils/sessionManager');
+const stealthUtils = require('./utils/stealthUtils');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -433,7 +434,7 @@ async function startBot() {
         keepAliveIntervalMs: 45000, // Increased keep-alive interval
         connectTimeoutMs: 90000, // Extended connection timeout
         emitOwnEvents: false,
-        browser: ['CommGuard Bot', 'Desktop', '4.0.0'], // More generic browser info
+        browser: config.FEATURES.STEALTH_MODE ? config.STEALTH.BROWSER : ['CommGuard Bot', 'Desktop', '4.0.0'], // Stealth or normal browser info
         getMessage: async (key) => { // Add message cache handler to prevent stream errors
             return null; // Return null instead of sending "Hello" messages
         },
@@ -642,6 +643,13 @@ async function startBot() {
                 console.log('⚠️ Could not clear sessions:', error.message);
             }
             
+            // Initialize stealth mode if enabled
+            if (config.FEATURES.STEALTH_MODE) {
+                console.log('🥷 Initializing stealth mode...');
+                stealthUtils.initializeDefaultVariations();
+                console.log('✅ Stealth mode initialized with human-like behavior');
+            }
+
             // Send startup notification with error status
             try {
                 const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
@@ -651,7 +659,13 @@ async function startBot() {
                                     `⚡ Fast startup mode active\n` +
                                     `📊 Connection stable after ${reconnectAttempts} attempts\n` +
                                     `⏰ Time: ${getTimestamp()}`;
-                await sock.sendMessage(adminId, { text: statusMessage });
+
+                // Use stealth mode for startup notification if enabled
+                if (config.FEATURES.STEALTH_MODE) {
+                    await stealthUtils.sendHumanLikeMessage(sock, adminId, { text: statusMessage });
+                } else {
+                    await sock.sendMessage(adminId, { text: statusMessage });
+                }
             } catch (err) {
                 console.error('Failed to send startup notification:', err.message);
             }
@@ -971,17 +985,31 @@ async function handleMessage(sock, msg, commandHandler) {
             } else {
                 // Non-admin tried to use admin command
                 console.log(`   Command Rejected: ❌ Non-admin user`);
-                await sock.sendMessage(chatId, { 
-                    text: 'מה אני עובד אצלך?!' 
-                });
+
+                const responseText = config.FEATURES.RANDOMIZE_RESPONSES ?
+                    stealthUtils.getMessageVariation('admin_only_hebrew', 'מה אני עובד אצלך?!') :
+                    'מה אני עובד אצלך?!';
+
+                if (config.FEATURES.STEALTH_MODE) {
+                    await stealthUtils.sendHumanLikeMessage(sock, chatId, { text: responseText });
+                } else {
+                    await sock.sendMessage(chatId, { text: responseText });
+                }
                 return;
             }
-            
+
             // If command wasn't handled, show unknown command
             console.log(`   Command Handled: ❌ Unknown command`);
-            await sock.sendMessage(chatId, { 
-                text: '❌ Unknown command. Use #help to see available commands.' 
-            });
+
+            const unknownText = config.FEATURES.RANDOMIZE_RESPONSES ?
+                stealthUtils.getMessageVariation('unknown_command', '❌ Unknown command. Use #help to see available commands.') :
+                '❌ Unknown command. Use #help to see available commands.';
+
+            if (config.FEATURES.STEALTH_MODE) {
+                await stealthUtils.sendHumanLikeMessage(sock, chatId, { text: unknownText });
+            } else {
+                await sock.sendMessage(chatId, { text: unknownText });
+            }
         } else if (isAdmin && messageText && 
                   (messageText.startsWith('yes ') || messageText.startsWith('no '))) {
             // Handle admin approval patterns (yes/no userId)
@@ -1130,18 +1158,32 @@ async function handleMessage(sock, msg, commandHandler) {
         // Block #help command in groups for security
         if (command === '#help') {
             console.log(`   Result: ❌ Help command blocked in groups`);
-            await sock.sendMessage(groupId, { 
-                text: '❌ Unknown command.' 
-            });
+
+            const helpBlockedText = config.FEATURES.RANDOMIZE_RESPONSES ?
+                stealthUtils.getMessageVariation('help_blocked_group', '❌ Unknown command.') :
+                '❌ Unknown command.';
+
+            if (config.FEATURES.STEALTH_MODE) {
+                await stealthUtils.sendHumanLikeMessage(sock, groupId, { text: helpBlockedText });
+            } else {
+                await sock.sendMessage(groupId, { text: helpBlockedText });
+            }
             return;
         }
-        
+
         // Require admin for all other commands
         if (!isAdmin) {
             console.log(`   Result: ❌ Non-admin tried to use command`);
-            await sock.sendMessage(groupId, { 
-                text: 'מה אני עובד אצלך?!' 
-            });
+
+            const adminOnlyText = config.FEATURES.RANDOMIZE_RESPONSES ?
+                stealthUtils.getMessageVariation('admin_only_hebrew', 'מה אני עובד אצלך?!') :
+                'מה אני עובד אצלך?!';
+
+            if (config.FEATURES.STEALTH_MODE) {
+                await stealthUtils.sendHumanLikeMessage(sock, groupId, { text: adminOnlyText });
+            } else {
+                await sock.sendMessage(groupId, { text: adminOnlyText });
+            }
             return;
         }
         
@@ -1305,8 +1347,17 @@ async function handleMessage(sock, msg, commandHandler) {
         
         // Delete the message first (always delete invite links)
         try {
-            await sock.sendMessage(groupId, { delete: msg.key });
-            console.log('✅ Deleted invite link message');
+            if (config.FEATURES.STEALTH_MODE) {
+                const deleteResult = await stealthUtils.deleteMessageHumanLike(sock, groupId, msg.key, { urgent: true });
+                if (deleteResult.success) {
+                    console.log('✅ Deleted invite link message (stealth mode)');
+                } else {
+                    console.error('❌ Failed to delete message (stealth):', deleteResult.error);
+                }
+            } else {
+                await sock.sendMessage(groupId, { delete: msg.key });
+                console.log('✅ Deleted invite link message');
+            }
         } catch (deleteError) {
             console.error('❌ Failed to delete message:', deleteError.message);
         }
