@@ -939,7 +939,10 @@ async function handleMessage(sock, msg, commandHandler) {
     const messageText = extractMessageText(msg);
     
     // Skip if no text UNLESS it might contain invite link
-    if (!messageText && !mightContainInviteLink(msg)) return;
+    if (!messageText && !mightContainInviteLink(msg)) {
+        console.log(`[${getTimestamp()}] ⚠️ Skipping message - no text and no potential invite link detected`);
+        return;
+    }
     
     // Clear session errors on successful message
     const senderId = msg.key.participant || msg.key.remoteJid;
@@ -1035,6 +1038,7 @@ async function handleMessage(sock, msg, commandHandler) {
 
     // Check if user is whitelisted (whitelisted users bypass all restrictions)
     if (await whitelistService.isWhitelisted(senderId)) {
+        console.log(`[${getTimestamp()}] ✅ Whitelisted user ${senderId} - bypassing all restrictions`);
         return;
     }
 
@@ -1313,6 +1317,12 @@ async function handleMessage(sock, msg, commandHandler) {
     // Check for invite links (only if feature is enabled)
     if (!config.FEATURES.INVITE_LINK_DETECTION) {
         return; // Invite link detection disabled
+    }
+
+    // Ensure messageText exists before pattern matching
+    if (!messageText || typeof messageText !== 'string') {
+        console.log(`[${getTimestamp()}] ⚠️ No message text available for invite link detection`);
+        return;
     }
 
     const matches = messageText.match(config.PATTERNS.INVITE_LINK);
