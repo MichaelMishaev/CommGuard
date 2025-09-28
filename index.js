@@ -950,9 +950,23 @@ async function handleMessage(sock, msg, commandHandler) {
     
     // Extract message text with improved handling
     const messageText = extractMessageText(msg);
-    
+
+    // Debug logging for #kick commands specifically
+    if (msg.message?.extendedTextMessage?.text && msg.message.extendedTextMessage.text.includes('#kick')) {
+        console.log(`[${getTimestamp()}] 🔍 DEBUG: Found #kick in extendedTextMessage`);
+        console.log(`   Text: "${msg.message.extendedTextMessage.text}"`);
+        console.log(`   Has contextInfo: ${!!msg.message.extendedTextMessage.contextInfo}`);
+        console.log(`   messageText extracted: "${messageText}"`);
+    }
+
     // Skip if no text UNLESS it might contain invite link
     if (!messageText && !mightContainInviteLink(msg)) {
+        // Additional debug for messages that look like they should have text
+        if (msg.message?.extendedTextMessage) {
+            console.log(`[${getTimestamp()}] ⚠️ WARNING: ExtendedTextMessage but no text extracted!`);
+            console.log(`   Message keys: ${Object.keys(msg.message)}`);
+            console.log(`   ExtendedText keys: ${Object.keys(msg.message.extendedTextMessage)}`);
+        }
         console.log(`[${getTimestamp()}] ⚠️ Skipping message - no text and no potential invite link detected`);
         return;
     }
@@ -1153,12 +1167,20 @@ async function handleMessage(sock, msg, commandHandler) {
         return;
     }
 
+    // Debug check for any text containing #kick
+    if (messageText && messageText.includes('#kick')) {
+        console.log(`[${getTimestamp()}] 🎯 DEBUG: Found #kick in messageText at command check`);
+        console.log(`   Full text: "${messageText}"`);
+        console.log(`   Starts with #: ${messageText.startsWith('#')}`);
+        console.log(`   Will enter command block: ${messageText.startsWith('#')}`);
+    }
+
     // Handle commands (only for admins, except #help)
     if (messageText && messageText.startsWith('#')) {
         const parts = messageText.trim().split(/\s+/);
         const command = parts[0];
         const args = parts.slice(1); // Keep as array for proper command handling
-        
+
         // Log group commands to console
         const senderPhone = senderId.split('@')[0];
         console.log(`\n[${getTimestamp()}] 👥 Group Command Received:`);
@@ -1167,7 +1189,7 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`   Command: ${command}`);
         console.log(`   Args: ${args || '[none]'}`);
         console.log(`   Is Admin: ${isAdmin ? '✅ Yes' : '❌ No'}`);
-        
+
         // Block #help command in groups for security
         if (command === '#help') {
             console.log(`   Result: ❌ Help command blocked in groups`);

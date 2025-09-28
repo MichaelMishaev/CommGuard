@@ -123,8 +123,12 @@ function extractMessageText(msg) {
     // Debug logging for missing text
     if (!text && msg.message) {
         const messageTypes = Object.keys(msg.message);
-        if (messageTypes.length > 0 && !messageTypes.includes('protocolMessage') && !messageTypes.includes('senderKeyDistributionMessage')) {
-            console.log(`[DEBUG] Unhandled message type: ${messageTypes.join(', ')}`);
+        // Filter out metadata types that don't contain text
+        const contentTypes = messageTypes.filter(type =>
+            !['protocolMessage', 'senderKeyDistributionMessage', 'messageContextInfo'].includes(type)
+        );
+        if (contentTypes.length > 0) {
+            console.log(`[DEBUG] Unhandled message type: ${contentTypes.join(', ')}`);
         }
     }
 
