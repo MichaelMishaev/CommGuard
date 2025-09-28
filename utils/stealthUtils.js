@@ -186,12 +186,17 @@ class StealthUtils {
             await delay(deleteDelay);
 
             // Delete the message
-            await sock.sendMessage(chatId, { delete: messageKey });
+            const deleteResult = await sock.sendMessage(chatId, { delete: messageKey });
+
+            // Verify deletion attempt
+            if (!deleteResult || deleteResult.status !== 200) {
+                console.warn(`⚠️ Delete message API response uncertain: ${JSON.stringify(deleteResult)}`);
+            }
 
             // Record the action
             this.recordAction(chatId);
 
-            return { success: true };
+            return { success: true, apiResult: deleteResult };
 
         } catch (error) {
             console.error('Failed to delete message:', error.message);

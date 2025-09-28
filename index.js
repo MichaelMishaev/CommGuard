@@ -6,6 +6,7 @@ const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const { logger, getTimestamp, advancedLogger } = require('./utils/logger');
+const permissionChecker = require('./utils/permissionChecker');
 const config = require('./config');
 const SingleInstance = require('./single-instance');
 const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT } = require('./utils/sessionManager');
@@ -1362,21 +1363,39 @@ async function handleMessage(sock, msg, commandHandler) {
             return;
         }
         
-        // Delete the message first (always delete invite links)
-        try {
-            if (config.FEATURES.STEALTH_MODE) {
-                const deleteResult = await stealthUtils.deleteMessageHumanLike(sock, groupId, msg.key, { urgent: true });
-                if (deleteResult.success) {
-                    console.log('✅ Deleted invite link message (stealth mode)');
+        // Check bot permissions before attempting deletion
+        const permissions = await permissionChecker.checkBotPermissions(sock, groupId);
+        if (!permissions.canDeleteMessages) {
+            console.error(`❌ Bot cannot delete messages in ${groupId}`);
+            permissionChecker.logPermissionIssue('delete_invite_message', groupId, permissions, {
+                messageId: msg.key.id,
+                senderId: senderId,
+                inviteLinks: matches
+            });
+            // Continue with kicking even if can't delete
+        } else {
+            // Delete the message first (always delete invite links)
+            try {
+                if (config.FEATURES.STEALTH_MODE) {
+                    const deleteResult = await stealthUtils.deleteMessageHumanLike(sock, groupId, msg.key, { urgent: true });
+                    if (deleteResult.success) {
+                        console.log('✅ Deleted invite link message (stealth mode)');
+                        if (deleteResult.apiResult) {
+                            console.log(`   API Response: ${JSON.stringify(deleteResult.apiResult)}`);
+                        }
+                    } else {
+                        console.error('❌ Failed to delete message (stealth):', deleteResult.error);
+                        advancedLogger.logPermissionError('delete_invite_message', groupId, deleteResult.error || 'Unknown deletion failure');
+                    }
                 } else {
-                    console.error('❌ Failed to delete message (stealth):', deleteResult.error);
+                    const deleteResult = await sock.sendMessage(groupId, { delete: msg.key });
+                    console.log('✅ Deleted invite link message');
+                    console.log(`   API Response: ${JSON.stringify(deleteResult)}`);
                 }
-            } else {
-                await sock.sendMessage(groupId, { delete: msg.key });
-                console.log('✅ Deleted invite link message');
+            } catch (deleteError) {
+                console.error('❌ Failed to delete message:', deleteError.message);
+                advancedLogger.logPermissionError('delete_invite_message', groupId, deleteError);
             }
-        } catch (deleteError) {
-            console.error('❌ Failed to delete message:', deleteError.message);
         }
         
         // Check if user is Israeli (phone starts with 972)
