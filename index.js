@@ -5,7 +5,7 @@ const { makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSign
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
-const { logger, getTimestamp } = require('./utils/logger');
+const { logger, getTimestamp, advancedLogger } = require('./utils/logger');
 const config = require('./config');
 const SingleInstance = require('./single-instance');
 const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT } = require('./utils/sessionManager');
@@ -231,11 +231,14 @@ function startAdminRefreshScheduler(sock) {
                             .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
                             .map(p => p.id);
                         
+                        // Sanitize metadata to prevent Firestore undefined value errors
+                        const sanitizedMetadata = advancedLogger.sanitizeForFirestore(metadata);
+
                         await doc.ref.set({
                             adminList,
                             lastUpdated: Date.now(),
                             groupName: metadata.subject || 'Unknown Group',
-                            fullMetadata: metadata
+                            fullMetadata: sanitizedMetadata
                         });
                         
                         // Update memory cache too
@@ -247,7 +250,7 @@ function startAdminRefreshScheduler(sock) {
                         
                         refreshCount++;
                     } catch (error) {
-                        console.warn(`Failed to refresh admin list for ${groupId}:`, error.message);
+                        advancedLogger.logFirestoreError(error, 'refresh_admin_list', { groupId, metadata });
                     }
                 }
             }
@@ -1476,7 +1479,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 console.log('🔇 Non-Israeli user kicked silently - no message sent');
                 
             } catch (kickError) {
-                console.error('❌ Failed to kick non-Israeli user:', kickError.message);
+                advancedLogger.logPermissionError('kick_non_israeli_user', groupId, kickError);
             }
             
         } else {
@@ -1573,7 +1576,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 console.log('🔇 Israeli user kicked silently - no message sent');
                 
             } catch (kickError) {
-                console.error('❌ Failed to kick Israeli user:', kickError.message);
+                advancedLogger.logPermissionError('kick_israeli_user', groupId, kickError);
             }
         }
         
@@ -1713,7 +1716,7 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     await sock.sendMessage(adminId, { text: alert });
 
                 } catch (error) {
-                    console.error('❌ Failed to kick blacklisted user:', error);
+                    advancedLogger.logPermissionError('kick_blacklisted_user', groupId, error);
                 }
                 continue; // Skip further checks for this user
             } else if (addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
@@ -1779,7 +1782,7 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     await sock.sendMessage(adminId, { text: alert });
                     
                 } catch (error) {
-                    console.error('❌ Failed to kick user with restricted country code:', error);
+                    advancedLogger.logPermissionError('kick_restricted_country_code', groupId, error);
                 }
             } else if (addedByAdmin && config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !isLidFormat &&
                       ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || 

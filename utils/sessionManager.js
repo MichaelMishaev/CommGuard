@@ -1,5 +1,5 @@
 // Session management utilities for handling decryption errors
-const { getTimestamp } = require('./logger');
+const { getTimestamp, advancedLogger } = require('./logger');
 
 // Track failed decryption attempts
 const failedDecryptions = new Map();
@@ -142,10 +142,13 @@ async function handleSessionError(sock, error, msg, isStartup = false) {
         return { skip: true, userId: userId };
     }
     
-    // During startup, be less verbose for other errors
-    if (!isStartup) {
-        console.log(`[${getTimestamp()}] 🔒 Session error for ${userId}: ${error.message}`);
-    }
+    // Log session error with advanced logger
+    advancedLogger.logSessionError(error, {
+        userId: userId,
+        messageId: messageId,
+        groupId: msg.key.remoteJid?.endsWith('@g.us') ? msg.key.remoteJid : null,
+        isStartup: isStartup
+    });
     
     
     // Track the error
