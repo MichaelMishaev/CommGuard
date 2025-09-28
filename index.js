@@ -1154,7 +1154,7 @@ async function handleMessage(sock, msg, commandHandler) {
     }
 
     // Handle commands (only for admins, except #help)
-    if (messageText.startsWith('#')) {
+    if (messageText && messageText.startsWith('#')) {
         const parts = messageText.trim().split(/\s+/);
         const command = parts[0];
         const args = parts.slice(1); // Keep as array for proper command handling
