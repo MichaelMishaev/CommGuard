@@ -1365,6 +1365,9 @@ async function handleMessage(sock, msg, commandHandler) {
         
         // Check bot permissions before attempting deletion
         const permissions = await permissionChecker.checkBotPermissions(sock, groupId);
+        let deletionFailed = false;
+        let deletionError = null;
+
         if (!permissions.canDeleteMessages) {
             console.error(`❌ Bot cannot delete messages in ${groupId}`);
             permissionChecker.logPermissionIssue('delete_invite_message', groupId, permissions, {
@@ -1372,6 +1375,8 @@ async function handleMessage(sock, msg, commandHandler) {
                 senderId: senderId,
                 inviteLinks: matches
             });
+            deletionFailed = true;
+            deletionError = 'Bot lacks delete permission';
             // Continue with kicking even if can't delete
         } else {
             // Delete the message first (always delete invite links)
@@ -1386,6 +1391,8 @@ async function handleMessage(sock, msg, commandHandler) {
                     } else {
                         console.error('❌ Failed to delete message (stealth):', deleteResult.error);
                         advancedLogger.logPermissionError('delete_invite_message', groupId, deleteResult.error || 'Unknown deletion failure');
+                        deletionFailed = true;
+                        deletionError = deleteResult.error || 'Unknown stealth deletion failure';
                     }
                 } else {
                     const deleteResult = await sock.sendMessage(groupId, { delete: msg.key });
@@ -1395,9 +1402,40 @@ async function handleMessage(sock, msg, commandHandler) {
             } catch (deleteError) {
                 console.error('❌ Failed to delete message:', deleteError.message);
                 advancedLogger.logPermissionError('delete_invite_message', groupId, deleteError);
+                deletionFailed = true;
+                deletionError = deleteError.message;
             }
         }
-        
+
+        // Send alert to admin if deletion failed
+        if (deletionFailed) {
+            const adminPhone = config.ALERT_PHONE || '972544345287';
+            const adminId = adminPhone.startsWith('972') ?
+                adminPhone + '@s.whatsapp.net' :
+                '972' + adminPhone + '@s.whatsapp.net';
+
+            const alertMessage = `🚨 *FAILED TO DELETE INVITE LINK*\n\n` +
+                               `❌ *Deletion Failed*\n` +
+                               `📍 Group: ${groupMetadata?.subject || groupId}\n` +
+                               `👤 Sender: ${senderId}\n` +
+                               `🔗 Link: ${matches.join(', ')}\n` +
+                               `⏰ Time: ${getTimestamp()}\n` +
+                               `❗ Error: ${deletionError}\n\n` +
+                               `*Bot Permissions:*\n` +
+                               `• Admin Status: ${permissions.isAdmin ? '✅ Yes' : '❌ No'}\n` +
+                               `• Can Delete: ${permissions.canDeleteMessages ? '✅ Yes' : '❌ No'}\n` +
+                               `• Can Kick: ${permissions.canKickUsers ? '✅ Yes' : '❌ No'}\n\n` +
+                               `⚠️ *The invite link message is still visible in the group!*\n` +
+                               `📱 Please delete it manually or check bot admin status.`;
+
+            try {
+                await sock.sendMessage(adminId, { text: alertMessage });
+                console.log(`📱 Sent deletion failure alert to admin: ${adminPhone}`);
+            } catch (alertError) {
+                console.error('Failed to send deletion failure alert:', alertError.message);
+            }
+        }
+
         // Check if user is Israeli (phone starts with 972)
         const userPhone = senderId.split('@')[0];
         const isIsraeliUser = userPhone.startsWith('972');
