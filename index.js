@@ -1377,6 +1377,25 @@ async function handleMessage(sock, msg, commandHandler) {
             });
             deletionFailed = true;
             deletionError = 'Bot lacks delete permission';
+
+            // Send Hebrew message to group explaining bot needs admin
+            const hebrewMessage = `🚨 *קישור הזמנה לקבוצת וואטסאפ זוהה!*\n\n` +
+                                `❌ הבוט לא יכול למחוק הודעות בקבוצה זו\n` +
+                                `🛡️ *הבוט חייב להיות מנהל כדי למחוק קישורי הזמנה*\n\n` +
+                                `📝 אנא הוסיפו את הבוט כמנהל קבוצה:\n` +
+                                `1️⃣ לחצו על שם הקבוצה\n` +
+                                `2️⃣ לחצו על "מידע קבוצה"\n` +
+                                `3️⃣ לחצו על "עריכת מנהלי קבוצה"\n` +
+                                `4️⃣ הוסיפו את CommGuard כמנהל\n\n` +
+                                `⚠️ *עד אז, יש למחוק קישורי הזמנה ידנית*`;
+
+            try {
+                await sock.sendMessage(groupId, { text: hebrewMessage });
+                console.log(`📢 Sent Hebrew admin request message to group ${groupId}`);
+            } catch (messageError) {
+                console.error('Failed to send admin request message:', messageError.message);
+            }
+
             // Continue with kicking even if can't delete
         } else {
             // Delete the message first (always delete invite links)
@@ -1452,11 +1471,12 @@ async function handleMessage(sock, msg, commandHandler) {
                 console.error('❌ Failed to blacklist non-Israeli user - proceeding with kick anyway');
             }
 
-            // Kick the user immediately
-            try {
-                await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-                console.log('✅ Kicked non-Israeli user immediately:', senderId);
-                kickCooldown.set(senderId, Date.now());
+            // Kick the user immediately (only if bot has permission)
+            if (permissions.canKickUsers) {
+                try {
+                    await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                    console.log('✅ Kicked non-Israeli user immediately:', senderId);
+                    kickCooldown.set(senderId, Date.now());
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
@@ -1531,12 +1551,15 @@ async function handleMessage(sock, msg, commandHandler) {
                 } catch (error) {
                     console.error('⚠️ Failed to record kicked non-Israeli user:', error.message);
                 }
-                
-                // Non-Israeli users get NO MESSAGE - silent kick only
-                console.log('🔇 Non-Israeli user kicked silently - no message sent');
-                
-            } catch (kickError) {
-                advancedLogger.logPermissionError('kick_non_israeli_user', groupId, kickError);
+
+                    // Non-Israeli users get NO MESSAGE - silent kick only
+                    console.log('🔇 Non-Israeli user kicked silently - no message sent');
+
+                } catch (kickError) {
+                    advancedLogger.logPermissionError('kick_non_israeli_user', groupId, kickError);
+                }
+            } else {
+                console.log(`⚠️ Cannot kick non-Israeli user - bot lacks kick permission in ${groupId}`);
             }
             
         } else {
@@ -1549,11 +1572,12 @@ async function handleMessage(sock, msg, commandHandler) {
                 console.error('❌ Failed to blacklist Israeli user - proceeding with kick anyway');
             }
 
-            // Kick the user immediately
-            try {
-                await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-                console.log('✅ Kicked Israeli user immediately:', senderId);
-                kickCooldown.set(senderId, Date.now());
+            // Kick the user immediately (only if bot has permission)
+            if (permissions.canKickUsers) {
+                try {
+                    await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                    console.log('✅ Kicked Israeli user immediately:', senderId);
+                    kickCooldown.set(senderId, Date.now());
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
@@ -1628,12 +1652,14 @@ async function handleMessage(sock, msg, commandHandler) {
                 } catch (error) {
                     console.error('⚠️ Failed to record kicked Israeli user:', error.message);
                 }
-                
-                // Israeli users get NO MESSAGE - silent kick (same as non-Israeli)
-                console.log('🔇 Israeli user kicked silently - no message sent');
-                
-            } catch (kickError) {
-                advancedLogger.logPermissionError('kick_israeli_user', groupId, kickError);
+                    // Israeli users get NO MESSAGE - silent kick (same as non-Israeli)
+                    console.log('🔇 Israeli user kicked silently - no message sent');
+
+                } catch (kickError) {
+                    advancedLogger.logPermissionError('kick_israeli_user', groupId, kickError);
+                }
+            } else {
+                console.log(`⚠️ Cannot kick Israeli user - bot lacks kick permission in ${groupId}`);
             }
         }
         
