@@ -686,50 +686,62 @@ class CommandHandler {
     // Add more command handlers here...
     async handleKick(msg, isAdmin) {
         console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 #kick command received from ${isAdmin ? 'admin' : 'user'}`);
-        
+
+        // Debug log the entire message structure
+        console.log(`[${require('../utils/logger').getTimestamp()}] 📦 Message structure:`, {
+            messageKeys: Object.keys(msg.message || {}),
+            hasExtendedText: !!msg.message?.extendedTextMessage,
+            contextInfoKeys: msg.message?.extendedTextMessage?.contextInfo ? Object.keys(msg.message.extendedTextMessage.contextInfo) : []
+        });
+
         // Check if user is admin (allow both manual admin kicks and automated bot kicks)
         if (!isAdmin && !msg.key.fromMe) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only admins can kick users.' 
-            });
-            return true;
-        }
-        
-        // Check if in private chat
-        if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #kick command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kick' 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Only admins can kick users.'
             });
             return true;
         }
 
-        // Check if this is a reply to another message - check multiple message types
+        // Check if in private chat
+        if (this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ The #kick command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kick'
+            });
+            return true;
+        }
+
+        // Check if this is a reply to another message - updated detection logic
         let quotedMsg = null;
         let targetUserId = null;
-        
-        // Try different message structures for quoted messages
+        let messageId = null;
+
+        // Primary method - extendedTextMessage with contextInfo (most common)
         if (msg.message?.extendedTextMessage?.contextInfo) {
-            quotedMsg = msg.message.extendedTextMessage.contextInfo;
-            targetUserId = quotedMsg.participant;
-        } else if (msg.message?.textMessage?.contextInfo) {
-            quotedMsg = msg.message.textMessage.contextInfo;
-            targetUserId = quotedMsg.participant;
-        } else if (msg.message?.conversation && msg.contextInfo) {
-            quotedMsg = msg.contextInfo;
-            targetUserId = quotedMsg.participant;
+            const contextInfo = msg.message.extendedTextMessage.contextInfo;
+
+            // The participant field contains the user who sent the quoted message
+            targetUserId = contextInfo.participant;
+
+            // Get message ID from stanzaId
+            messageId = contextInfo.stanzaId;
+
+            // Store the full context for later use
+            quotedMsg = contextInfo;
+
+            console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Found quoted message via extendedTextMessage`);
         }
-        
+
         console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 Kick command analysis:`, {
             hasQuotedMsg: !!quotedMsg,
             hasParticipant: !!targetUserId,
             participant: targetUserId,
-            messageType: Object.keys(msg.message || {})[0],
-            hasContextInfo: !!(msg.message?.extendedTextMessage?.contextInfo || msg.message?.textMessage?.contextInfo || msg.contextInfo)
+            messageId: messageId,
+            messageType: Object.keys(msg.message || {})[0]
         });
-        
+
         if (!quotedMsg || !targetUserId) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick' 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick'
             });
             return true;
         }
@@ -760,11 +772,10 @@ class CommandHandler {
 
             console.log(`[${require('../utils/logger').getTimestamp()}] 👢 Admin kick: ${targetUserId} from ${groupId}`);
 
-            // Delete the replied-to message first - try multiple ID formats
-            const messageId = quotedMsg.stanzaId || quotedMsg.id;
+            // Delete the replied-to message first
             if (messageId) {
                 try {
-                    await this.sock.sendMessage(groupId, { 
+                    await this.sock.sendMessage(groupId, {
                         delete: {
                             remoteJid: groupId,
                             fromMe: false,
