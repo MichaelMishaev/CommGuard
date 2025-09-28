@@ -101,15 +101,34 @@ function mightContainInviteLink(msg) {
 // Get message text with fallback for encrypted messages
 function extractMessageText(msg) {
     // Try all possible text locations
-    return msg.message?.conversation || 
-           msg.message?.extendedTextMessage?.text || 
+    const text = msg.message?.conversation ||
+           msg.message?.extendedTextMessage?.text ||
            msg.message?.imageMessage?.caption ||
            msg.message?.videoMessage?.caption ||
            msg.message?.documentMessage?.caption ||
            msg.message?.buttonsMessage?.contentText ||
            msg.message?.templateMessage?.hydratedTemplate?.hydratedContentText ||
            msg.message?.listMessage?.description ||
+           msg.message?.ephemeralMessage?.message?.conversation ||
+           msg.message?.ephemeralMessage?.message?.extendedTextMessage?.text ||
+           msg.message?.viewOnceMessage?.message?.imageMessage?.caption ||
+           msg.message?.viewOnceMessage?.message?.videoMessage?.caption ||
+           msg.message?.viewOnceMessageV2?.message?.imageMessage?.caption ||
+           msg.message?.viewOnceMessageV2?.message?.videoMessage?.caption ||
+           msg.message?.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+           msg.message?.editedMessage?.message?.protocolMessage?.editedMessage?.conversation ||
+           msg.message?.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
            '';
+
+    // Debug logging for missing text
+    if (!text && msg.message) {
+        const messageTypes = Object.keys(msg.message);
+        if (messageTypes.length > 0 && !messageTypes.includes('protocolMessage') && !messageTypes.includes('senderKeyDistributionMessage')) {
+            console.log(`[DEBUG] Unhandled message type: ${messageTypes.join(', ')}`);
+        }
+    }
+
+    return text;
 }
 
 // Check if user should be skipped during startup
