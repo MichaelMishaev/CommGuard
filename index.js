@@ -11,6 +11,7 @@ const config = require('./config');
 const SingleInstance = require('./single-instance');
 const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT } = require('./utils/sessionManager');
 const stealthUtils = require('./utils/stealthUtils');
+const restartLimiter = require('./utils/restartLimiter');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -583,11 +584,19 @@ async function startBot() {
             console.log(`Bot ID: ${sock.user.id}`);
             console.log(`Bot Name: ${sock.user.name}`);
             console.log(`Bot Platform: ${sock.user.platform || 'Unknown'}`);
-            
+
             // Log timestamp filtering info
             const cutoffTime = new Date(BOT_START_TIME - MESSAGE_GRACE_PERIOD);
             console.log(`⏭️ Ignoring messages older than: ${cutoffTime.toLocaleString()}`);
             console.log(`⚡ This will skip message backlog from while bot was down`);
+
+            // Notify admin of successful connection with restart count
+            try {
+                const restartStats = restartLimiter.getStats();
+                await restartLimiter.notifyAdmin(sock, restartStats.todayCount, 'Connection successful');
+            } catch (notifyError) {
+                console.log('Could not notify admin of connection:', notifyError.message);
+            }
             
             // Store bot phone for later use
             const botPhone = sock.user.id.split(':')[0].split('@')[0];
@@ -1122,17 +1131,13 @@ async function handleMessage(sock, msg, commandHandler) {
                         const remainingTime = await muteService.getRemainingMuteTime(senderId);
                         const timeText = remainingTime ? ` (${remainingTime} remaining)` : '';
                         
-                        await sock.sendMessage(senderId, {
-                            text: `🔇 You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
-                                  `📱 Reason: Sent too many messages while muted${timeText}\n` +
-                                  `⚠️ You sent ${msgCount} messages after being muted\n` +
-                                  `📞 Contact admin to discuss your mute status\n` +
-                                  `🤖 This is an automated message from CommGuard Bot\n\n` +
-                                  `🔇 הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
-                                  `📱 סיבה: שלחת יותר מדי הודעות בזמן השתקה${timeText}\n` +
-                                  `⚠️ שלחת ${msgCount} הודעות אחרי שהושתקת\n` +
-                                  `📞 פנה למנהל כדי לדון בסטטוס ההשתקה שלך\n` +
-                                  `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                        // Send notification to admin instead of user
+                        await sock.sendMessage('0544345287@s.whatsapp.net', {
+                            text: `🔇 Muted user removed for violations\n\n` +
+                                  `👤 User: ${senderId}\n` +
+                                  `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
+                                  `📱 Reason: Sent ${msgCount} messages while muted${timeText}\n` +
+                                  `⏰ Time: ${new Date().toLocaleString()}`
                         });
                     } catch (privateError) {
                         console.error(`Failed to send private message to muted user:`, privateError.message);
@@ -1779,19 +1784,20 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     await sock.groupParticipantsUpdate(groupId, [participantId], 'remove');
                     console.log('✅ Kicked blacklisted user');
 
-                    // Send minimal policy message
-                    const policyMessage = `🚫 You have been automatically removed from ${groupMetadata.subject} because you are blacklisted for sharing WhatsApp invite links.\n\n` +
-                                         `📋 Contact admin directly for appeal.\n\n` +
-                                         `🚫 הוסרת אוטומטית מהקבוצה בגלל שליחת קישורי הזמנה. צור קשר עם המנהל.`;
-                    await sock.sendMessage(participantId, { text: policyMessage }).catch(() => {});
+                    // Send notification to admin instead of user
+                    try {
+                        await sock.sendMessage('0544345287@s.whatsapp.net', {
+                            text: `🚫 Blacklisted user auto-removed\n\n` +
+                                  `👤 User: ${participantId}\n` +
+                                  `📍 Group: ${groupMetadata.subject}\n` +
+                                  `📱 Reason: User on blacklist\n` +
+                                  `⏰ Time: ${getTimestamp()}`
+                        });
+                    } catch (notifyError) {
+                        console.log('Could not notify admin:', notifyError.message);
+                    }
 
-                    // Alert admin (minimal message)
-                    const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                    const alert = `🚨 *Blacklisted User Auto-Kicked*\n\n` +
-                                `📍 Group: ${groupMetadata.subject}\n` +
-                                `👤 User: ${participantId}\n` +
-                                `⏰ Time: ${getTimestamp()}`;
-                    await sock.sendMessage(adminId, { text: alert });
+                    // No additional admin alert needed - already sent above
 
                 } catch (error) {
                     advancedLogger.logPermissionError('kick_blacklisted_user', groupId, error);
@@ -1999,5 +2005,42 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
-// Start the application
-main();
+// Start the application with restart limiting
+async function startWithRestartLimit() {
+    try {
+        // Record restart attempt
+        const restartCount = await restartLimiter.recordRestart('Bot startup');
+
+        // Check if emergency stop needed
+        if (restartLimiter.shouldEmergencyStop()) {
+            console.error(`[${getTimestamp()}] 🚨 EMERGENCY STOP: Too many restarts (${restartCount})`);
+            console.error('Manual intervention required. Check logs and fix underlying issues.');
+            process.exit(1);
+        }
+
+        // Check if restart limit exceeded
+        if (restartLimiter.isRestartLimitExceeded()) {
+            console.error(`[${getTimestamp()}] ⚠️ RESTART LIMIT EXCEEDED: ${restartCount}/10 today`);
+            console.error('Continuing but monitoring closely...');
+        }
+
+        // Start main application
+        await main();
+
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Startup failed:`, error.message);
+
+        // Record restart failure
+        await restartLimiter.recordRestart(`Startup failure: ${error.message}`);
+
+        // Check if we should stop trying
+        if (restartLimiter.shouldEmergencyStop()) {
+            console.error(`[${getTimestamp()}] 🚨 Too many failed starts. Stopping.`);
+            process.exit(1);
+        }
+
+        throw error;
+    }
+}
+
+startWithRestartLimit();

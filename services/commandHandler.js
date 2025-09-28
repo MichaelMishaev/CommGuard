@@ -882,20 +882,18 @@ class CommandHandler {
                 groupInviteLink: groupInviteLink
             });
 
-            // Send private message to kicked user
+            // Send notification to admin instead of user
             try {
-                await this.sock.sendMessage(targetUserId, {
-                    text: `👮‍♂️ You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
-                          `📱 Reason: Removed by admin\n` +
-                          `📞 Contact admin if you have questions\n` +
-                          `🤖 This is an automated message from CommGuard Bot\n\n` +
-                          `👮‍♂️ הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
-                          `📱 סיבה: הוסר על ידי מנהל\n` +
-                          `📞 פנה למנהל אם יש לך שאלות\n` +
-                          `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                    text: `👮‍♂️ User kicked by admin command\n\n` +
+                          `👤 User: ${targetUserId}\n` +
+                          `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
+                          `📱 Reason: Manual kick by admin\n` +
+                          `⏰ Time: ${new Date().toLocaleString()}`
                 });
-            } catch (privateError) {
-                console.error(`Failed to send private message to kicked user:`, privateError.message);
+                console.log(`✅ Admin notification sent for kicked user: ${targetUserId}`);
+            } catch (notificationError) {
+                console.error(`Failed to send admin notification:`, notificationError.message);
             }
 
             console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Successfully kicked user: ${targetUserId}`);
@@ -1061,22 +1059,19 @@ class CommandHandler {
                     groupInviteLink: groupInviteLink
                 });
                 
-                // Send private message to banned user
+                // Send ban notification to admin instead of user
                 try {
-                    await this.sock.sendMessage(targetUserId, {
-                        text: `🚫 You have been BANNED from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
-                              `📱 Reason: Banned by admin\n` +
-                              `⚠️ You cannot rejoin until unbanned\n` +
-                              `📞 Contact admin to appeal this ban\n` +
-                              `🤖 This is an automated message from CommGuard Bot\n\n` +
-                              `🚫 נחסמת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
-                              `📱 סיבה: נחסם על ידי מנהל\n` +
-                              `⚠️ אתה לא יכול להצטרף שוב עד שתבוטל החסימה\n` +
-                              `📞 פנה למנהל כדי לערער על החסימה\n` +
-                              `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                    await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                        text: `🚫 User banned by admin command\n\n` +
+                              `👤 User: ${targetUserId}\n` +
+                              `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
+                              `📱 Reason: Manual ban by admin\n` +
+                              `🗃️ Added to blacklist\n` +
+                              `⏰ Time: ${new Date().toLocaleString()}`
                     });
-                } catch (privateError) {
-                    console.error(`Failed to send private message to banned user:`, privateError.message);
+                    console.log(`✅ Admin notification sent for banned user: ${targetUserId}`);
+                } catch (notificationError) {
+                    console.error(`Failed to send admin notification:`, notificationError.message);
                 }
                 
                 await this.sock.sendMessage(groupId, { 
@@ -1233,18 +1228,17 @@ class CommandHandler {
                         groupInviteLink: 'N/A' // Will be obtained by alert service
                     });
                     
-                    // Send private message to removed user
+                    // Send notification to admin instead of user
                     try {
-                        await this.sock.sendMessage(`${user.phone}@s.whatsapp.net`, {
-                            text: `🌍 You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
-                                  `📱 Reason: Country code restriction (+1/+6 numbers not allowed)\n` +
-                                  `🤖 This is an automated message from CommGuard Bot\n\n` +
-                                  `🌍 הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
-                                  `📱 סיבה: הגבלת קוד מדינה (מספרי +1/+6 לא מורשים)\n` +
-                                  `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                        await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                            text: `🌍 Country code restriction kick\n\n` +
+                                  `👤 User: ${user.phone}\n` +
+                                  `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
+                                  `📱 Reason: +1/+6 country code not allowed\n` +
+                                  `⏰ Time: ${new Date().toLocaleString()}`
                         });
-                    } catch (privateError) {
-                        console.error(`Failed to send private message to ${user.phone}:`, privateError.message);
+                    } catch (notificationError) {
+                        console.error(`Failed to send admin notification:`, notificationError.message);
                     }
                     
                     // Small delay to avoid rate limiting
@@ -1630,20 +1624,17 @@ class CommandHandler {
                         groupInviteLink: 'N/A' // Will be obtained by alert service
                     });
                     
-                    // Send private message to removed user
+                    // Send notification to admin instead of user
                     try {
-                        await this.sock.sendMessage(`${user.phone}@s.whatsapp.net`, {
-                            text: `🚫 You have been removed from group "${groupMetadata?.subject || 'Unknown Group'}"\n\n` +
-                                  `📱 Reason: You are on the blacklist\n` +
-                                  `📞 Contact admin if you believe this is an error\n` +
-                                  `🤖 This is an automated message from CommGuard Bot\n\n` +
-                                  `🚫 הוסרת מהקבוצה "${groupMetadata?.subject || 'קבוצה לא ידועה'}"\n\n` +
-                                  `📱 סיבה: אתה ברשימה השחורה\n` +
-                                  `📞 פנה למנהל אם אתה מאמין שזו טעות\n` +
-                                  `🤖 זהו הודעה אוטומטית מבוט CommGuard`
+                        await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                            text: `🚫 Blacklisted user removed\n\n` +
+                                  `👤 User: ${user.phone}\n` +
+                                  `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
+                                  `📱 Reason: User on blacklist\n` +
+                                  `⏰ Time: ${new Date().toLocaleString()}`
                         });
-                    } catch (privateError) {
-                        console.error(`Failed to send private message to ${user.phone}:`, privateError.message);
+                    } catch (notificationError) {
+                        console.error(`Failed to send admin notification:`, notificationError.message);
                     }
                     
                     // Small delay to avoid rate limiting
