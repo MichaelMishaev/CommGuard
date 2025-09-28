@@ -1368,8 +1368,14 @@ async function handleMessage(sock, msg, commandHandler) {
             return;
         }
         
-        // Check bot permissions before attempting deletion
-        const permissions = await permissionChecker.checkBotPermissions(sock, groupId);
+        // Check bot permissions before attempting deletion (unless bypass is enabled)
+        let permissions = { canDeleteMessages: true, canKickUsers: true };
+        if (!config.FEATURES.BYPASS_BOT_ADMIN_CHECK) {
+            permissions = await permissionChecker.checkBotPermissions(sock, groupId);
+        } else {
+            console.log(`[${getTimestamp()}] ⚡ Bot admin check bypassed - assuming admin permissions`);
+        }
+
         let deletionFailed = false;
         let deletionError = null;
 
