@@ -9,7 +9,7 @@ const { logger, getTimestamp, advancedLogger } = require('./utils/logger');
 const permissionChecker = require('./utils/permissionChecker');
 const config = require('./config');
 const SingleInstance = require('./single-instance');
-const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT } = require('./utils/sessionManager');
+const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT, checkStickerCommand } = require('./utils/sessionManager');
 const stealthUtils = require('./utils/stealthUtils');
 const restartLimiter = require('./utils/restartLimiter');
 
@@ -959,15 +959,22 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`   messageText extracted: "${messageText}"`);
     }
 
-    // Skip if no text UNLESS it might contain invite link
-    if (!messageText && !mightContainInviteLink(msg)) {
+    // Check for sticker/reaction commands when no text is found
+    let stickerCommand = null;
+    if (!messageText) {
+        stickerCommand = checkStickerCommand(msg);
+        console.log(`[${getTimestamp()}] 🔍 Sticker command check result:`, stickerCommand);
+    }
+
+    // Skip if no text AND no sticker command AND no invite link potential
+    if (!messageText && !stickerCommand.isCommand && !mightContainInviteLink(msg)) {
         // Additional debug for messages that look like they should have text
         if (msg.message?.extendedTextMessage) {
             console.log(`[${getTimestamp()}] ⚠️ WARNING: ExtendedTextMessage but no text extracted!`);
             console.log(`   Message keys: ${Object.keys(msg.message)}`);
             console.log(`   ExtendedText keys: ${Object.keys(msg.message.extendedTextMessage)}`);
         }
-        console.log(`[${getTimestamp()}] ⚠️ Skipping message - no text and no potential invite link detected`);
+        console.log(`[${getTimestamp()}] ⚠️ Skipping message - no text, no sticker command, and no potential invite link detected`);
         return;
     }
     
@@ -1175,12 +1182,40 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`   Will enter command block: ${messageText.startsWith('#')}`);
     }
 
-    // Handle commands (only for admins, except #help)
-    if (messageText && messageText.startsWith('#')) {
-        const parts = messageText.trim().split(/\s+/);
-        const command = parts[0];
-        const args = parts.slice(1); // Keep as array for proper command handling
+    // Handle commands (text-based or sticker-based, only for admins, except #help)
+    let command = null, args = null, commandSource = 'none';
 
+    if (messageText && messageText.startsWith('#')) {
+        // Regular text-based command
+        const parts = messageText.trim().split(/\s+/);
+        command = parts[0];
+        args = parts.slice(1);
+        commandSource = 'text';
+    } else if (stickerCommand && stickerCommand.isCommand && isAdmin) {
+        // Sticker-based command (only for admins)
+        if (stickerCommand.type === 'sticker_reply') {
+            // Sticker reply = #kick command
+            command = '#kick';
+            args = [];
+            commandSource = 'sticker_reply';
+
+            // Create a fake message text for the command handler
+            messageText = '#kick';
+
+            console.log(`[${getTimestamp()}] 🎯 STICKER COMMAND DETECTED!`);
+            console.log(`   Sticker type: ${stickerCommand.type}`);
+            console.log(`   Target participant: ${stickerCommand.participant}`);
+            console.log(`   Target stanzaId: ${stickerCommand.stanzaId}`);
+        } else if (stickerCommand.type === 'reaction_kick') {
+            // Reaction-based kick
+            command = '#kick';
+            args = [];
+            commandSource = 'reaction';
+            messageText = '#kick';
+        }
+    }
+
+    if (command) {
         // Log group commands to console
         const senderPhone = senderId.split('@')[0];
         console.log(`\n[${getTimestamp()}] 👥 Group Command Received:`);
@@ -1188,6 +1223,7 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`   From: ${senderPhone} (${senderId})`);
         console.log(`   Command: ${command}`);
         console.log(`   Args: ${args || '[none]'}`);
+        console.log(`   Source: ${commandSource}`);
         console.log(`   Is Admin: ${isAdmin ? '✅ Yes' : '❌ No'}`);
 
         // Block #help command in groups for security
@@ -1221,8 +1257,31 @@ async function handleMessage(sock, msg, commandHandler) {
             }
             return;
         }
-        
-        const handled = await commandHandler.handleCommand(msg, command, args, isAdmin, isSuperAdmin);
+
+        // For sticker commands, modify the message object to include context info
+        let modifiedMsg = msg;
+        if (commandSource === 'sticker_reply' && stickerCommand.contextInfo) {
+            console.log(`[${getTimestamp()}] 🔧 Modifying message for sticker command...`);
+
+            // Create a modified message that looks like an extendedTextMessage with context
+            modifiedMsg = {
+                ...msg,
+                message: {
+                    extendedTextMessage: {
+                        text: '#kick',
+                        contextInfo: {
+                            participant: stickerCommand.participant,
+                            stanzaId: stickerCommand.stanzaId,
+                            quotedMessage: {} // Minimal quoted message structure
+                        }
+                    }
+                }
+            };
+
+            console.log(`   Modified message contextInfo:`, modifiedMsg.message.extendedTextMessage.contextInfo);
+        }
+
+        const handled = await commandHandler.handleCommand(modifiedMsg, command, args, isAdmin, isSuperAdmin);
         if (handled) {
             console.log(`   Result: ✅ Command handled successfully`);
         } else {

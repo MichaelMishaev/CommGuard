@@ -145,6 +145,41 @@ function extractMessageText(msg) {
     return text;
 }
 
+// NEW: Check if a sticker/reaction message is a command reply
+function checkStickerCommand(msg) {
+    // Check if this is a sticker with context info (reply)
+    if (msg.message?.stickerMessage && msg.message?.messageContextInfo) {
+        console.log(`[DEBUG] STICKER WITH CONTEXT DETECTED - checking for command intent`);
+
+        // Return context info if it exists - indicating this is a reply
+        return {
+            isCommand: true,
+            type: 'sticker_reply',
+            contextInfo: msg.message.messageContextInfo,
+            participant: msg.message.messageContextInfo.participant,
+            stanzaId: msg.message.messageContextInfo.stanzaId || msg.message.messageContextInfo.quotedMessageId
+        };
+    }
+
+    // Check for reaction messages (some users might react with specific emojis as commands)
+    if (msg.message?.reactionMessage) {
+        console.log(`[DEBUG] REACTION MESSAGE DETECTED - text: "${msg.message.reactionMessage.text}"`);
+
+        // Check for kick-related reactions
+        const kickEmojis = ['❌', '🚫', '👎', '🔴', '⛔', '🗑️', '💀'];
+        if (kickEmojis.includes(msg.message.reactionMessage.text)) {
+            return {
+                isCommand: true,
+                type: 'reaction_kick',
+                emoji: msg.message.reactionMessage.text,
+                targetKey: msg.message.reactionMessage.key
+            };
+        }
+    }
+
+    return { isCommand: false };
+}
+
 // Check if user should be skipped during startup
 function shouldSkipUser(userId, isStartup = false) {
     // Emergency: Block ALL @lid users during startup to prevent massive decryption delays
@@ -242,6 +277,7 @@ module.exports = {
     clearSessionErrors,
     mightContainInviteLink,
     extractMessageText,
+    checkStickerCommand,
     handleSessionError,
     shouldSkipUser,
     clearProblematicUsers,
