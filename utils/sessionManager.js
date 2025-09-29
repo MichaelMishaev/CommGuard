@@ -100,6 +100,11 @@ function mightContainInviteLink(msg) {
 
 // Get message text with fallback for encrypted messages
 function extractMessageText(msg) {
+    // Debug: Log full message structure for text messages to understand new WhatsApp format
+    if (msg.message && (msg.message.conversation || msg.message.extendedTextMessage)) {
+        console.log(`[DEBUG] TEXT MESSAGE STRUCTURE:`, JSON.stringify(msg.message, null, 2));
+    }
+
     // Try all possible text locations
     const text = msg.message?.conversation ||
            msg.message?.extendedTextMessage?.text ||
@@ -120,9 +125,14 @@ function extractMessageText(msg) {
            msg.message?.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
            '';
 
-    // Debug logging for missing text
+    // Enhanced debug logging - log ANY message that might contain text but we can't extract
     if (!text && msg.message) {
         const messageTypes = Object.keys(msg.message);
+        // Only log if this looks like it should have text content
+        if (messageTypes.includes('messageContextInfo') && messageTypes.length > 1) {
+            console.log(`[DEBUG] POTENTIAL TEXT MESSAGE NOT EXTRACTED:`, JSON.stringify(msg.message, null, 2));
+        }
+
         // Filter out metadata types that don't contain text
         const contentTypes = messageTypes.filter(type =>
             !['protocolMessage', 'senderKeyDistributionMessage', 'messageContextInfo'].includes(type)
