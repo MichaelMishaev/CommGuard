@@ -963,11 +963,12 @@ async function handleMessage(sock, msg, commandHandler) {
     let stickerCommand = { isCommand: false };
     const hasSticker = msg.message?.stickerMessage;
     const hasReaction = msg.message?.reactionMessage;
+    const hasEffectiveText = messageText && messageText.trim().length > 0;
 
-    if (!messageText || hasSticker || hasReaction) {
+    if (!hasEffectiveText || hasSticker || hasReaction) {
         stickerCommand = checkStickerCommand(msg);
         console.log(`[${getTimestamp()}] 🔍 Sticker command check result:`, stickerCommand);
-        console.log(`   Has sticker: ${!!hasSticker}, Has reaction: ${!!hasReaction}, messageText: "${messageText}"`);
+        console.log(`   Has sticker: ${!!hasSticker}, Has reaction: ${!!hasReaction}, messageText: "${messageText}", hasEffectiveText: ${hasEffectiveText}`);
     }
 
     // Skip if no text AND no sticker command AND no invite link potential
