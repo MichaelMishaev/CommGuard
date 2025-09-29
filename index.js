@@ -960,14 +960,14 @@ async function handleMessage(sock, msg, commandHandler) {
     }
 
     // Check for sticker/reaction commands when no text is found
-    let stickerCommand = null;
+    let stickerCommand = { isCommand: false };
     if (!messageText) {
         stickerCommand = checkStickerCommand(msg);
         console.log(`[${getTimestamp()}] 🔍 Sticker command check result:`, stickerCommand);
     }
 
     // Skip if no text AND no sticker command AND no invite link potential
-    if (!messageText && !stickerCommand.isCommand && !mightContainInviteLink(msg)) {
+    if (!messageText && (!stickerCommand || !stickerCommand.isCommand) && !mightContainInviteLink(msg)) {
         // Additional debug for messages that look like they should have text
         if (msg.message?.extendedTextMessage) {
             console.log(`[${getTimestamp()}] ⚠️ WARNING: ExtendedTextMessage but no text extracted!`);
