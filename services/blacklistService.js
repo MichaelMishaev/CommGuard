@@ -48,6 +48,11 @@ async function loadBlacklistCache() {
     return; // Successfully loaded from local cache
   }
 
+  // MEMORY-ONLY MODE - Firebase disabled for blacklist (cost reduction)
+  console.log('💾 Blacklist using memory-only cache (Firebase disabled)');
+  cacheLoaded = true;
+
+  /* FIREBASE READS DISABLED FOR BLACKLIST - Cost reduction
   if (!db || db.collection === undefined || global.FIREBASE_QUOTA_EXHAUSTED) {
     console.warn('⚠️ Firebase not available - blacklist features disabled');
     return;
@@ -78,6 +83,7 @@ async function loadBlacklistCache() {
       global.FIREBASE_QUOTA_EXHAUSTED = true;
     }
   }
+  */
 }
 
 // Check if a user is blacklisted
@@ -115,13 +121,18 @@ async function addToBlacklist(userId, reason = '') {
   blacklistCache.add(normalizedId);
   blacklistCache.add(userId);
   
-  // Add to Firebase if available and quota not exhausted
+  // Save to local cache file (Firebase writes disabled for cost reduction)
+  saveLocalCache();
+  console.log(`✅ Added ${normalizedId} to blacklist (memory-only)`);
+  return true;
+
+  /* FIREBASE WRITES DISABLED FOR BLACKLIST - Cost reduction
   if (!db || db.collection === undefined || global.FIREBASE_QUOTA_EXHAUSTED) {
     const reason = global.FIREBASE_QUOTA_EXHAUSTED ? '⚠️ Firebase quota exhausted' : '⚠️ Firebase not available';
     console.warn(`${reason} - user blacklisted in memory only`);
     return true;
   }
-  
+
   try {
     await db.collection('blacklist').doc(normalizedId).set({
       addedAt: new Date().toISOString(),
@@ -150,6 +161,7 @@ async function addToBlacklist(userId, reason = '') {
 
     return false;
   }
+  */
 }
 
 // Remove user from blacklist
@@ -161,17 +173,32 @@ async function removeFromBlacklist(userId) {
   blacklistCache.delete(userId);
   blacklistCache.delete(`${normalizedId}@c.us`);
   blacklistCache.delete(`${normalizedId}@s.whatsapp.net`);
-  
-  // Remove from Firebase if available
+
+  // Save to local cache file (Firebase deletes disabled for cost reduction)
+  saveLocalCache();
+  console.log(`✅ Removed ${normalizedId} from blacklist (memory-only)`);
+
+  // Enable rejoin for this user
+  try {
+    const { kickedUserService } = require('./kickedUserService');
+    await kickedUserService.enableRejoin(userId);
+    console.log(`✅ Enabled rejoin links for ${normalizedId}`);
+  } catch (error) {
+    console.warn('⚠️ Failed to enable rejoin:', error.message);
+  }
+
+  return true;
+
+  /* FIREBASE DELETES DISABLED FOR BLACKLIST - Cost reduction
   if (!db || db.collection === undefined) {
     console.warn('⚠️ Firebase not available - removed from memory only');
     return true;
   }
-  
+
   try {
     await db.collection('blacklist').doc(normalizedId).delete();
     console.log(`✅ Removed ${normalizedId} from blacklist`);
-    
+
     // Enable rejoin for this user
     try {
       const { kickedUserService } = require('./kickedUserService');
@@ -180,12 +207,13 @@ async function removeFromBlacklist(userId) {
     } catch (error) {
       console.warn('⚠️ Failed to enable rejoin:', error.message);
     }
-    
+
     return true;
   } catch (error) {
     console.error('❌ Error removing from blacklist:', error.message);
     return false;
   }
+  */
 }
 
 module.exports = {

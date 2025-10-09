@@ -16,6 +16,12 @@ class KickedUserService {
      * Load kicked user data from Firebase into cache
      */
     async loadKickedUserCache() {
+        // MEMORY-ONLY MODE - Firebase disabled for kicked_users (cost reduction)
+        this.cacheLoaded = true;
+        console.log(`💾 Kicked user service using memory-only cache (Firebase disabled) - ${this.kickedUserCache.size} records`);
+        return true;
+
+        /* FIREBASE READS DISABLED FOR KICKED_USERS - Cost reduction
         if (!db || db.collection === undefined) {
             console.warn('⚠️ Firebase not available - kicked user tracking disabled');
             return false;
@@ -24,11 +30,11 @@ class KickedUserService {
         try {
             const snapshot = await db.collection('kicked_users').get();
             this.kickedUserCache.clear();
-            
+
             snapshot.forEach(doc => {
                 this.kickedUserCache.set(doc.id, doc.data());
             });
-            
+
             this.cacheLoaded = true;
             console.log(`✅ Loaded ${this.kickedUserCache.size} kicked user records into cache`);
             return true;
@@ -36,6 +42,7 @@ class KickedUserService {
             console.error('❌ Error loading kicked user cache:', error.message);
             return false;
         }
+        */
     }
 
     /**

@@ -17,6 +17,12 @@ class WarningService {
      * Load warning data from Firebase into cache
      */
     async loadWarningCache() {
+        // MEMORY-ONLY MODE - Firebase disabled for warnings (cost reduction)
+        this.cacheLoaded = true;
+        console.log('💾 Warning system using memory-only cache (Firebase disabled)');
+        return true;
+
+        /* FIREBASE READS DISABLED FOR WARNINGS - Cost reduction
         if (!db || db.collection === undefined) {
             console.warn('⚠️ Firebase not available - warning system disabled');
             return false;
@@ -25,11 +31,11 @@ class WarningService {
         try {
             const snapshot = await db.collection('user_warnings').get();
             this.warningCache.clear();
-            
+
             snapshot.forEach(doc => {
                 this.warningCache.set(doc.id, doc.data());
             });
-            
+
             this.cacheLoaded = true;
             console.log(`✅ Loaded ${this.warningCache.size} warning records into cache`);
             return true;
@@ -37,6 +43,7 @@ class WarningService {
             console.error('❌ Error loading warning cache:', error.message);
             return false;
         }
+        */
     }
 
     /**
@@ -122,8 +129,10 @@ class WarningService {
 
         // Update cache
         this.warningCache.set(warningKey, warningRecord);
+        console.log(`⚠️ Warning recorded: ${normalizedUserId} in ${groupName} (Count: ${warningRecord.warningCount}) [memory-only]`);
+        return true;
 
-        // Save to Firebase if available
+        /* FIREBASE WRITES DISABLED FOR WARNINGS - Cost reduction
         if (!db || db.collection === undefined) {
             console.warn('⚠️ Firebase not available - warning saved in memory only');
             return true;
@@ -137,6 +146,7 @@ class WarningService {
             console.error('❌ Error recording warning:', error.message);
             return false;
         }
+        */
     }
 
     /**
@@ -151,7 +161,9 @@ class WarningService {
             // Clear warning for specific group
             const warningKey = `${normalizedUserId}:${groupId}`;
             this.warningCache.delete(warningKey);
+            console.log(`✅ Cleared warning for ${normalizedUserId} in group ${groupId} [memory-only]`);
 
+            /* FIREBASE DELETES DISABLED FOR WARNINGS - Cost reduction
             if (db && db.collection) {
                 try {
                     await db.collection('user_warnings').doc(warningKey).delete();
@@ -160,6 +172,7 @@ class WarningService {
                     console.error('❌ Error clearing warning:', error.message);
                 }
             }
+            */
         } else {
             // Clear all warnings for user
             const keysToDelete = [];
@@ -171,8 +184,9 @@ class WarningService {
 
             // Delete from cache
             keysToDelete.forEach(key => this.warningCache.delete(key));
+            console.log(`✅ Cleared ${keysToDelete.length} warnings for ${normalizedUserId} [memory-only]`);
 
-            // Delete from Firebase
+            /* FIREBASE DELETES DISABLED FOR WARNINGS - Cost reduction
             if (db && db.collection) {
                 const batch = db.batch();
                 keysToDelete.forEach(key => {
@@ -187,6 +201,7 @@ class WarningService {
                     console.error('❌ Error clearing warnings:', error.message);
                 }
             }
+            */
         }
     }
 
@@ -207,8 +222,9 @@ class WarningService {
         if (expiredKeys.length > 0) {
             // Remove from cache
             expiredKeys.forEach(key => this.warningCache.delete(key));
+            console.log(`🧹 Cleaned up ${expiredKeys.length} expired warnings [memory-only]`);
 
-            // Remove from Firebase
+            /* FIREBASE DELETES DISABLED FOR WARNINGS - Cost reduction
             if (db && db.collection) {
                 const batch = db.batch();
                 expiredKeys.forEach(key => {
@@ -223,6 +239,7 @@ class WarningService {
                     console.error('❌ Error cleaning up warnings:', error.message);
                 }
             }
+            */
         }
     }
 
