@@ -627,30 +627,10 @@ async function startBot() {
                     }
                     
                     console.log(`🚨 NUCLEAR: Cleared ALL ${clearedCount} sessions for fresh start`);
-                    console.log(`⏰ Ignoring ALL messages for next 10 minutes to prevent session corruption`);
                     
-                    // ULTIMATE FIX: Override Baileys decryption function during startup
-                    const originalDecrypt = sock.decryptMessage;
-                    if (originalDecrypt) {
-                        sock.decryptMessage = async function(msg) {
-                            const userId = msg.key?.participant || msg.key?.remoteJid;
-                            
-                            // Block ALL decryption during startup phase
-                            if (isStartupPhase) {
-                                return null; // Return null instead of decrypted content
-                            }
-                            
-                            // Block @lid users permanently 
-                            if (userId && userId.includes('@lid')) {
-                                return null; // Block all @lid decryption
-                            }
-                            
-                            // Allow normal decryption for regular users after startup
-                            return originalDecrypt.call(this, msg);
-                        };
-                        
-                        console.log(`🚫 OVERRODE Baileys decryption to block problematic messages`);
-                    }
+                    // DISABLED: This was blocking ALL @lid users (most modern WhatsApp users)
+                    // which prevented the bot from receiving invite links and other messages!
+                    // The bot now processes all messages normally.
                 }
             } catch (error) {
                 console.log('⚠️ Could not clear sessions:', error.message);
