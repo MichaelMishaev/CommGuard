@@ -128,6 +128,13 @@ function extractMessageText(msg) {
     // Enhanced debug logging - log ANY message that might contain text but we can't extract
     if (!text && msg.message) {
         const messageTypes = Object.keys(msg.message);
+
+        // Check if message contains WhatsApp links even if we can't extract text normally
+        const messageJson = JSON.stringify(msg.message);
+        if (messageJson.includes('whatsapp.com') || messageJson.includes('chat.whatsapp')) {
+            console.log(`[DEBUG] 🚨 INVITE LINK IN RAW MESSAGE BUT TEXT NOT EXTRACTED:`, JSON.stringify(msg.message, null, 2));
+        }
+
         // Only log if this looks like it should have text content
         if (messageTypes.includes('messageContextInfo') && messageTypes.length > 1) {
             console.log(`[DEBUG] POTENTIAL TEXT MESSAGE NOT EXTRACTED:`, JSON.stringify(msg.message, null, 2));
