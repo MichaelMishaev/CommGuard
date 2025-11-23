@@ -1,7 +1,7 @@
 // Load environment variables from .env file
 require('dotenv').config();
 
-const { makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys');
+const { makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, delay } = require('baileys');
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
@@ -55,9 +55,14 @@ function shouldIgnoreOldMessage(msg) {
 
 // Clear startup phase after timeout
 const clearStartupPhase = () => {
+    console.log(`[${getTimestamp()}] ⏰ Startup timer fired - isStartupPhase was: ${isStartupPhase}`);
     if (isStartupPhase) {
         isStartupPhase = false;
-        clearProblematicUsers();
+        try {
+            clearProblematicUsers();
+        } catch (e) {
+            console.error('Error in clearProblematicUsers:', e);
+        }
         console.log(`[${getTimestamp()}] 🚀 Startup phase completed - normal operation mode`);
         console.log(`[${getTimestamp()}] 📊 Startup summary: Skipped ${skippedOldMessagesCount} old messages from downtime`);
     }
@@ -709,10 +714,11 @@ async function startBot() {
                 
                 const userId = msg.key.participant || msg.key.remoteJid;
                 
-                // Skip @lid users during startup to prevent issues
-                if (isStartupPhase && userId && userId.includes('@lid')) {
-                    continue; // @lid users blocked during startup only
-                }
+                // Skip @lid users ONLY if they have session errors during startup
+                // Note: NOT blocking all @lid users - that blocks everyone in modern WhatsApp
+                // if (isStartupPhase && shouldSkipUser(userId, true)) {
+                //     continue;
+                // }
                 
                 await handleMessage(sock, msg, commandHandler);
             } catch (error) {
@@ -816,8 +822,8 @@ async function startBot() {
             // Check for bot using multiple matching patterns (handles LID format)
             const botAddedToGroup = participants.some(p => {
                 return p === botJid || 
-                       p.includes(botPhone) || 
-                       p.startsWith(botPhone);
+                       String(p?.id || p).includes(botPhone) || 
+                       String(p?.id || p).startsWith(botPhone);
             });
             
             if (botAddedToGroup) {
@@ -915,6 +921,17 @@ function isTextAllNonHebrew(text) {
 
 // Handle incoming messages
 async function handleMessage(sock, msg, commandHandler) {
+    // TEMP DEBUG: Log every message's key info
+    const debugSender = msg.key.participant || msg.key.remoteJid;
+    const debugGroup = msg.key.remoteJid;
+    const debugText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+    if (debugText.includes('#')) {
+        console.log(`[COMMAND-DEBUG] Message with # detected!`);
+        console.log(`   Sender: ${debugSender}`);
+        console.log(`   Group: ${debugGroup}`);
+        console.log(`   Text: ${debugText.substring(0, 50)}`);
+        console.log(`   Full msg keys: ${Object.keys(msg.message || {}).join(', ')}`);
+    }
     // Check if it's a group or private message
     const isGroup = msg.key.remoteJid.endsWith('@g.us');
     const isPrivate = msg.key.remoteJid.endsWith('@s.whatsapp.net');
@@ -929,7 +946,7 @@ async function handleMessage(sock, msg, commandHandler) {
     if (!msg.message) return;
     
     // Extract message text with improved handling
-    const messageText = extractMessageText(msg);
+    let messageText = extractMessageText(msg);
 
     // Debug logging for #kick commands specifically
     if (msg.message?.extendedTextMessage?.text && msg.message.extendedTextMessage.text.includes('#kick')) {
@@ -1834,7 +1851,8 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
         }
         
         // Check each participant
-        for (const participantId of participants) {
+        for (const _participant of participants) {
+            const participantId = typeof _participant === "string" ? _participant : (_participant?.id || String(_participant));
             // Extract phone number from participant ID
             const phoneNumber = participantId.split('@')[0];
             const isLidFormat = participantId.endsWith('@lid');

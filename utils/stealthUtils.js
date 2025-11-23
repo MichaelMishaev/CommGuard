@@ -1,7 +1,7 @@
 // Stealth utilities for WhatsApp bot to avoid detection
 // Based on research for human-like behavior patterns
 
-const { delay } = require('@whiskeysockets/baileys');
+const { delay } = require('baileys');
 
 class StealthUtils {
     constructor() {
