@@ -24,6 +24,16 @@ const DB_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour DB updates
 // Startup phase management for session optimization
 let isStartupPhase = true;
 
+// Debug: Log archived chats every 30 seconds
+setInterval(() => {
+    if (typeof archivedChats !== 'undefined' && archivedChats.size > 0) {
+        console.log(`[ARCHIVED-STATUS] Currently tracking ${archivedChats.size} archived chats:`);
+        for (const chatId of archivedChats) {
+            console.log(`   - ${chatId}`);
+        }
+    }
+}, 30000);
+
 // Track archived chats to skip message processing
 const archivedChats = new Set();
 let startupTimer = null;
@@ -727,6 +737,16 @@ async function startBot() {
     // Startup phase is managed globally
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        // DEBUG: Log EVERY message received (including fromMe)
+        console.log(`[MSG-UPSERT] Received ${messages.length} messages, type: ${type}`);
+        for (const m of messages) {
+            const txt = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
+            const fromMe = m.key.fromMe ? 'SELF' : 'OTHER';
+            console.log(`[MSG-UPSERT] [${fromMe}] ${m.key.remoteJid?.substring(0,20)} | Text: ${txt?.substring(0,30) || '[no text]'} | type: ${type}`);
+            if (txt) {
+                console.log(`[RAW-MSG] From: ${m.key.remoteJid?.substring(0,20)} | Text: ${txt.substring(0,30)}`);
+            }
+        }
         // Only process new messages
         if (type !== 'notify') return;
         
@@ -739,6 +759,11 @@ async function startBot() {
 
                 // Skip messages from archived chats
                 if (archivedChats.has(msg.key.remoteJid)) {
+                    const txt = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    console.log(`[ARCHIVED-SKIP] Skipping message from archived group: ${msg.key.remoteJid}`);
+                    if (txt.includes('#')) {
+                        console.log(`[ARCHIVED-SKIP] ⚠️ COMMAND SKIPPED: ${txt}`);
+                    }
                     continue; // Ignore archived groups
                 }
                 
@@ -969,14 +994,28 @@ async function handleMessage(sock, msg, commandHandler) {
     // Skip if not from group or private chat
     if (!isGroup && !isPrivate) return;
     
-    // Skip if from self
-    if (msg.key.fromMe) return;
+    // Skip if from self (but allow # commands from self for admin control)
+    if (msg.key.fromMe) {
+        const selfText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+        if (!selfText.startsWith('#')) {
+            return; // Skip non-command messages from self
+        }
+        console.log(`[SELF-CMD] Processing command from self: ${selfText.substring(0, 20)}`);
+    }
     
     // Skip if no message content
     if (!msg.message) return;
     
     // Extract message text with improved handling
     let messageText = extractMessageText(msg);
+    
+    // ULTRA DEBUG: Check what extractMessageText returned
+    const rawText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+    if (rawText.includes('#')) {
+        console.log(`[EXTRACT-DEBUG] Raw text: "${rawText}"`);
+        console.log(`[EXTRACT-DEBUG] Extracted: "${messageText}"`);
+        console.log(`[EXTRACT-DEBUG] fromMe: ${msg.key.fromMe}`);
+    }
 
     // Debug logging for #kick commands specifically
     if (msg.message?.extendedTextMessage?.text && msg.message.extendedTextMessage.text.includes('#kick')) {
