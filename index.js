@@ -23,6 +23,9 @@ const DB_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour DB updates
 
 // Startup phase management for session optimization
 let isStartupPhase = true;
+
+// Track archived chats to skip message processing
+const archivedChats = new Set();
 let startupTimer = null;
 
 // Track bot startup time to ignore old messages from while bot was down
@@ -461,6 +464,28 @@ async function startBot() {
     
     // Save credentials whenever updated
     sock.ev.on('creds.update', saveCreds);
+
+    // Track archived chats
+    sock.ev.on('chats.upsert', (chats) => {
+        for (const chat of chats) {
+            if (chat.archived) {
+                archivedChats.add(chat.id);
+                console.log(`[📦] Chat archived: ${chat.id}`);
+            }
+        }
+    });
+
+    sock.ev.on('chats.update', (updates) => {
+        for (const update of updates) {
+            if (update.archived === true) {
+                archivedChats.add(update.id);
+                console.log(`[📦] Chat archived: ${update.id}`);
+            } else if (update.archived === false) {
+                archivedChats.delete(update.id);
+                console.log(`[📦] Chat unarchived: ${update.id}`);
+            }
+        }
+    });
     
     // Handle connection updates
     sock.ev.on('connection.update', async (update) => {
@@ -710,6 +735,11 @@ async function startBot() {
                 // Skip old messages from before bot startup (much faster than session error handling)
                 if (shouldIgnoreOldMessage(msg)) {
                     continue;
+                }
+
+                // Skip messages from archived chats
+                if (archivedChats.has(msg.key.remoteJid)) {
+                    continue; // Ignore archived groups
                 }
                 
                 const userId = msg.key.participant || msg.key.remoteJid;
