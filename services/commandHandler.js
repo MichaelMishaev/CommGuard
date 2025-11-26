@@ -538,11 +538,31 @@ class CommandHandler {
 
         const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
-        
+
         if (!quotedMsg || !quotedParticipant) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: `⚠️ Please reply to a message to mute that user.\n` +
-                      `⚠️ אנא השב להודעה כדי להשתיק את המשתמש.`
+            // Send detailed alert to main admin phone only
+            const senderJid = msg.key.participant || msg.key.remoteJid;
+            const senderPhone = senderJid.split('@')[0];
+            const groupId = msg.key.remoteJid;
+
+            // Get group name
+            let groupName = 'Unknown';
+            try {
+                const groupMetadata = await this.getCachedGroupMetadata(groupId);
+                groupName = groupMetadata.subject || 'Unknown';
+            } catch (e) {
+                // Ignore metadata errors
+            }
+
+            // Send alert to main admin only - no group spam
+            const alertPhone = this.config.ALERT_PHONE + '@s.whatsapp.net';
+            await this.sock.sendMessage(alertPhone, {
+                text: `⚠️ COMMAND ERROR ALERT\n\n` +
+                      `Command: #mute\n` +
+                      `User: ${senderPhone}\n` +
+                      `Group: ${groupName}\n` +
+                      `Error: No message reply detected\n` +
+                      `Time: ${new Date().toLocaleString('en-GB')}`
             });
             return true;
         }
@@ -740,8 +760,29 @@ class CommandHandler {
         });
 
         if (!quotedMsg || !targetUserId) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
-                text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick'
+            // Send detailed alert to main admin phone only
+            const senderJid = msg.key.participant || msg.key.remoteJid;
+            const senderPhone = senderJid.split('@')[0];
+            const groupId = msg.key.remoteJid;
+
+            // Get group name
+            let groupName = 'Unknown';
+            try {
+                const groupMetadata = await this.getCachedGroupMetadata(groupId);
+                groupName = groupMetadata.subject || 'Unknown';
+            } catch (e) {
+                // Ignore metadata errors
+            }
+
+            // Send alert to main admin only - no group spam
+            const alertPhone = this.config.ALERT_PHONE + '@s.whatsapp.net';
+            await this.sock.sendMessage(alertPhone, {
+                text: `⚠️ COMMAND ERROR ALERT\n\n` +
+                      `Command: #kick\n` +
+                      `User: ${senderPhone}\n` +
+                      `Group: ${groupName}\n` +
+                      `Error: No message reply detected\n` +
+                      `Time: ${new Date().toLocaleString('en-GB')}`
             });
             return true;
         }
@@ -1010,8 +1051,29 @@ class CommandHandler {
         // Check if this is a reply to another message
         const quotedMsg = msg.message?.extendedTextMessage?.contextInfo;
         if (!quotedMsg || !quotedMsg.participant) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please reply to a message from the user you want to ban.\n\nUsage: Reply to a user\'s message and type #ban' 
+            // Send detailed alert to main admin phone only
+            const senderJid = msg.key.participant || msg.key.remoteJid;
+            const senderPhone = senderJid.split('@')[0];
+            const groupId = msg.key.remoteJid;
+
+            // Get group name
+            let groupName = 'Unknown';
+            try {
+                const groupMetadata = await this.getCachedGroupMetadata(groupId);
+                groupName = groupMetadata.subject || 'Unknown';
+            } catch (e) {
+                // Ignore metadata errors
+            }
+
+            // Send alert to main admin only - no group spam
+            const alertPhone = this.config.ALERT_PHONE + '@s.whatsapp.net';
+            await this.sock.sendMessage(alertPhone, {
+                text: `⚠️ COMMAND ERROR ALERT\n\n` +
+                      `Command: #ban\n` +
+                      `User: ${senderPhone}\n` +
+                      `Group: ${groupName}\n` +
+                      `Error: No message reply detected\n` +
+                      `Time: ${new Date().toLocaleString('en-GB')}`
             });
             return true;
         }
