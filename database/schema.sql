@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     country_code VARCHAR(10),
     is_blacklisted BOOLEAN DEFAULT false,
     is_whitelisted BOOLEAN DEFAULT false,
+    violations JSONB DEFAULT '{}',  -- Track violations by type: {"invite_link": 3, "kicked_by_admin": 2}
     blacklisted_at TIMESTAMP,
     whitelisted_at TIMESTAMP,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

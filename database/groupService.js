@@ -229,6 +229,69 @@ async function searchUsers(pattern) {
 }
 
 /**
+ * Increment violation count for a user
+ * @param {string} phoneNumber - Phone number
+ * @param {string} violationType - Type of violation ('invite_link', 'kicked_by_admin', etc.)
+ * @returns {Promise<Object>} Updated violations object
+ */
+async function incrementViolation(phoneNumber, violationType) {
+    try {
+        // First ensure user exists
+        const user = await getUserByPhone(phoneNumber);
+        if (!user) {
+            console.log(`[${getTimestamp()}] ⚠️  User ${phoneNumber} not in database, cannot increment violation`);
+            return {};
+        }
+
+        // Increment violation count using PostgreSQL JSONB operations
+        const result = await query(`
+            UPDATE users
+            SET violations = jsonb_set(
+                violations,
+                $2,
+                COALESCE((violations->$3)::int, 0)::int + 1,
+                true
+            )
+            WHERE phone_number = $1
+            RETURNING violations
+        `, [phoneNumber, `{${violationType}}`, violationType]);
+
+        const violations = result.rows[0]?.violations || {};
+        console.log(`[${getTimestamp()}] 📊 Violation recorded: ${phoneNumber} - ${violationType} = ${violations[violationType]}`);
+
+        return violations;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to increment violation:`, error.message);
+        return {};
+    }
+}
+
+/**
+ * Get violation counts for a user
+ * @param {string} phoneNumber - Phone number
+ * @returns {Promise<Object>} Violations object (e.g., {invite_link: 3, kicked_by_admin: 2})
+ */
+async function getViolations(phoneNumber) {
+    const user = await getUserByPhone(phoneNumber);
+    return user?.violations || {};
+}
+
+/**
+ * Format violations object into readable string
+ * @param {Object} violations - Violations object
+ * @returns {string} Formatted string (e.g., "invite_link: 3, kicked_by_admin: 2")
+ */
+function formatViolations(violations) {
+    if (!violations || Object.keys(violations).length === 0) {
+        return 'No violations';
+    }
+
+    return Object.entries(violations)
+        .map(([type, count]) => `${type}: ${count}`)
+        .join(', ');
+}
+
+/**
  * Log audit event
  * @param {string} action - Action type
  * @param {Object} details - Action details
@@ -265,5 +328,8 @@ module.exports = {
     exportAllPhoneNumbers,
     getDatabaseStats,
     searchUsers,
+    incrementViolation,
+    getViolations,
+    formatViolations,
     logAudit
 };

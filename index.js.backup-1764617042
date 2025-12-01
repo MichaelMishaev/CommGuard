@@ -1796,18 +1796,188 @@ async function handleMessage(sock, msg, commandHandler) {
                     console.log(`[${getTimestamp()}] 📋 Stored pending blacklist request for: ${phoneDisplay}`);
                 }
 
-            } catch (kickError) {
-                console.error('❌ Failed to kick user:', kickError.message);
-                advancedLogger.logPermissionError('kick_invite_spam_user', groupId, kickError);
+                try {
+                    await sock.sendMessage(adminId, { text: alertMessage });
+                    console.log('✅ Sent immediate kick alert to admin');
+                } catch (adminError) {
+                    console.error('❌ Failed to send admin alert:', adminError.message);
+                }
+                
+                // Get group invite link for rejoin system
+                let groupInviteLink = 'N/A';
+                try {
+                    const inviteCode = await sock.groupInviteCode(groupId);
+                    groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                } catch (err) {
+                    console.log('Could not get group invite link for non-Israeli user:', err.message);
+                }
+
+                // Record kicked non-Israeli user for potential #free system usage
+                try {
+                    const { kickedUserService } = require('./services/kickedUserService');
+                    
+                    // Extract admin information from group metadata
+                    const adminList = [];
+                    if (groupMetadata && groupMetadata.participants) {
+                        groupMetadata.participants
+                            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                            .forEach(admin => {
+                                const adminId = admin.id;
+                                let adminName = 'Admin';
+                                let adminPhone = 'Unknown';
+                                
+                                if (adminId.includes('@s.whatsapp.net')) {
+                                    adminPhone = adminId.split('@')[0];
+                                    adminName = `+${adminPhone}`;
+                                } else if (adminId.includes('@lid')) {
+                                    adminName = 'Admin (LID)';
+                                    adminPhone = adminId.split('@')[0].substring(0, 8) + '...';
+                                }
+                                
+                                adminList.push({
+                                    id: adminId,
+                                    name: adminName,
+                                    phone: adminPhone,
+                                    isLID: adminId.includes('@lid')
+                                });
+                            });
+                    }
+                    
+                    await kickedUserService.recordKickedUser(
+                        senderId,
+                        groupId,
+                        groupMetadata?.subject || 'Unknown Group',
+                        groupInviteLink,
+                        'Non-Israeli user - Immediate kick for invite link',
+                        adminList
+                    );
+                    console.log('✅ Recorded kicked non-Israeli user for potential #free usage');
+                } catch (error) {
+                    console.error('⚠️ Failed to record kicked non-Israeli user:', error.message);
+                }
+
+                    // Non-Israeli users get NO MESSAGE - silent kick only
+                    console.log('🔇 Non-Israeli user kicked silently - no message sent');
+
+                } catch (kickError) {
+                    advancedLogger.logPermissionError('kick_non_israeli_user', groupId, kickError);
+                }
+            } else {
+                console.log(`⚠️ Cannot kick non-Israeli user - bot lacks kick permission in ${groupId}`);
             }
+            
         } else {
-            console.log(`⚠️ Cannot kick user - bot lacks kick permission in ${groupId}`);
+            // Israeli user - immediate kick with optimized blacklisting
+            console.log(`[${getTimestamp()}] 🚨 Israeli user sending invite link - immediate kick`);
+
+            // Add to blacklist first (with minimal Firebase usage via caching)
+            const blacklistSuccess = await blacklistService.addToBlacklist(senderId, 'Israeli user sent invite link - immediate kick');
+            if (!blacklistSuccess) {
+                console.error('❌ Failed to blacklist Israeli user - proceeding with kick anyway');
+            }
+
+            // Kick the user immediately (only if bot has permission)
+            if (permissions.canKickUsers) {
+                try {
+                    await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                    console.log('✅ Kicked Israeli user immediately:', senderId);
+                    kickCooldown.set(senderId, Date.now());
+                
+                // Send admin alert about immediate kick
+                const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+
+                // Try to decode LID to real phone number
+                let phoneDisplay = userPhone;
+                if (isLidFormat) {
+                    const decoded = await decodeLIDToPhone(sock, senderId);
+                    phoneDisplay = decoded || `${userPhone} (LID - Encrypted ID)`;
+                }
+
+                const alertMessage = `🚨 *Israeli User Kicked (Immediate)*\n\n` +
+                                   `📍 Group: ${groupMetadata.subject}\n` +
+                                   `👤 User: ${senderId}\n` +
+                                   `📞 Phone: ${phoneDisplay}\n` +
+                                   `🌍 Origin: Israeli (+972)\n` +
+                                   `🔗 Spam Links: ${matches.join(', ')}\n` +
+                                   `⏰ Time: ${getTimestamp()}\n\n` +
+                                   `✅ Actions taken:\n` +
+                                   `• Message deleted\n` +
+                                   `• User blacklisted\n` +
+                                   `• User kicked immediately`;
+
+                try {
+                    await sock.sendMessage(adminId, { text: alertMessage });
+                    console.log('✅ Sent immediate kick alert to admin');
+                } catch (adminError) {
+                    console.error('❌ Failed to send admin alert:', adminError.message);
+                }
+                
+                // Get group invite link for rejoin system
+                let groupInviteLink = 'N/A';
+                try {
+                    const inviteCode = await sock.groupInviteCode(groupId);
+                    groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                } catch (err) {
+                    console.log('Could not get group invite link for Israeli user:', err.message);
+                }
+
+                // Record kicked Israeli user for potential #free system usage
+                try {
+                    const { kickedUserService } = require('./services/kickedUserService');
+                    
+                    // Extract admin information from group metadata
+                    const adminList = [];
+                    if (groupMetadata && groupMetadata.participants) {
+                        groupMetadata.participants
+                            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                            .forEach(admin => {
+                                const adminId = admin.id;
+                                let adminName = 'Admin';
+                                let adminPhone = 'Unknown';
+                                
+                                if (adminId.includes('@s.whatsapp.net')) {
+                                    adminPhone = adminId.split('@')[0];
+                                    adminName = `+${adminPhone}`;
+                                } else if (adminId.includes('@lid')) {
+                                    adminName = 'Admin (LID)';
+                                    adminPhone = adminId.split('@')[0].substring(0, 8) + '...';
+                                }
+                                
+                                adminList.push({
+                                    id: adminId,
+                                    name: adminName,
+                                    phone: adminPhone,
+                                    isLID: adminId.includes('@lid')
+                                });
+                            });
+                    }
+                    
+                    await kickedUserService.recordKickedUser(
+                        senderId,
+                        groupId,
+                        groupMetadata?.subject || 'Unknown Group',
+                        groupInviteLink,
+                        'Israeli user - Immediate kick for invite link',
+                        adminList
+                    );
+                    console.log('✅ Recorded kicked Israeli user for potential #free usage');
+                } catch (error) {
+                    console.error('⚠️ Failed to record kicked Israeli user:', error.message);
+                }
+                    // Israeli users get NO MESSAGE - silent kick (same as non-Israeli)
+                    console.log('🔇 Israeli user kicked silently - no message sent');
+
+                } catch (kickError) {
+                    advancedLogger.logPermissionError('kick_israeli_user', groupId, kickError);
+                }
+            } else {
+                console.log(`⚠️ Cannot kick Israeli user - bot lacks kick permission in ${groupId}`);
+            }
         }
         
     } catch (error) {
         console.error('❌ Error handling invite spam:', error);
     }
-}
 }
 
 // Handle bot welcome when added to a group

@@ -27,7 +27,7 @@ async function sendAlert(sock, message) {
     }
 }
 
-async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, reason, additionalInfo = '', spamLink = '', groupInviteLink = '', userId = '' }) {
+async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, reason, additionalInfo = '', spamLink = '', groupInviteLink = '', userId = '', violations = {}, autoBlacklisted = false }) {
     // Get group invite link if not provided
     if (!groupInviteLink || groupInviteLink === 'N/A') {
         try {
@@ -61,80 +61,79 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
         }
     }
 
-    let alertTitle = '🚨 WhatsApp Invite Spam - IMMEDIATE ACTION';
+    // Format violations for display
+    const { formatViolations } = require('../database/groupService');
+    const violationsText = formatViolations(violations);
+
+    let alertTitle = '🚨 WhatsApp Invite Spam - ACTION REQUIRED';
     let kickedUserJid = userId || `${userPhone}@s.whatsapp.net`;
-    
-    // For invite link spam, use the specific format from screenshot
+
+    // For invite link spam with NEW flow (ask admin before blacklisting)
     if (reason === 'invite_link') {
         const alertMessage =
             `${alertTitle}\n\n` +
             `👤 User: ${kickedUserJid}\n` +
+            `📞 Phone: +${phoneDisplay}\n` +
             `📍 Group: ${groupName || 'Unknown Group'}\n` +
             `🔗 Group URL: ${groupInviteLink || 'N/A'}\n` +
-            `⏰ Time: ${timestamp.replace(/\//g, '/').replace(',', ',')}\n` +
-            `👢 Kicked: ${kickedUserJid}\n` +
-            `📞 Phone: ${phoneDisplay}\n` +
-            `🗃️ Blacklisted: ${userPhone}\n` +
-            `📧 Spam Link Sent: ${spamLink || 'N/A'}\n` +
-            `🚫 User was removed and blacklisted.\n\n` +
-            `🔄 To unblacklist this user, copy the command below:`;
+            `⏰ Time: ${timestamp}\n` +
+            `📧 Spam Link: ${spamLink || 'N/A'}\n` +
+            `⚠️ Violations: ${violationsText}\n\n` +
+            `✅ User was kicked from group\n\n` +
+            `❓ Add to blacklist?\n` +
+            `Reply with:\n` +
+            `  1️⃣ = Yes, blacklist\n` +
+            `  0️⃣ = No, skip`;
 
-        // Send the main alert
-        await sendAlert(sock, alertMessage);
-
-        // Send the unblacklist command as a separate message (use real phone if available)
-        const unblacklistCommand = `#unblacklist ${realPhone}`;
-        await sendAlert(sock, unblacklistCommand);
-
-        return true;
+        // Send alert and return the message info for reply handling
+        return await sock.sendMessage(formatPhoneForAlert(config.ALERT_PHONE), { text: alertMessage });
     }
 
-    // For other reasons, use a similar detailed format
+    // For admin kick command (#kick)
+    if (reason === 'kicked_by_admin') {
+        const alertMessage =
+            `👮‍♂️ Admin Command - User Kicked\n\n` +
+            `👤 User: ${kickedUserJid}\n` +
+            `📞 Phone: +${phoneDisplay}\n` +
+            `📍 Group: ${groupName || 'Unknown Group'}\n` +
+            `🔗 Group URL: ${groupInviteLink || 'N/A'}\n` +
+            `⏰ Time: ${timestamp}\n` +
+            `⚠️ Violations: ${violationsText}\n\n` +
+            `✅ User was kicked by admin\n\n` +
+            `❓ Add to blacklist?\n` +
+            `Reply with:\n` +
+            `  1️⃣ = Yes, blacklist\n` +
+            `  0️⃣ = No, skip`;
+
+        return await sock.sendMessage(formatPhoneForAlert(config.ALERT_PHONE), { text: alertMessage });
+    }
+
+    // For other reasons (auto-blacklist cases like country code, already blacklisted)
     let reasonTitle = '';
-    let reasonEmoji = '👢';
-    
+
     switch (reason) {
-        case 'muted_excessive':
-            reasonTitle = '🔇 Muted User Excessive Messages - ACTION TAKEN';
-            reasonEmoji = '🔇';
-            break;
         case 'blacklisted':
-            reasonTitle = '🚫 Blacklisted User Auto-Kick - ACTION TAKEN';
-            reasonEmoji = '🚫';
+            reasonTitle = '🚫 Blacklisted User Auto-Kick';
             break;
         case 'country_code':
-            reasonTitle = '🌍 Country Code Restriction - ACTION TAKEN';
-            reasonEmoji = '🌍';
-            break;
-        case 'admin_command':
-            reasonTitle = '👮‍♂️ Admin Command Execution - ACTION TAKEN';
-            reasonEmoji = '👮‍♂️';
+            reasonTitle = '🌍 Country Code Restriction';
             break;
         default:
-            reasonTitle = '⚠️ User Removal - ACTION TAKEN';
-            reasonEmoji = '⚠️';
+            reasonTitle = '⚠️ User Removal';
     }
 
     const alertMessage =
         `${reasonTitle}\n\n` +
         `👤 User: ${kickedUserJid}\n` +
+        `📞 Phone: +${phoneDisplay}\n` +
         `📍 Group: ${groupName || 'Unknown Group'}\n` +
         `🔗 Group URL: ${groupInviteLink || 'N/A'}\n` +
-        `⏰ Time: ${timestamp.replace(/\//g, '/').replace(',', ',')}\n` +
-        `👢 Kicked: ${kickedUserJid}\n` +
-        `📞 Phone: ${phoneDisplay}\n` +
-        `🗃️ Blacklisted: ${userPhone}\n` +
+        `⏰ Time: ${timestamp}\n` +
         (additionalInfo ? `ℹ️ Details: ${additionalInfo}\n` : '') +
-        `🚫 User was removed and blacklisted.\n\n` +
-        `🔄 To unblacklist this user, copy the command below:`;
+        `⚠️ Violations: ${violationsText}\n\n` +
+        `✅ User was automatically removed`;
 
-    // Send the main alert
     await sendAlert(sock, alertMessage);
-
-    // Send the unblacklist command as a separate message (use real phone if available)
-    const unblacklistCommand = `#unblacklist ${realPhone}`;
-    await sendAlert(sock, unblacklistCommand);
-
     return true;
 }
 
@@ -148,7 +147,7 @@ async function sendSecurityAlert(sock, { type, details, groupName, groupId }) {
         second: '2-digit'
     });
 
-    const alertMessage = 
+    const alertMessage =
         `🛡️ SECURITY ALERT\n` +
         `⚠️ Type: ${type.toUpperCase()}\n\n` +
         `📝 Details: ${details}\n` +
@@ -160,9 +159,64 @@ async function sendSecurityAlert(sock, { type, details, groupName, groupId }) {
     return await sendAlert(sock, alertMessage);
 }
 
+async function sendBlacklistRejoinAlert(sock, { userPhone, userId, groupName, groupId, violations = {} }) {
+    const timestamp = new Date().toLocaleString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+
+    // Decode LID if needed
+    const isLidFormat = userId && userId.endsWith('@lid');
+    let phoneDisplay = userPhone;
+
+    if (isLidFormat) {
+        const decoded = await decodeLIDToPhone(sock, userId);
+        if (decoded) {
+            phoneDisplay = decoded;
+        } else {
+            phoneDisplay = `${userPhone} (LID)`;
+        }
+    }
+
+    // Format violations
+    const { formatViolations } = require('../database/groupService');
+    const violationsText = formatViolations(violations);
+
+    // Get group invite link
+    let groupInviteLink = 'N/A';
+    try {
+        const inviteCode = await sock.groupInviteCode(groupId);
+        groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+    } catch (err) {
+        // Can't get invite link
+    }
+
+    const alertMessage =
+        `🚫 BLACKLISTED USER REJOIN ATTEMPT\n\n` +
+        `👤 User: ${userId || `${userPhone}@s.whatsapp.net`}\n` +
+        `📞 Phone: +${phoneDisplay}\n` +
+        `📍 Group: ${groupName || 'Unknown Group'}\n` +
+        `🔗 Group URL: ${groupInviteLink}\n` +
+        `⏰ Time: ${timestamp}\n` +
+        `⚠️ Violations: ${violationsText}\n\n` +
+        `✅ User was automatically kicked (blacklisted)\n\n` +
+        `❓ Unblacklist this user?\n` +
+        `Reply with:\n` +
+        `  #ub = Yes, remove from blacklist\n` +
+        `  (Ignore to keep blocked)`;
+
+    // Send alert and return message info for reply handling
+    return await sock.sendMessage(formatPhoneForAlert(config.ALERT_PHONE), { text: alertMessage });
+}
+
 module.exports = {
     sendAlert,
     sendKickAlert,
     sendSecurityAlert,
+    sendBlacklistRejoinAlert,
     formatPhoneForAlert
 };
