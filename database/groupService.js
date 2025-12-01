@@ -117,13 +117,22 @@ async function getBlacklistedUsers() {
  * @param {string} reason - Blacklist reason
  */
 async function blacklistUser(phoneNumber, reason = null) {
+    // Extract country code from phone number
+    let countryCode = null;
+    if (phoneNumber.startsWith('972')) countryCode = '+972';
+    else if (phoneNumber.startsWith('1')) countryCode = '+1';
+    else if (phoneNumber.startsWith('44')) countryCode = '+44';
+
+    // Use UPSERT to create user if doesn't exist, then blacklist
     await query(`
-        UPDATE users
-        SET is_blacklisted = true,
+        INSERT INTO users (phone_number, country_code, is_blacklisted, blacklisted_at, notes)
+        VALUES ($1, $2, true, NOW(), $3)
+        ON CONFLICT (phone_number)
+        DO UPDATE SET
+            is_blacklisted = true,
             blacklisted_at = NOW(),
-            notes = $2
-        WHERE phone_number = $1
-    `, [phoneNumber, reason]);
+            notes = $3
+    `, [phoneNumber, countryCode, reason]);
 
     console.log(`[${getTimestamp()}] 🚫 Blacklisted user: ${phoneNumber}`);
 }
