@@ -67,4 +67,53 @@ function jidKey(ref) {
   return '';
 }
 
-module.exports = { jidKey }; 
+/**
+ * Decode LID (Link ID) to real phone number using Baileys signal repository.
+ *
+ * @param {object} sock - The Baileys socket instance
+ * @param {string} userId - Full user ID like "77709346664559@lid"
+ * @returns {Promise<string|null>} - Real phone number or null if decoding fails
+ */
+async function decodeLIDToPhone(sock, userId) {
+  if (!userId || !userId.endsWith('@lid')) {
+    return null; // Not a LID format
+  }
+
+  const lidNumber = userId.split('@')[0];
+
+  // Try using Baileys API
+  if (sock?.signalRepository?.lidMapping) {
+    try {
+      const decoded = await sock.signalRepository.lidMapping.getPNForLID(lidNumber);
+      if (decoded) {
+        console.log(`✅ Decoded LID ${lidNumber} → ${decoded}`);
+        return decoded;
+      }
+    } catch (error) {
+      console.log(`⚠️ Failed to decode LID via API: ${lidNumber}`, error.message);
+    }
+  }
+
+  // Fallback: Try reading from file system
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(process.cwd(), 'baileys_auth_info', `lid-mapping-${lidNumber}_reverse.json`);
+
+    if (fs.existsSync(filePath)) {
+      const phoneData = fs.readFileSync(filePath, 'utf8');
+      const phone = phoneData.replace(/['"]/g, '').trim();
+      if (phone) {
+        console.log(`✅ Decoded LID ${lidNumber} → ${phone} (from file)`);
+        return phone;
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ Failed to decode LID via file: ${lidNumber}`, error.message);
+  }
+
+  console.log(`❌ Could not decode LID: ${lidNumber} (no mapping found)`);
+  return null;
+}
+
+module.exports = { jidKey, decodeLIDToPhone }; 

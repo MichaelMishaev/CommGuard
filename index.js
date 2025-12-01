@@ -339,6 +339,7 @@ const CommandHandler = require('./services/commandHandler');
 const { clearSessionErrors, mightContainInviteLink, extractMessageText } = require('./utils/sessionManager');
 const { sendKickAlert, sendSecurityAlert } = require('./utils/alertService');
 const { robustKick } = require('./utils/kickHelper');
+const { decodeLIDToPhone } = require('./utils/jidUtils');
 
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
@@ -1643,7 +1644,14 @@ async function handleMessage(sock, msg, commandHandler) {
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                const phoneDisplay = isLidFormat ? `${userPhone} (LID - Encrypted ID)` : userPhone;
+
+                // Try to decode LID to real phone number
+                let phoneDisplay = userPhone;
+                if (isLidFormat) {
+                    const decoded = await decodeLIDToPhone(sock, senderId);
+                    phoneDisplay = decoded || `${userPhone} (LID - Encrypted ID)`;
+                }
+
                 const alertMessage = `🚨 *Non-Israeli User Kicked (Immediate)*\n\n` +
                                    `📍 Group: ${groupMetadata.subject}\n` +
                                    `👤 User: ${senderId}\n` +
@@ -1745,7 +1753,14 @@ async function handleMessage(sock, msg, commandHandler) {
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                const phoneDisplay = isLidFormat ? `${userPhone} (LID - Encrypted ID)` : userPhone;
+
+                // Try to decode LID to real phone number
+                let phoneDisplay = userPhone;
+                if (isLidFormat) {
+                    const decoded = await decodeLIDToPhone(sock, senderId);
+                    phoneDisplay = decoded || `${userPhone} (LID - Encrypted ID)`;
+                }
+
                 const alertMessage = `🚨 *Israeli User Kicked (Immediate)*\n\n` +
                                    `📍 Group: ${groupMetadata.subject}\n` +
                                    `👤 User: ${senderId}\n` +
@@ -1757,7 +1772,7 @@ async function handleMessage(sock, msg, commandHandler) {
                                    `• Message deleted\n` +
                                    `• User blacklisted\n` +
                                    `• User kicked immediately`;
-                
+
                 try {
                     await sock.sendMessage(adminId, { text: alertMessage });
                     console.log('✅ Sent immediate kick alert to admin');
@@ -2010,7 +2025,7 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     
                     // Alert admin with whitelist option
                     const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
-                    
+
                     // Try to get group invite link
                     let groupLink = 'N/A';
                     try {
@@ -2019,8 +2034,14 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     } catch (err) {
                         console.log('Could not get group invite link:', err.message);
                     }
-                    
-                    const phoneDisplay = isLidFormat ? `${phoneNumber} (LID - Encrypted ID)` : phoneNumber;
+
+                    // Try to decode LID to real phone number
+                    let phoneDisplay = phoneNumber;
+                    if (isLidFormat) {
+                        const decoded = await decodeLIDToPhone(sock, participantId);
+                        phoneDisplay = decoded || `${phoneNumber} (LID - Encrypted ID)`;
+                    }
+
                     const alert = `🚨 *Restricted Country Code Auto-Kick*\n\n` +
                                 `📍 Group: ${groupMetadata.subject}\n` +
                                 `🔗 Group Link: ${groupLink}\n` +
@@ -2029,7 +2050,7 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                                 `🌍 Reason: Country code starts with +${phoneNumber.charAt(0)}\n` +
                                 `⏰ Time: ${getTimestamp()}\n\n` +
                                 `To whitelist this user, use:\n` +
-                                `#whitelist ${phoneNumber}`;
+                                `#whitelist ${phoneDisplay}`;
                     await sock.sendMessage(adminId, { text: alert });
                     
                 } catch (error) {

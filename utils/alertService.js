@@ -1,5 +1,6 @@
 const config = require('../config');
 const { getTimestamp } = require('./logger');
+const { decodeLIDToPhone } = require('./jidUtils');
 
 /**
  * Alert Service - Send notifications to alert phone
@@ -45,9 +46,20 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
         second: '2-digit'
     });
 
-    // Check if LID format
+    // Check if LID format and try to decode
     const isLidFormat = userId && userId.endsWith('@lid');
-    const phoneDisplay = isLidFormat ? `${userPhone} (LID - Encrypted ID)` : userPhone;
+    let phoneDisplay = userPhone;
+    let realPhone = userPhone;
+
+    if (isLidFormat) {
+        const decoded = await decodeLIDToPhone(sock, userId);
+        if (decoded) {
+            realPhone = decoded;
+            phoneDisplay = decoded; // Show real number
+        } else {
+            phoneDisplay = `${userPhone} (LID - Encrypted ID)`; // Fallback if decoding fails
+        }
+    }
 
     let alertTitle = '🚨 WhatsApp Invite Spam - IMMEDIATE ACTION';
     let kickedUserJid = userId || `${userPhone}@s.whatsapp.net`;
@@ -70,8 +82,8 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
         // Send the main alert
         await sendAlert(sock, alertMessage);
 
-        // Send the unblacklist command as a separate message
-        const unblacklistCommand = `#unblacklist ${userPhone}`;
+        // Send the unblacklist command as a separate message (use real phone if available)
+        const unblacklistCommand = `#unblacklist ${realPhone}`;
         await sendAlert(sock, unblacklistCommand);
 
         return true;
@@ -119,10 +131,10 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
     // Send the main alert
     await sendAlert(sock, alertMessage);
 
-    // Send the unblacklist command as a separate message
-    const unblacklistCommand = `#unblacklist ${userPhone}`;
+    // Send the unblacklist command as a separate message (use real phone if available)
+    const unblacklistCommand = `#unblacklist ${realPhone}`;
     await sendAlert(sock, unblacklistCommand);
-    
+
     return true;
 }
 
