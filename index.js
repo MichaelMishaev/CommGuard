@@ -1912,10 +1912,16 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
         // Check each participant
         for (const _participant of participants) {
             const participantId = typeof _participant === "string" ? _participant : (_participant?.id || String(_participant));
-            // Extract phone number from participant ID
-            const phoneNumber = participantId.split('@')[0];
             const isLidFormat = participantId.endsWith('@lid');
-            
+
+            // Extract phone number - prioritize phoneNumber field for LID format users
+            let phoneNumber = participantId.split('@')[0];
+            if (typeof _participant === 'object' && _participant?.phoneNumber) {
+                // Extract real phone from phoneNumber field (format: "972527332312@s.whatsapp.net")
+                phoneNumber = _participant.phoneNumber.split('@')[0];
+                console.log(`📞 Extracted real phone from LID participant: ${phoneNumber}`);
+            }
+
             console.log(`👥 New participant: ${phoneNumber} (LID: ${isLidFormat}, length: ${phoneNumber.length})`);
             
             // Check if user is whitelisted first
