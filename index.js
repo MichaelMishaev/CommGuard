@@ -1068,10 +1068,12 @@ async function handleMessage(sock, msg, commandHandler) {
         console.log(`   Message Type: ${Object.keys(msg.message || {}).join(', ')}`);
         
         // Check if it's admin (handle both regular and LID format)
-        const isAdmin = senderPhone === config.ALERT_PHONE || 
+        const isAdmin = senderPhone === config.ALERT_PHONE ||
                        senderPhone === config.ADMIN_PHONE ||
+                       senderPhone === config.ADMIN_LID ||
                        senderId.includes(config.ALERT_PHONE) ||
-                       senderId.includes(config.ADMIN_PHONE);
+                       senderId.includes(config.ADMIN_PHONE) ||
+                       senderId.includes(config.ADMIN_LID);
         
         console.log(`   Is Admin: ${isAdmin ? '✅ Yes' : '❌ No'}`);
         
