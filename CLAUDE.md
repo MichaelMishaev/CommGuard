@@ -215,3 +215,4 @@ n## Translation Features
 - Stress testing for performance validation
 - Debug scripts for specific issue investigation
 - QA checklist for manual testing workflows
+- always use real phone number for all, NOT LID

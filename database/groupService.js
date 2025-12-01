@@ -323,6 +323,210 @@ async function logAudit(action, details = {}) {
     }
 }
 
+/**
+ * Mark group as mine (owned by admin)
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {string} category - Optional category (personal, business, community, family, friends, hobby, education, work, other)
+ * @param {string} notes - Optional notes
+ * @returns {Promise<boolean>} Success status
+ */
+async function markMine(whatsappGroupId, category = null, notes = null) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET is_mine = true,
+                category = COALESCE($2, category),
+                notes = COALESCE($3, notes)
+            WHERE whatsapp_group_id = $1
+            RETURNING name, category
+        `, [whatsappGroupId, category, notes]);
+
+        if (result.rows.length > 0) {
+            const catInfo = result.rows[0].category ? ` (${result.rows[0].category})` : '';
+            console.log(`[${getTimestamp()}] ✅ Marked as mine: ${result.rows[0].name}${catInfo}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to mark group as mine:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Unmark group as mine
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @returns {Promise<boolean>} Success status
+ */
+async function unmarkMine(whatsappGroupId) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET is_mine = false
+            WHERE whatsapp_group_id = $1
+            RETURNING name
+        `, [whatsappGroupId]);
+
+        if (result.rows.length > 0) {
+            console.log(`[${getTimestamp()}] ✅ Unmarked: ${result.rows[0].name}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to unmark group:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Get all groups marked as mine
+ * @param {string} categoryFilter - Optional category filter
+ * @returns {Promise<Array>} List of owned groups
+ */
+async function getMyGroups(categoryFilter = null) {
+    try {
+        let sql = `
+            SELECT
+                name,
+                whatsapp_group_id,
+                member_count,
+                admin_count,
+                category,
+                notes,
+                created_at,
+                last_sync,
+                owner_phone
+            FROM groups
+            WHERE is_mine = true AND is_active = true
+        `;
+
+        const params = [];
+        if (categoryFilter) {
+            sql += ` AND category = $1`;
+            params.push(categoryFilter);
+        }
+
+        sql += ` ORDER BY category NULLS LAST, name`;
+
+        const result = await query(sql, params);
+        return result.rows;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to get my groups:`, error.message);
+        return [];
+    }
+}
+
+/**
+ * Check if group is marked as mine
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @returns {Promise<boolean>} True if marked as mine
+ */
+async function isMine(whatsappGroupId) {
+    try {
+        const result = await query(`
+            SELECT is_mine
+            FROM groups
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId]);
+
+        return result.rows.length > 0 && result.rows[0].is_mine === true;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to check if mine:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Set category for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {string} category - Category name
+ * @returns {Promise<boolean>} Success status
+ */
+async function setCategory(whatsappGroupId, category) {
+    const validCategories = ['personal', 'business', 'community', 'family', 'friends', 'hobby', 'education', 'work', 'other'];
+
+    if (!validCategories.includes(category.toLowerCase())) {
+        console.error(`[${getTimestamp()}] ❌ Invalid category: ${category}`);
+        return false;
+    }
+
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET category = $2
+            WHERE whatsapp_group_id = $1
+            RETURNING name, category
+        `, [whatsappGroupId, category.toLowerCase()]);
+
+        if (result.rows.length > 0) {
+            console.log(`[${getTimestamp()}] ✅ Set category for ${result.rows[0].name}: ${result.rows[0].category}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to set category:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Set notes for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {string} notes - Notes text
+ * @returns {Promise<boolean>} Success status
+ */
+async function setNotes(whatsappGroupId, notes) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET notes = $2
+            WHERE whatsapp_group_id = $1
+            RETURNING name
+        `, [whatsappGroupId, notes]);
+
+        if (result.rows.length > 0) {
+            console.log(`[${getTimestamp()}] ✅ Set notes for ${result.rows[0].name}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to set notes:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Get category statistics for owned groups
+ * @returns {Promise<Array>} Category stats with counts
+ */
+async function getCategoryStats() {
+    try {
+        const result = await query(`
+            SELECT
+                COALESCE(category, 'uncategorized') as category,
+                COUNT(*) as count,
+                SUM(member_count) as total_members
+            FROM groups
+            WHERE is_mine = true AND is_active = true
+            GROUP BY category
+            ORDER BY count DESC, category
+        `);
+
+        return result.rows;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to get category stats:`, error.message);
+        return [];
+    }
+}
+
 module.exports = {
     getAllGroups,
     getGroupByWhatsAppId,
@@ -340,5 +544,12 @@ module.exports = {
     incrementViolation,
     getViolations,
     formatViolations,
-    logAudit
+    logAudit,
+    markMine,
+    unmarkMine,
+    getMyGroups,
+    isMine,
+    setCategory,
+    setNotes,
+    getCategoryStats
 };

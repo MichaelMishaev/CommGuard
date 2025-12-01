@@ -7,6 +7,7 @@ const { sendKickAlert } = require('../utils/alertService');
 const searchService = require('./searchService');
 const { translationService } = require('./translationService');
 const groupJokeSettingsService = require('./groupJokeSettingsService');
+const groupService = require('../database/groupService');
 
 // Conditionally load unblacklist request service
 let unblacklistRequestService;
@@ -181,9 +182,24 @@ class CommandHandler {
                     
                 case '#jokesstatus':
                     return await this.handleJokesStatus(msg, isAdmin);
-                    
+
+                case '#markmine':
+                    return await this.handleMarkMine(msg, isAdmin, args);
+
+                case '#unmarkmine':
+                    return await this.handleUnmarkMine(msg, isAdmin);
+
+                case '#mygroups':
+                    return await this.handleMyGroups(msg, isAdmin, args);
+
+                case '#setcategory':
+                    return await this.handleSetCategory(msg, args, isAdmin);
+
+                case '#categories':
+                    return await this.handleCategories(msg, isAdmin);
+
                 // #free system removed - use admin #unblacklist instead
-                
+
                 default:
                     // Check for admin approval patterns (yes/no userId)
                     if (isAdmin && (cmd === 'yes' || cmd === 'no')) {
@@ -201,38 +217,62 @@ class CommandHandler {
     }
 
     async handleHelp(msg) {
-        // Check if sender is the authorized admin
+        // STRICT SECURITY: #help ONLY works in private chat from 972544345287
         const senderId = msg.key.participant || msg.key.remoteJid;
         const senderPhone = senderId.split('@')[0];
         const isPrivateChat = !msg.key.remoteJid.endsWith('@g.us');
-        
-        // Check if it's admin (handle both regular and LID format)
-        const isAdminPhone = senderPhone === config.ALERT_PHONE || 
-                           senderPhone === config.ADMIN_PHONE ||
-                           senderId.includes(config.ALERT_PHONE) ||
-                           senderId.includes(config.ADMIN_PHONE);
-        
-        // Check if it's specifically the alert phone
-        const isAlertPhone = senderPhone === config.ALERT_PHONE || 
-                            senderId.includes(config.ALERT_PHONE);
-        
-        // ONLY allow help command in private chat from admin
+
+        // DEBUG: Log the actual values to see what's coming in
+        console.log(`[${getTimestamp()}] 🔍 #help DEBUG:`);
+        console.log(`   senderId: ${senderId}`);
+        console.log(`   senderPhone: ${senderPhone}`);
+        console.log(`   config.ALERT_PHONE: ${config.ALERT_PHONE}`);
+        console.log(`   config.ADMIN_PHONE: ${config.ADMIN_PHONE}`);
+        console.log(`   config.ADMIN_LID: ${config.ADMIN_LID}`);
+        console.log(`   isPrivateChat: ${isPrivateChat}`);
+
+        // Check if it's the authorized admin (same pattern as index.js)
+        // Handles both regular phone format AND LID format
+        const isAuthorizedAdmin =
+            senderPhone === config.ALERT_PHONE ||
+            senderPhone === config.ADMIN_PHONE ||
+            senderPhone === config.ADMIN_LID ||
+            senderId.includes(config.ALERT_PHONE) ||
+            senderId.includes(config.ADMIN_PHONE) ||
+            senderId.includes(config.ADMIN_LID);
+
+        console.log(`   isAuthorizedAdmin: ${isAuthorizedAdmin}`);
+
+        // RULE 1: If NOT private chat (i.e., in a group) → Hide the command completely
         if (!isPrivateChat) {
-            // In groups, don't reveal anything about the help command
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Unknown command.' 
+            console.log(`[${getTimestamp()}] 🚫 Unauthorized #help attempt in group: ${msg.key.remoteJid} from ${senderPhone}`);
+            // Don't reveal that this command exists in groups
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Unknown command.'
             });
             return true;
         }
-        
-        // In private chat, check if it's the admin
-        if (!isAdminPhone) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+
+        // RULE 2: If in private chat but NOT from authorized admin → Send sassy response
+        if (!isAuthorizedAdmin) {
+            console.log(`[${getTimestamp()}] 🚫 Unauthorized #help attempt from: ${senderPhone} (not admin)`);
+            await this.sock.sendMessage(msg.key.remoteJid, {
                 text: this.getRandomSassyResponse()
             });
             return true;
         }
-        
+
+        // RULE 3: Only reaches here if BOTH conditions met:
+        // ✓ Private chat
+        // ✓ From 972544345287 (your number or LID)
+        console.log(`[${getTimestamp()}] ✅ Authorized #help access from admin: ${senderPhone}`);
+
+        // Check if it's specifically the alert phone for detailed help
+        const isAlertPhone =
+            senderPhone === config.ALERT_PHONE ||
+            senderPhone === config.ADMIN_LID ||
+            senderId.includes(config.ALERT_PHONE);
+
         // Special detailed help for alert phone
         if (isAlertPhone) {
             const detailedHelpText = `📝 *CommGuard Bot - FULL COMMAND REFERENCE*
@@ -244,6 +284,16 @@ class CommandHandler {
 • *#stats* - Displays group statistics (members, admins, etc)
 • *#help* - This command list (private chat only)
 • *#msg1* - Send pre-written admin warning about invite links
+
+*📂 Group Management:*
+• *#markmine [category] [notes]* - Mark group as yours with optional category and notes
+  Example: #markmine family Main family group
+• *#unmarkmine* - Unmark current group
+• *#mygroups [category]* - List all your groups (private chat)
+  Example: #mygroups family (filter by category)
+• *#setcategory <category>* - Set category for current group
+  Categories: personal, business, community, family, friends, hobby, education, work, other
+• *#categories* - Show category statistics (private chat)
 
 *👮 Moderation Commands:*
 • *#kick* - Reply to message → Kicks user + deletes their message + adds to blacklist (bot only)
@@ -1201,7 +1251,7 @@ class CommandHandler {
                 
                 // Send ban notification to admin instead of user
                 try {
-                    await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                    await this.sock.sendMessage(`${config.ADMIN_PHONE}@s.whatsapp.net`, {
                         text: `🚫 User banned by admin command\n\n` +
                               `👤 User: ${targetUserId}\n` +
                               `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
@@ -1370,7 +1420,7 @@ class CommandHandler {
                     
                     // Send notification to admin instead of user
                     try {
-                        await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                        await this.sock.sendMessage(`${config.ADMIN_PHONE}@s.whatsapp.net`, {
                             text: `🌍 Country code restriction kick\n\n` +
                                   `👤 User: ${user.phone}\n` +
                                   `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
@@ -1665,25 +1715,46 @@ class CommandHandler {
     
     async handleBlacklistList(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: 'מה אני עובד אצלך?!'
             });
             return true;
         }
 
-        const { blacklistCache } = require('./blacklistService');
-        if (blacklistCache.size === 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '📝 Blacklist is empty.' 
+        try {
+            // Get blacklist from PostgreSQL
+            const { getBlacklistedUsers, getViolations, formatViolations } = require('../database/groupService');
+            const blacklistedUsers = await getBlacklistedUsers();
+
+            if (blacklistedUsers.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '📝 Blacklist is empty.'
+                });
+            } else {
+                // Show first 50 with violation counts
+                const list = await Promise.all(
+                    blacklistedUsers.slice(0, 50).map(async (user, index) => {
+                        const violations = await getViolations(user.phone_number);
+                        const violationStr = formatViolations(violations);
+                        const displayNum = user.phone_number || user.lid;
+                        return `${index + 1}. ${displayNum} - ${violationStr}`;
+                    })
+                );
+
+                const totalCount = blacklistedUsers.length;
+                const message = totalCount > 50
+                    ? `📝 *Blacklisted Users (showing first 50 of ${totalCount}):*\n\n${list.join('\n')}`
+                    : `📝 *Blacklisted Users (${totalCount} total):*\n\n${list.join('\n')}`;
+
+                await this.sock.sendMessage(msg.key.remoteJid, { text: message });
+            }
+        } catch (error) {
+            console.error('Error fetching blacklist:', error.message);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error fetching blacklist from database.'
             });
-        } else {
-            const list = Array.from(blacklistCache).slice(0, 50).map((num, index) => `${index + 1}. ${num}`).join('\n');
-            const totalCount = blacklistCache.size;
-            const message = totalCount > 50 
-                ? `📝 *Blacklisted Users (showing first 50 of ${totalCount}):*\n\n${list}` 
-                : `📝 *Blacklisted Users (${totalCount} total):*\n\n${list}`;
-            await this.sock.sendMessage(msg.key.remoteJid, { text: message });
         }
+
         return true;
     }
     async handleSweep(msg, isSuperAdmin) {
@@ -1793,7 +1864,7 @@ class CommandHandler {
                     
                     // Send notification to admin instead of user
                     try {
-                        await this.sock.sendMessage('0544345287@s.whatsapp.net', {
+                        await this.sock.sendMessage(`${config.ADMIN_PHONE}@s.whatsapp.net`, {
                             text: `🚫 Blacklisted user removed\n\n` +
                                   `👤 User: ${user.phone}\n` +
                                   `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
@@ -2762,6 +2833,354 @@ class CommandHandler {
 #רק_אהבה_ולא_הזמנות`;
 
         await this.sock.sendMessage(msg.key.remoteJid, { text: warningMessage });
+        return true;
+    }
+
+    /**
+     * Handle #markmine command - Mark group as owned by admin
+     * Usage: #markmine [category] [notes]
+     * Example: #markmine family Main family group
+     */
+    async handleMarkMine(msg, isAdmin, args = []) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        // Only works in groups
+        if (!msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ This command can only be used in groups.'
+            });
+            return true;
+        }
+
+        try {
+            const groupId = msg.key.remoteJid;
+
+            // Parse optional category and notes from args
+            const validCategories = ['personal', 'business', 'community', 'family', 'friends', 'hobby', 'education', 'work', 'other'];
+            let category = null;
+            let notes = null;
+
+            if (args && args.length > 0) {
+                const firstArg = args[0].toLowerCase();
+                if (validCategories.includes(firstArg)) {
+                    category = firstArg;
+                    notes = args.slice(1).join(' ') || null;
+                } else {
+                    // All args are notes
+                    notes = args.join(' ');
+                }
+            }
+
+            const success = await groupService.markMine(groupId, category, notes);
+
+            if (success) {
+                let response = '✅ This group has been marked as yours!';
+                if (category) {
+                    response += `\n📂 Category: ${category}`;
+                }
+                if (notes) {
+                    response += `\n📝 Notes: ${notes}`;
+                }
+                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '❌ Failed to mark group. Make sure database is connected.'
+                });
+            }
+        } catch (error) {
+            console.error('Error marking group as mine:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error marking group. Check logs for details.'
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle #unmarkmine command - Unmark group as owned
+     */
+    async handleUnmarkMine(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        // Only works in groups
+        if (!msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ This command can only be used in groups.'
+            });
+            return true;
+        }
+
+        try {
+            const groupId = msg.key.remoteJid;
+            const success = await groupService.unmarkMine(groupId);
+
+            if (success) {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '✅ This group has been unmarked.'
+                });
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '❌ Failed to unmark group.'
+                });
+            }
+        } catch (error) {
+            console.error('Error unmarking group:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error unmarking group. Check logs for details.'
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle #mygroups command - List all owned groups
+     * Usage: #mygroups [category]
+     * Example: #mygroups family
+     */
+    async handleMyGroups(msg, isAdmin, args = []) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        // Only works in private chat
+        if (msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ This command can only be used in private chat for privacy.'
+            });
+            return true;
+        }
+
+        try {
+            // Optional category filter
+            const categoryFilter = args && args.length > 0 ? args[0].toLowerCase() : null;
+
+            const myGroups = await groupService.getMyGroups(categoryFilter);
+
+            if (myGroups.length === 0) {
+                const noGroupsMsg = categoryFilter
+                    ? `📋 *Your Groups - ${categoryFilter}*\n\nNo groups found in this category.\n\nUse #categories to see all categories.`
+                    : '📋 *Your Groups*\n\nYou haven\'t marked any groups yet.\n\nUse #markmine in a group to mark it as yours.';
+
+                await this.sock.sendMessage(msg.key.remoteJid, { text: noGroupsMsg });
+                return true;
+            }
+
+            const title = categoryFilter ? `📋 *Your Groups - ${categoryFilter}* (${myGroups.length})` : `📋 *Your Groups* (${myGroups.length})`;
+            let responseText = `${title}\n\n`;
+
+            // Group by category if not filtering
+            if (!categoryFilter) {
+                let currentCategory = null;
+                myGroups.forEach((group, index) => {
+                    const groupCategory = group.category || 'Uncategorized';
+                    if (groupCategory !== currentCategory) {
+                        currentCategory = groupCategory;
+                        const emoji = this.getCategoryEmoji(groupCategory);
+                        responseText += `\n${emoji} *${groupCategory.toUpperCase()}*\n`;
+                    }
+
+                    responseText += `  ${index + 1}. ${group.name}\n`;
+                    responseText += `     👥 ${group.member_count || 0} members`;
+                    if (group.admin_count) {
+                        responseText += ` | 👑 ${group.admin_count} admins`;
+                    }
+                    responseText += `\n`;
+                    if (group.notes) {
+                        responseText += `     📝 ${group.notes}\n`;
+                    }
+                });
+            } else {
+                // Show flat list when filtering by category
+                myGroups.forEach((group, index) => {
+                    responseText += `${index + 1}. *${group.name}*\n`;
+                    responseText += `   👥 Members: ${group.member_count || 0}`;
+                    if (group.admin_count) {
+                        responseText += ` | 👑 Admins: ${group.admin_count}`;
+                    }
+                    responseText += `\n`;
+                    if (group.notes) {
+                        responseText += `   📝 ${group.notes}\n`;
+                    }
+                    responseText += `\n`;
+                });
+            }
+
+            responseText += `\n💡 *Quick Stats:*\n`;
+            responseText += `Total Groups: ${myGroups.length}\n`;
+            const totalMembers = myGroups.reduce((sum, g) => sum + (g.member_count || 0), 0);
+            responseText += `Total Members: ${totalMembers}\n`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: responseText });
+
+        } catch (error) {
+            console.error('Error getting my groups:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error fetching your groups. Check logs for details.'
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Get emoji for category
+     */
+    getCategoryEmoji(category) {
+        const emojiMap = {
+            'personal': '👤',
+            'business': '💼',
+            'community': '🏘️',
+            'family': '👨‍👩‍👧‍👦',
+            'friends': '👥',
+            'hobby': '🎨',
+            'education': '📚',
+            'work': '🏢',
+            'other': '📂',
+            'uncategorized': '❓'
+        };
+        return emojiMap[category.toLowerCase()] || '📂';
+    }
+
+    /**
+     * Handle #setcategory command - Set category for current group
+     * Usage: #setcategory <category>
+     * Example: #setcategory family
+     */
+    async handleSetCategory(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        // Only works in groups
+        if (!msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ This command can only be used in groups.'
+            });
+            return true;
+        }
+
+        if (!args || args.length === 0) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: `📂 *Set Category*
+
+Usage: #setcategory <category>
+
+*Valid categories:*
+👤 personal
+💼 business
+🏘️ community
+👨‍👩‍👧‍👦 family
+👥 friends
+🎨 hobby
+📚 education
+🏢 work
+📂 other
+
+Example: #setcategory family`
+            });
+            return true;
+        }
+
+        try {
+            const category = args[0].toLowerCase();
+            const groupId = msg.key.remoteJid;
+
+            const success = await groupService.setCategory(groupId, category);
+
+            if (success) {
+                const emoji = this.getCategoryEmoji(category);
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: `✅ Category set to: ${emoji} *${category}*`
+                });
+            } else {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '❌ Failed to set category. Make sure it\'s a valid category.\n\nUse #setcategory without arguments to see valid categories.'
+                });
+            }
+        } catch (error) {
+            console.error('Error setting category:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error setting category. Check logs for details.'
+            });
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle #categories command - Show category statistics
+     */
+    async handleCategories(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        // Only works in private chat
+        if (msg.key.remoteJid.endsWith('@g.us')) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ This command can only be used in private chat for privacy.'
+            });
+            return true;
+        }
+
+        try {
+            const stats = await groupService.getCategoryStats();
+
+            if (stats.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '📂 *Categories*\n\nNo groups marked yet.\n\nUse #markmine in a group to get started!'
+                });
+                return true;
+            }
+
+            let responseText = '📂 *Your Group Categories*\n\n';
+
+            stats.forEach((stat) => {
+                const emoji = this.getCategoryEmoji(stat.category);
+                const count = parseInt(stat.count);
+                const members = parseInt(stat.total_members) || 0;
+
+                responseText += `${emoji} *${stat.category}*\n`;
+                responseText += `   Groups: ${count} | Members: ${members}\n\n`;
+            });
+
+            const totalGroups = stats.reduce((sum, s) => sum + parseInt(s.count), 0);
+            const totalMembers = stats.reduce((sum, s) => sum + (parseInt(s.total_members) || 0), 0);
+
+            responseText += `\n📊 *Totals:*\n`;
+            responseText += `Groups: ${totalGroups} | Members: ${totalMembers}\n\n`;
+            responseText += `💡 Use #mygroups <category> to filter by category`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: responseText });
+
+        } catch (error) {
+            console.error('Error getting categories:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error fetching categories. Check logs for details.'
+            });
+        }
+
         return true;
     }
 }
