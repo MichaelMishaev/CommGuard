@@ -236,25 +236,25 @@ async function searchUsers(pattern) {
  */
 async function incrementViolation(phoneNumber, violationType) {
     try {
-        // First ensure user exists
-        const user = await getUserByPhone(phoneNumber);
-        if (!user) {
-            console.log(`[${getTimestamp()}] ⚠️  User ${phoneNumber} not in database, cannot increment violation`);
-            return {};
-        }
+        // Extract country code from phone number
+        let countryCode = null;
+        if (phoneNumber.startsWith('972')) countryCode = '+972';
+        else if (phoneNumber.startsWith('1')) countryCode = '+1';
+        else if (phoneNumber.startsWith('44')) countryCode = '+44';
 
-        // Increment violation count using PostgreSQL JSONB operations
+        // Use UPSERT to create user if doesn't exist, then increment violation
         const result = await query(`
-            UPDATE users
-            SET violations = jsonb_set(
-                violations,
-                $2,
-                COALESCE((violations->$3)::int, 0)::int + 1,
+            INSERT INTO users (phone_number, country_code, violations)
+            VALUES ($1, $2, jsonb_build_object($3::text, 1))
+            ON CONFLICT (phone_number)
+            DO UPDATE SET violations = jsonb_set(
+                users.violations,
+                $4,
+                (COALESCE((users.violations->$5::text)::int, 0) + 1)::text::jsonb,
                 true
             )
-            WHERE phone_number = $1
             RETURNING violations
-        `, [phoneNumber, `{${violationType}}`, violationType]);
+        `, [phoneNumber, countryCode, violationType, `{${violationType}}`, violationType]);
 
         const violations = result.rows[0]?.violations || {};
         console.log(`[${getTimestamp()}] 📊 Violation recorded: ${phoneNumber} - ${violationType} = ${violations[violationType]}`);
