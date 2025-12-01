@@ -1808,7 +1808,6 @@ async function handleMessage(sock, msg, commandHandler) {
         console.error('❌ Error handling invite spam:', error);
     }
 }
-}
 
 // Handle bot welcome when added to a group
 async function handleBotWelcome(sock, groupId, addedBy) {
