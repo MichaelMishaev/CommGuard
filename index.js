@@ -281,59 +281,41 @@ function startAdminRefreshScheduler(sock) {
         }
     }, DB_UPDATE_INTERVAL); // Run every hour
 }
-if (config.FEATURES.FIREBASE_INTEGRATION) {
-    const blacklistModule = require('./services/blacklistService');
-    const whitelistModule = require('./services/whitelistService');
-    const muteModule = require('./services/muteService');
-    const unblacklistModule = require('./services/unblacklistRequestService');
-    
-    blacklistService = {
-        loadBlacklistCache: blacklistModule.loadBlacklistCache,
-        isBlacklisted: blacklistModule.isBlacklisted,
-        addToBlacklist: blacklistModule.addToBlacklist
-    };
-    whitelistService = {
-        loadWhitelistCache: whitelistModule.loadWhitelistCache,
-        isWhitelisted: whitelistModule.isWhitelisted
-    };
-    muteService = {
-        loadMutedUsers: muteModule.loadMutedUsers,
-        isMuted: muteModule.isMuted,
-        incrementMutedMessageCount: muteModule.incrementMutedMessageCount,
-        getRemainingMuteTime: muteModule.getRemainingMuteTime
-    };
-    unblacklistRequestService = {
-        loadRequestCache: unblacklistModule.loadRequestCache,
-        canMakeRequest: unblacklistModule.canMakeRequest,
-        createRequest: unblacklistModule.createRequest,
-        processAdminResponse: unblacklistModule.processAdminResponse,
-        getPendingRequests: unblacklistModule.getPendingRequests
-    };
-} else {
-    // Mock services when Firebase is disabled
-    blacklistService = {
-        loadBlacklistCache: async () => { console.log('📋 Firebase disabled - skipping blacklist cache load'); },
-        isBlacklisted: () => false,
-        addToBlacklist: async () => { console.log('📋 Firebase disabled - blacklist add skipped'); }
-    };
-    whitelistService = {
-        loadWhitelistCache: async () => { console.log('📋 Firebase disabled - skipping whitelist cache load'); },
-        isWhitelisted: () => false
-    };
-    muteService = {
-        loadMutedUsers: async () => { console.log('📋 Firebase disabled - skipping muted users load'); },
-        isMuted: () => false,
-        incrementMutedMessageCount: async () => { console.log('📋 Firebase disabled - mute count skipped'); },
-        getRemainingMuteTime: () => null
-    };
-    unblacklistRequestService = {
-        loadRequestCache: async () => { console.log('📋 Firebase disabled - skipping unblacklist request cache load'); },
-        canMakeRequest: async () => ({ canRequest: false, reason: 'Firebase disabled' }),
-        createRequest: async () => { console.log('📋 Firebase disabled - unblacklist request skipped'); return false; },
-        processAdminResponse: async () => { console.log('📋 Firebase disabled - admin response skipped'); return false; },
-        getPendingRequests: async () => { console.log('📋 Firebase disabled - pending requests unavailable'); return []; }
-    };
-}
+// Load PostgreSQL-based services (NO FIREBASE)
+console.log(`[${getTimestamp()}] 📊 Using PostgreSQL for all services (Firebase removed)`);
+
+const blacklistModule = require('./services/blacklistService.postgres');
+const whitelistModule = require('./services/whitelistService');
+const muteModule = require('./services/muteService');
+
+blacklistService = {
+    loadBlacklistCache: blacklistModule.loadBlacklistCache,
+    isBlacklisted: blacklistModule.isBlacklisted,
+    addToBlacklist: blacklistModule.addToBlacklist,
+    removeFromBlacklist: blacklistModule.removeFromBlacklist,
+    getAllBlacklisted: blacklistModule.getAllBlacklisted
+};
+
+// Whitelist and Mute services (keep using existing implementation for now)
+whitelistService = {
+    loadWhitelistCache: whitelistModule.loadWhitelistCache,
+    isWhitelisted: whitelistModule.isWhitelisted
+};
+muteService = {
+    loadMutedUsers: muteModule.loadMutedUsers,
+    isMuted: muteModule.isMuted,
+    incrementMutedMessageCount: muteModule.incrementMutedMessageCount,
+    getRemainingMuteTime: muteModule.getRemainingMuteTime
+};
+
+// Unblacklist request service - Firebase removed, disabled for now
+unblacklistRequestService = {
+    loadRequestCache: async () => { console.log(`[${getTimestamp()}] 📋 Unblacklist requests disabled (Firebase removed)`); },
+    canMakeRequest: async () => ({ canRequest: false, reason: 'Firebase removed' }),
+    createRequest: async () => false,
+    processAdminResponse: async () => false,
+    getPendingRequests: async () => []
+};
 
 const CommandHandler = require('./services/commandHandler');
 const { clearSessionErrors, mightContainInviteLink, extractMessageText } = require('./utils/sessionManager');
