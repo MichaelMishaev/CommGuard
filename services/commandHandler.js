@@ -315,6 +315,8 @@ class CommandHandler {
 • *#unblacklist 972555123456* or *#ub 972555123456* - Removes from blacklist
 • *#blacklst* or *#blklst* - Shows all blacklisted numbers with violation counts
 • *#botkick* - Scans current group and kicks all blacklisted members
+• *#rejoinlinks <phone>* - Shows rejoin links for kicked user
+  Example: #rejoinlinks 972555123456
 
 *📊 Violation Tracking System:*
 • When user posts invite link → Kicked + Violation recorded + Alert sent
@@ -341,13 +343,13 @@ class CommandHandler {
 • *#search <query>* - Search the web (rate limited: 5/minute)
 • *#verify <url>* - Verify if a link is safe
 
-*🌐 Translation Commands (✅ CONFIGURED & READY):*
+*🌐 Translation Commands:*
 • *#translate <text>* - Translate to English (auto-detect source)
 • *#translate <lang> <text>* - Translate to specific language
 • *#langs* - Show supported language codes (20+ languages)
 • *#autotranslate <on/off/status>* - Control auto-translation (bot only)
-• **Auto-Translation** - Bot automatically translates non-Hebrew messages to Hebrew immediately
-• **Smart Detection** - Only translates pure non-Hebrew (ignores mixed Hebrew/English)
+• **Auto-Translation** - ${config.FEATURES.AUTO_TRANSLATION ? '✅ ENABLED' : '❌ DISABLED'} (translates non-Hebrew to Hebrew)
+• **Smart Detection** - Only translates pure non-Hebrew (ignores mixed Hebrew/English, Russian)
 
 *🎭 Entertainment Commands:*
 • *#jokestats* - View motivational phrase usage statistics
@@ -403,10 +405,14 @@ class CommandHandler {
 
 *📱 BOT STATUS:*
 • Version: 2.1 (Baileys + Enhanced Nationality System)
-• Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? 'Enabled (Optimized)' : 'Disabled'}
-• Blacklist System: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? 'Enabled (24hr Cache)' : 'Disabled'}
-• Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? 'Enabled' : 'Disabled'}
-• Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? 'Enabled' : 'Disabled'}
+• Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? '✅ Enabled (Optimized)' : '❌ Disabled'}
+• Blacklist System: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? '✅ Enabled (24hr Cache)' : '❌ Disabled'}
+• Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? '✅ Enabled' : '❌ Disabled'}
+• Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? '✅ Enabled' : '❌ Disabled'}
+• Auto-Translation: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
+• Stealth Mode: ${config.FEATURES.STEALTH_MODE ? '✅ Enabled' : '❌ Disabled'}
+• Randomize Responses: ${config.FEATURES.RANDOMIZE_RESPONSES ? '✅ Enabled' : '❌ Disabled'}
+• Simulate Typing: ${config.FEATURES.SIMULATE_TYPING ? '✅ Enabled' : '❌ Disabled'}
 
 *🛡️ Bot is protecting your groups 24/7!*`;
 
@@ -420,6 +426,13 @@ class CommandHandler {
 • *#stats* - Show group statistics
 • *#msg1* - Send admin warning about invite links
 
+*📂 Group Management:*
+• *#markmine [category] [notes]* - Mark group as yours
+• *#unmarkmine* - Unmark current group
+• *#mygroups [category]* - List your groups (private chat)
+• *#setcategory <category>* - Set group category
+• *#categories* - Show category stats (private chat)
+
 *👮 Moderation Commands:* (Reply to message)
 • *#kick* - Remove user from group + blacklist (bot only)
 • *#ban* - Permanently ban user from group
@@ -432,7 +445,7 @@ class CommandHandler {
 
 *📋 Whitelist Management:*
 • *#whitelist [number]* - Add number to whitelist
-• *#unwhitelist [number]* - Remove from whitelist  
+• *#unwhitelist [number]* - Remove from whitelist
 • *#whitelst* - List whitelisted numbers
 
 *🚫 Blacklist Management:*
@@ -440,6 +453,7 @@ class CommandHandler {
 • *#unblacklist [number]* or *#ub [number]* - Remove from blacklist
 • *#blacklst* or *#blklst* - List blacklisted numbers with violations
 • *#botkick* - Scan group and kick all blacklisted users
+• *#rejoinlinks <phone>* - Show rejoin links for kicked user
 
 *📊 Violation Tracking:*
 • Reply *1* or *0* to kick alerts to blacklist/skip
@@ -460,6 +474,12 @@ class CommandHandler {
 • *#jokesoff* - Disable משעמם jokes in this group
 • *#jokesstatus* - Show joke settings for this group
 
+*🌐 Translation Commands:*
+• *#translate <text>* - Translate text
+• *#langs* - Show supported languages
+• *#autotranslate <on/off/status>* - Control auto-translation (bot only)
+• Status: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
+
 *🚨 Auto-Protection Features:*
 • **Invite Link Detection** - Auto-kick + blacklist
 • **Blacklist Enforcement** - Auto-kick banned users
@@ -468,19 +488,15 @@ class CommandHandler {
 • **Anti-Boredom System** - Responds to "משעמם" with Hebrew jokes (per-group control)
 
 *💡 Usage Examples:*
-• Kick user: Bot-only automated moderation
+• Mark group: \`#markmine family Main family group\`
 • Mute group: \`#mute 30\` (30 minutes)
 • Add to whitelist: \`#whitelist 972555123456\`
 • Remove all foreign users: \`#botforeign\`
 • Get jokes: Any message with "משעמם" → Bot responds with humor
 • View joke stats: \`#jokestats\`
 • Control jokes: \`#jokesoff\` → Disable jokes in this group
-• Enable jokes: \`#jokeson\` → Enable jokes in this group
-• Check joke status: \`#jokesstatus\` → Show current settings
-• Translate text: \`#translate שלום עולם\` → "Hello world" ✅ READY
-• Translate to Hebrew: \`#translate he Good morning\` → "בוקר טוב" ✅ READY
-• Auto-translate: Send "Hello world" → Bot shows Hebrew translation immediately ✅ ACTIVE
-• Control auto-translate: \`#autotranslate off\` → Bot only ✅ READY
+• Translate text: \`#translate שלום עולם\` → "Hello world"
+• Show rejoin links: \`#rejoinlinks 972555123456\`
 
 *⚠️ Important Notes:*
 • Most commands require admin privileges
