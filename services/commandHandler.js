@@ -123,8 +123,9 @@ class CommandHandler {
                     return await this.handleBlacklistRemove(msg, args, isAdmin);
 
                 case '#blacklst':
+                case '#blklst':
                     return await this.handleBlacklistList(msg, isAdmin);
-                    
+
                 case '#sweep':
                     return await this.handleSweep(msg, isSuperAdmin);
                     
@@ -261,9 +262,19 @@ class CommandHandler {
 
 *🚫 Blacklist Management:*
 • *#blacklist 972555123456* - Adds to blacklist (auto-kicked on join)
-• *#unblacklist 972555123456* - Removes from blacklist
-• *#blacklst* - Shows all blacklisted numbers
+• *#unblacklist 972555123456* or *#ub 972555123456* - Removes from blacklist
+• *#blacklst* or *#blklst* - Shows all blacklisted numbers with violation counts
 • *#botkick* - Scans current group and kicks all blacklisted members
+
+*📊 Violation Tracking System:*
+• When user posts invite link → Kicked + Violation recorded + Alert sent
+• When admin uses #kick → Kicked + Violation recorded + Alert sent
+• Admin receives alert asking: "Reply 1 = blacklist, 0 = skip"
+• Reply *1* to alert → User added to blacklist
+• Reply *0* to alert → Skip blacklist (violation still recorded)
+• Reply *#ub* to alert → Remove user from blacklist
+• Violation types tracked: invite_link, kicked_by_admin
+• Violations preserved in database even after unblacklist
 
 *🌍 Country Restriction:*
 • *#botforeign* - Removes ALL users with +1 (US/Canada) and +6 (Southeast Asia) numbers
@@ -297,12 +308,15 @@ class CommandHandler {
 
 *🚨 AUTO-PROTECTION FEATURES:*
 1. **Invite Link Detection** ✅
-   - All users: Immediate kick + blacklist (no warnings)
-   - Always: Message deleted + Admin alert
+   - All users: Immediate kick + violation tracking
+   - Always: Message deleted + Admin alert with violation count
    - Detects: chat.whatsapp.com links
+   - Admin can reply 1/0 to blacklist/skip
+   - Violations stored permanently in database
 
 2. **Blacklist Auto-Kick** ✅
-   - When blacklisted user joins → Instant kick
+   - When blacklisted user joins → Instant kick + Alert sent
+   - Alert shows violation history and #ub option to unblacklist
    - Admin override: If ADMIN adds blacklisted user → Allowed to stay
 
 3. **Country Code Auto-Kick** ✅
@@ -323,7 +337,10 @@ class CommandHandler {
 *⚙️ SPECIAL BEHAVIORS:*
 • Bot needs admin to work (bypass enabled for LID issues)
 • #kick now deletes the target message too
-• All kicks add user to blacklist automatically
+• Violations tracked for invite_link and kicked_by_admin
+• Admin controls blacklisting via reply system (1/0/#ub)
+• Violation history preserved permanently in PostgreSQL database
+• Blacklist synced across PostgreSQL + Firebase + Redis
 • Muted users kicked after 10 messages
 • Session errors handled automatically
 
@@ -370,9 +387,14 @@ class CommandHandler {
 
 *🚫 Blacklist Management:*
 • *#blacklist [number]* - Add to blacklist
-• *#unblacklist [number]* - Remove from blacklist
-• *#blacklst* - List blacklisted numbers
+• *#unblacklist [number]* or *#ub [number]* - Remove from blacklist
+• *#blacklst* or *#blklst* - List blacklisted numbers with violations
 • *#botkick* - Scan group and kick all blacklisted users
+
+*📊 Violation Tracking:*
+• Reply *1* or *0* to kick alerts to blacklist/skip
+• Reply *#ub* to alerts to unblacklist users
+• Violations tracked: invite_link, kicked_by_admin
 
 *🌍 Country Restriction:*
 • *#botforeign* - Remove all +1 and +6 users from group
