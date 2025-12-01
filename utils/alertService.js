@@ -26,7 +26,7 @@ async function sendAlert(sock, message) {
     }
 }
 
-async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, reason, additionalInfo = '', spamLink = '', groupInviteLink = '' }) {
+async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, reason, additionalInfo = '', spamLink = '', groupInviteLink = '', userId = '' }) {
     // Get group invite link if not provided
     if (!groupInviteLink || groupInviteLink === 'N/A') {
         try {
@@ -45,30 +45,35 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
         second: '2-digit'
     });
 
+    // Check if LID format
+    const isLidFormat = userId && userId.endsWith('@lid');
+    const phoneDisplay = isLidFormat ? `${userPhone} (LID - Encrypted ID)` : userPhone;
+
     let alertTitle = '🚨 WhatsApp Invite Spam - IMMEDIATE ACTION';
-    let kickedUserJid = `${userPhone}@s.whatsapp.net`;
+    let kickedUserJid = userId || `${userPhone}@s.whatsapp.net`;
     
     // For invite link spam, use the specific format from screenshot
     if (reason === 'invite_link') {
-        const alertMessage = 
+        const alertMessage =
             `${alertTitle}\n\n` +
-            `👤 User: ${userPhone}@c.us\n` +
+            `👤 User: ${kickedUserJid}\n` +
             `📍 Group: ${groupName || 'Unknown Group'}\n` +
             `🔗 Group URL: ${groupInviteLink || 'N/A'}\n` +
             `⏰ Time: ${timestamp.replace(/\//g, '/').replace(',', ',')}\n` +
-            `👢 Kicked: ${kickedUserJid.replace('@s.whatsapp.net', '@lid')}\n` +
-            `🗃️ Blacklisted: ${userPhone}@c.us\n` +
+            `👢 Kicked: ${kickedUserJid}\n` +
+            `📞 Phone: ${phoneDisplay}\n` +
+            `🗃️ Blacklisted: ${userPhone}\n` +
             `📧 Spam Link Sent: ${spamLink || 'N/A'}\n` +
             `🚫 User was removed and blacklisted.\n\n` +
             `🔄 To unblacklist this user, copy the command below:`;
 
         // Send the main alert
         await sendAlert(sock, alertMessage);
-        
+
         // Send the unblacklist command as a separate message
-        const unblacklistCommand = `#unblacklist ${userPhone}@c.us`;
+        const unblacklistCommand = `#unblacklist ${userPhone}`;
         await sendAlert(sock, unblacklistCommand);
-        
+
         return true;
     }
 
@@ -98,23 +103,24 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
             reasonEmoji = '⚠️';
     }
 
-    const alertMessage = 
+    const alertMessage =
         `${reasonTitle}\n\n` +
-        `👤 User: ${userPhone}@c.us\n` +
+        `👤 User: ${kickedUserJid}\n` +
         `📍 Group: ${groupName || 'Unknown Group'}\n` +
         `🔗 Group URL: ${groupInviteLink || 'N/A'}\n` +
         `⏰ Time: ${timestamp.replace(/\//g, '/').replace(',', ',')}\n` +
-        `👢 Kicked: ${kickedUserJid.replace('@s.whatsapp.net', '@lid')}\n` +
-        `🗃️ Blacklisted: ${userPhone}@c.us\n` +
+        `👢 Kicked: ${kickedUserJid}\n` +
+        `📞 Phone: ${phoneDisplay}\n` +
+        `🗃️ Blacklisted: ${userPhone}\n` +
         (additionalInfo ? `ℹ️ Details: ${additionalInfo}\n` : '') +
         `🚫 User was removed and blacklisted.\n\n` +
         `🔄 To unblacklist this user, copy the command below:`;
 
     // Send the main alert
     await sendAlert(sock, alertMessage);
-    
+
     // Send the unblacklist command as a separate message
-    const unblacklistCommand = `#unblacklist ${userPhone}@c.us`;
+    const unblacklistCommand = `#unblacklist ${userPhone}`;
     await sendAlert(sock, unblacklistCommand);
     
     return true;

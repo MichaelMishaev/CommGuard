@@ -1213,6 +1213,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     
                     await sendKickAlert(sock, {
                         userPhone: userPhone,
+                        userId: senderId,
                         userName: `User ${userPhone}`,
                         groupName: groupMetadata?.subject || 'Unknown Group',
                         groupId: groupId,
@@ -1617,11 +1618,13 @@ async function handleMessage(sock, msg, commandHandler) {
 
         // Check if user is Israeli (phone starts with 972)
         const userPhone = senderId.split('@')[0];
+        const isLidFormat = senderId.endsWith('@lid');
         const isIsraeliUser = userPhone.startsWith('972');
-        
-        console.log(`[${getTimestamp()}] 🇮🇱 User origin check: ${userPhone} - Israeli: ${isIsraeliUser}`);
-        
-        if (!isIsraeliUser) {
+
+        console.log(`[${getTimestamp()}] 🇮🇱 User origin check: ${userPhone} - Israeli: ${isIsraeliUser}, LID: ${isLidFormat}`);
+
+        // Don't kick LID users based on country - LID is encrypted privacy ID, not a phone number
+        if (!isIsraeliUser && !isLidFormat) {
             // Non-Israeli user - immediate kick with optimized blacklisting
             console.log(`[${getTimestamp()}] 🚨 Non-Israeli user sending invite link - immediate kick`);
 
@@ -1640,10 +1643,11 @@ async function handleMessage(sock, msg, commandHandler) {
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+                const phoneDisplay = isLidFormat ? `${userPhone} (LID - Encrypted ID)` : userPhone;
                 const alertMessage = `🚨 *Non-Israeli User Kicked (Immediate)*\n\n` +
                                    `📍 Group: ${groupMetadata.subject}\n` +
                                    `👤 User: ${senderId}\n` +
-                                   `📞 Phone: ${userPhone}\n` +
+                                   `📞 Phone: ${phoneDisplay}\n` +
                                    `🌍 Origin: Non-Israeli (not +972)\n` +
                                    `🔗 Spam Links: ${matches.join(', ')}\n` +
                                    `⏰ Time: ${getTimestamp()}\n\n` +
@@ -1651,7 +1655,7 @@ async function handleMessage(sock, msg, commandHandler) {
                                    `• Message deleted\n` +
                                    `• User blacklisted\n` +
                                    `• User kicked immediately (non-Israeli policy)`;
-                
+
                 try {
                     await sock.sendMessage(adminId, { text: alertMessage });
                     console.log('✅ Sent immediate kick alert to admin');
@@ -1741,10 +1745,11 @@ async function handleMessage(sock, msg, commandHandler) {
                 
                 // Send admin alert about immediate kick
                 const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+                const phoneDisplay = isLidFormat ? `${userPhone} (LID - Encrypted ID)` : userPhone;
                 const alertMessage = `🚨 *Israeli User Kicked (Immediate)*\n\n` +
                                    `📍 Group: ${groupMetadata.subject}\n` +
                                    `👤 User: ${senderId}\n` +
-                                   `📞 Phone: ${userPhone}\n` +
+                                   `📞 Phone: ${phoneDisplay}\n` +
                                    `🌍 Origin: Israeli (+972)\n` +
                                    `🔗 Spam Links: ${matches.join(', ')}\n` +
                                    `⏰ Time: ${getTimestamp()}\n\n` +
@@ -2015,11 +2020,12 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                         console.log('Could not get group invite link:', err.message);
                     }
                     
+                    const phoneDisplay = isLidFormat ? `${phoneNumber} (LID - Encrypted ID)` : phoneNumber;
                     const alert = `🚨 *Restricted Country Code Auto-Kick*\n\n` +
                                 `📍 Group: ${groupMetadata.subject}\n` +
                                 `🔗 Group Link: ${groupLink}\n` +
                                 `👤 User: ${participantId}\n` +
-                                `📞 Phone: ${phoneNumber}\n` +
+                                `📞 Phone: ${phoneDisplay}\n` +
                                 `🌍 Reason: Country code starts with +${phoneNumber.charAt(0)}\n` +
                                 `⏰ Time: ${getTimestamp()}\n\n` +
                                 `To whitelist this user, use:\n` +
