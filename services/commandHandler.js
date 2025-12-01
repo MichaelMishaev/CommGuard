@@ -735,20 +735,34 @@ class CommandHandler {
         let targetUserId = null;
         let messageId = null;
 
-        // Primary method - extendedTextMessage with contextInfo (most common)
+        // Method 1: extendedTextMessage with contextInfo (most common for text replies)
         if (msg.message?.extendedTextMessage?.contextInfo) {
             const contextInfo = msg.message.extendedTextMessage.contextInfo;
-
-            // The participant field contains the user who sent the quoted message
             targetUserId = contextInfo.participant;
-
-            // Get message ID from stanzaId
             messageId = contextInfo.stanzaId;
-
-            // Store the full context for later use
             quotedMsg = contextInfo;
-
             console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Found quoted message via extendedTextMessage`);
+        }
+        // Method 2: Regular conversation message with contextInfo (alternative format)
+        else if (msg.message?.conversation && msg.message?.contextInfo) {
+            const contextInfo = msg.message.contextInfo;
+            targetUserId = contextInfo.participant;
+            messageId = contextInfo.stanzaId;
+            quotedMsg = contextInfo;
+            console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Found quoted message via conversation contextInfo`);
+        }
+        // Method 3: imageMessage, videoMessage, etc. with contextInfo
+        else {
+            const messageType = Object.keys(msg.message || {})[0];
+            if (msg.message?.[messageType]?.contextInfo) {
+                const contextInfo = msg.message[messageType].contextInfo;
+                if (contextInfo.quotedMessage || contextInfo.participant) {
+                    targetUserId = contextInfo.participant;
+                    messageId = contextInfo.stanzaId;
+                    quotedMsg = contextInfo;
+                    console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Found quoted message via ${messageType} contextInfo`);
+                }
+            }
         }
 
         console.log(`[${require('../utils/logger').getTimestamp()}] 🔍 Kick command analysis:`, {
@@ -756,11 +770,17 @@ class CommandHandler {
             hasParticipant: !!targetUserId,
             participant: targetUserId,
             messageId: messageId,
-            messageType: Object.keys(msg.message || {})[0]
+            messageType: Object.keys(msg.message || {})[0],
+            fullMessageKeys: Object.keys(msg.message || {})
         });
 
         if (!quotedMsg || !targetUserId) {
-            // Send detailed alert to main admin phone only
+            // Send warning message to the group
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick'
+            });
+
+            // Also send detailed alert to main admin phone for debugging
             const senderJid = msg.key.participant || msg.key.remoteJid;
             const senderPhone = senderJid.split('@')[0];
             const groupId = msg.key.remoteJid;
@@ -774,7 +794,7 @@ class CommandHandler {
                 // Ignore metadata errors
             }
 
-            // Send alert to main admin only - no group spam
+            // Send alert to main admin
             const alertPhone = this.config.ALERT_PHONE + '@s.whatsapp.net';
             await this.sock.sendMessage(alertPhone, {
                 text: `⚠️ COMMAND ERROR ALERT\n\n` +
@@ -782,6 +802,7 @@ class CommandHandler {
                       `User: ${senderPhone}\n` +
                       `Group: ${groupName}\n` +
                       `Error: No message reply detected\n` +
+                      `MessageType: ${Object.keys(msg.message || {})[0]}\n` +
                       `Time: ${new Date().toLocaleString('en-GB')}`
             });
             return true;
@@ -1048,10 +1069,41 @@ class CommandHandler {
             return true;
         }
 
-        // Check if this is a reply to another message
-        const quotedMsg = msg.message?.extendedTextMessage?.contextInfo;
-        if (!quotedMsg || !quotedMsg.participant) {
-            // Send detailed alert to main admin phone only
+        // Check if this is a reply to another message - updated detection logic
+        let quotedMsg = null;
+        let targetUserId = null;
+
+        // Method 1: extendedTextMessage with contextInfo (most common for text replies)
+        if (msg.message?.extendedTextMessage?.contextInfo) {
+            const contextInfo = msg.message.extendedTextMessage.contextInfo;
+            targetUserId = contextInfo.participant;
+            quotedMsg = contextInfo;
+        }
+        // Method 2: Regular conversation message with contextInfo (alternative format)
+        else if (msg.message?.conversation && msg.message?.contextInfo) {
+            const contextInfo = msg.message.contextInfo;
+            targetUserId = contextInfo.participant;
+            quotedMsg = contextInfo;
+        }
+        // Method 3: imageMessage, videoMessage, etc. with contextInfo
+        else {
+            const messageType = Object.keys(msg.message || {})[0];
+            if (msg.message?.[messageType]?.contextInfo) {
+                const contextInfo = msg.message[messageType].contextInfo;
+                if (contextInfo.quotedMessage || contextInfo.participant) {
+                    targetUserId = contextInfo.participant;
+                    quotedMsg = contextInfo;
+                }
+            }
+        }
+
+        if (!quotedMsg || !targetUserId) {
+            // Send warning message to the group
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ Please reply to a message from the user you want to ban.\n\nUsage: Reply to a user\'s message and type #ban'
+            });
+
+            // Also send detailed alert to main admin phone for debugging
             const senderJid = msg.key.participant || msg.key.remoteJid;
             const senderPhone = senderJid.split('@')[0];
             const groupId = msg.key.remoteJid;
@@ -1065,7 +1117,7 @@ class CommandHandler {
                 // Ignore metadata errors
             }
 
-            // Send alert to main admin only - no group spam
+            // Send alert to main admin
             const alertPhone = this.config.ALERT_PHONE + '@s.whatsapp.net';
             await this.sock.sendMessage(alertPhone, {
                 text: `⚠️ COMMAND ERROR ALERT\n\n` +
@@ -1073,13 +1125,14 @@ class CommandHandler {
                       `User: ${senderPhone}\n` +
                       `Group: ${groupName}\n` +
                       `Error: No message reply detected\n` +
+                      `MessageType: ${Object.keys(msg.message || {})[0]}\n` +
                       `Time: ${new Date().toLocaleString('en-GB')}`
             });
             return true;
         }
 
         const groupId = msg.key.remoteJid;
-        const targetUserId = quotedMsg.participant;
+        // targetUserId already assigned above
         
         try {
             // Get group metadata to check permissions

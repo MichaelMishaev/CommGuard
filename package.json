@@ -8,7 +8,8 @@
     "dev": "nodemon index.js",
     "fresh": "node start-fresh.js",
     "diagnose": "node diagnose.js",
-    "test": "node tests/runTests.js"
+    "test": "node tests/runTests.js",
+    "migrate": "node database/migrate-groups-to-db.js"
   },
   "keywords": [
     "whatsapp",
@@ -23,9 +24,12 @@
     "baileys": "^7.0.0-rc.9",
     "dotenv": "^17.2.1",
     "firebase-admin": "^12.0.0",
+    "ioredis": "^5.8.2",
+    "pg": "^8.16.3",
     "pino": "^8.16.2",
     "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "redis": "^4.7.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
