@@ -119,8 +119,9 @@ class CommandHandler {
                     return await this.handleBlacklistAdd(msg, args, isAdmin);
                     
                 case '#unblacklist':
+                case '#ub':
                     return await this.handleBlacklistRemove(msg, args, isAdmin);
-                    
+
                 case '#blacklst':
                     return await this.handleBlacklistList(msg, isAdmin);
                     
@@ -929,44 +930,35 @@ class CommandHandler {
                 return true;
             }
 
-            // Add to blacklist (no group message sent)
-            const { addToBlacklist } = require('./blacklistService');
-            await addToBlacklist(targetUserId, 'Kicked by admin command');
-
-            // Send alert to alert phone
+            // Track violation in database (NEW)
             const userPhone = targetUserId.split('@')[0];
-            
-            // Get group invite link
-            let groupInviteLink = 'N/A';
-            try {
-                const inviteCode = await this.sock.groupInviteCode(groupId);
-                groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
-            } catch (err) {
-                console.log('Could not get group invite link:', err.message);
+            let violations = {};
+
+            if (process.env.DATABASE_URL) {
+                try {
+                    const { incrementViolation, getViolations } = require('../database/groupService');
+                    violations = await incrementViolation(userPhone, 'kicked_by_admin');
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 📊 Violation recorded for ${userPhone}:`, violations);
+                } catch (error) {
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to record violation:`, error.message);
+                }
             }
 
-            await sendKickAlert(this.sock, {
+            // Send NEW alert format (ask admin to blacklist)
+            const alertResult = await sendKickAlert(this.sock, {
                 userPhone: userPhone,
-                userName: `User ${userPhone}`,
+                userId: targetUserId,
                 groupName: groupMetadata?.subject || 'Unknown Group',
                 groupId: groupId,
-                reason: 'admin_command',
-                additionalInfo: 'Kicked by admin using #kick command',
-                groupInviteLink: groupInviteLink
+                reason: 'kicked_by_admin',
+                violations: violations
             });
 
-            // Send notification to admin instead of user
-            try {
-                await this.sock.sendMessage('0544345287@s.whatsapp.net', {
-                    text: `👮‍♂️ User kicked by admin command\n\n` +
-                          `👤 User: ${targetUserId}\n` +
-                          `📍 Group: ${groupMetadata?.subject || 'Unknown Group'}\n` +
-                          `📱 Reason: Manual kick by admin\n` +
-                          `⏰ Time: ${new Date().toLocaleString()}`
-                });
-                console.log(`✅ Admin notification sent for kicked user: ${targetUserId}`);
-            } catch (notificationError) {
-                console.error(`Failed to send admin notification:`, notificationError.message);
+            // Store pending blacklist request
+            if (alertResult && alertResult.key) {
+                const { storePendingRequest } = require('../utils/blacklistPendingRequests');
+                storePendingRequest(alertResult.key.id, userPhone, targetUserId, 'kicked_by_admin');
+                console.log(`[${require('../utils/logger').getTimestamp()}] 📋 Stored pending blacklist request for: ${userPhone}`);
             }
 
             console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Successfully kicked user: ${targetUserId}`);
@@ -1608,15 +1600,42 @@ class CommandHandler {
             return true;
         }
 
+        // Remove from Firebase blacklist
         const { removeFromBlacklist } = require('./blacklistService');
-        const success = await removeFromBlacklist(args);
+        const firebaseSuccess = await removeFromBlacklist(args);
+
+        // Remove from PostgreSQL database if available
+        let dbSuccess = false;
+        if (process.env.DATABASE_URL) {
+            try {
+                const { unblacklistUser } = require('../database/groupService');
+                await unblacklistUser(args);
+                dbSuccess = true;
+                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${args} from PostgreSQL blacklist`);
+            } catch (error) {
+                console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to remove from database:`, error.message);
+            }
+        }
+
+        // Remove from Redis cache if available
+        if (process.env.REDIS_URL) {
+            try {
+                const { removeFromBlacklistCache } = require('../services/redisService');
+                await removeFromBlacklistCache(args);
+                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${args} from Redis cache`);
+            } catch (error) {
+                console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to remove from cache:`, error.message);
+            }
+        }
+
+        const success = firebaseSuccess || dbSuccess;
         if (success) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: `✅ Removed ${args} from blacklist.` 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: `✅ Removed +${args} from blacklist.\n\nViolation history preserved for record keeping.`
             });
         } else {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: `❌ Failed to remove ${args} from blacklist.` 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: `❌ Failed to remove ${args} from blacklist.`
             });
         }
         return true;

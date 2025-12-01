@@ -1917,35 +1917,54 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 continue; // Skip all checks for whitelisted users
             }
             
-            // Check if user is blacklisted (optimized with local caching)
-            if (!addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
+            // Check if user is blacklisted (check both Firebase and PostgreSQL)
+            const isBlacklistedFirebase = await blacklistService.isBlacklisted(participantId);
+            let isBlacklistedDB = false;
+            let violations = {};
+
+            // Check PostgreSQL database if available
+            if (process.env.DATABASE_URL) {
+                try {
+                    const user = await getUserByPhone(phoneNumber);
+                    if (user) {
+                        isBlacklistedDB = user.is_blacklisted;
+                        violations = user.violations || {};
+                    }
+                } catch (error) {
+                    console.error('❌ Failed to check database blacklist:', error.message);
+                }
+            }
+
+            const isBlacklisted = isBlacklistedFirebase || isBlacklistedDB;
+
+            if (!addedByAdmin && isBlacklisted) {
                 console.log(`🚫 Blacklisted user detected: ${participantId}`);
 
                 try {
                     // Remove the blacklisted user
                     await sock.groupParticipantsUpdate(groupId, [participantId], 'remove');
-                    console.log('✅ Kicked blacklisted user');
+                    console.log('✅ Kicked blacklisted user on rejoin');
 
-                    // Send notification to admin instead of user
-                    try {
-                        await sock.sendMessage('0544345287@s.whatsapp.net', {
-                            text: `🚫 Blacklisted user auto-removed\n\n` +
-                                  `👤 User: ${participantId}\n` +
-                                  `📍 Group: ${groupMetadata.subject}\n` +
-                                  `📱 Reason: User on blacklist\n` +
-                                  `⏰ Time: ${getTimestamp()}`
-                        });
-                    } catch (notifyError) {
-                        console.log('Could not notify admin:', notifyError.message);
+                    // Send NEW alert format with #ub option
+                    const alertResult = await sendBlacklistRejoinAlert(sock, {
+                        userPhone: phoneNumber,
+                        userId: participantId,
+                        groupName: groupMetadata.subject,
+                        groupId: groupId,
+                        violations: violations
+                    });
+
+                    // Store pending request for #ub command
+                    if (alertResult && alertResult.key) {
+                        storePendingRequest(alertResult.key.id, phoneNumber, participantId, 'blacklist_rejoin');
+                        console.log(`[${getTimestamp()}] 📋 Stored pending unblacklist request for: ${phoneNumber}`);
                     }
-
-                    // No additional admin alert needed - already sent above
 
                 } catch (error) {
                     advancedLogger.logPermissionError('kick_blacklisted_user', groupId, error);
                 }
                 continue; // Skip further checks for this user
-            } else if (addedByAdmin && await blacklistService.isBlacklisted(participantId)) {
+            } else if (addedByAdmin && isBlacklisted) {
                 console.log(`⚠️ Blacklisted user ${participantId} allowed to join - added by admin`);
             }
             
