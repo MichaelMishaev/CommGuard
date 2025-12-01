@@ -989,8 +989,8 @@ async function handleMessage(sock, msg, commandHandler) {
     }
     // Check if it's a group or private message
     const isGroup = msg.key.remoteJid.endsWith('@g.us');
-    const isPrivate = msg.key.remoteJid.endsWith('@s.whatsapp.net');
-    
+    const isPrivate = msg.key.remoteJid.endsWith('@s.whatsapp.net') || msg.key.remoteJid.endsWith('@lid');
+
     // Skip if not from group or private chat
     if (!isGroup && !isPrivate) return;
     
