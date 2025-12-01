@@ -892,10 +892,17 @@ async function startBot() {
     
     // Handle group participant updates
     sock.ev.on('group-participants.update', async ({ id, participants, action, author }) => {
+        console.log(`\n[${getTimestamp()}] 🔔 GROUP PARTICIPANTS UPDATE`);
+        console.log(`   Group: ${id}`);
+        console.log(`   Action: ${action}`);
+        console.log(`   Participants: ${JSON.stringify(participants)}`);
+        console.log(`   Author: ${author || 'unknown'}`);
+
         if (action === 'add') {
             // Check if the bot itself was added to the group
             const botJid = sock.user.id;
             const botPhone = sock.user.id.split(':')[0].split('@')[0];
+            console.log(`   Bot ID: ${botJid}, Bot Phone: ${botPhone}`);
             
             // Check for bot using multiple matching patterns (handles LID format)
             const botAddedToGroup = participants.some(p => {
@@ -1922,6 +1929,9 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
             let isBlacklistedDB = false;
             let violations = {};
 
+            console.log(`🔍 Blacklist check for: ${phoneNumber}`);
+            console.log(`   Firebase blacklist: ${isBlacklistedFirebase}`);
+
             // Check PostgreSQL database if available
             if (process.env.DATABASE_URL) {
                 try {
@@ -1929,6 +1939,10 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     if (user) {
                         isBlacklistedDB = user.is_blacklisted;
                         violations = user.violations || {};
+                        console.log(`   Database blacklist: ${isBlacklistedDB}`);
+                        console.log(`   Violations: ${JSON.stringify(violations)}`);
+                    } else {
+                        console.log(`   Database: User not found`);
                     }
                 } catch (error) {
                     console.error('❌ Failed to check database blacklist:', error.message);
@@ -1936,9 +1950,10 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
             }
 
             const isBlacklisted = isBlacklistedFirebase || isBlacklistedDB;
+            console.log(`   FINAL BLACKLIST STATUS: ${isBlacklisted}`);
 
             if (!addedByAdmin && isBlacklisted) {
-                console.log(`🚫 Blacklisted user detected: ${participantId}`);
+                console.log(`🚫 Blacklisted user detected: ${participantId} - ATTEMPTING TO KICK`);
 
                 try {
                     // Remove the blacklisted user
