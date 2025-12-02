@@ -154,18 +154,34 @@ function extractMessageText(msg) {
 
 // NEW: Check if a sticker/reaction message is a command reply
 function checkStickerCommand(msg) {
-    // Check if this is a sticker with context info (reply)
-    if (msg.message?.stickerMessage && msg.message?.messageContextInfo) {
-        console.log(`[DEBUG] STICKER WITH CONTEXT DETECTED - checking for command intent`);
+    // IMPORTANT: Only treat a sticker as a command if it's ACTUALLY replying to a message
+    // messageContextInfo alone is NOT enough - we need to check for quoted message data
+    if (msg.message?.stickerMessage) {
+        const contextInfo = msg.message?.messageContextInfo;
 
-        // Return context info if it exists - indicating this is a reply
-        return {
-            isCommand: true,
-            type: 'sticker_reply',
-            contextInfo: msg.message.messageContextInfo,
-            participant: msg.message.messageContextInfo.participant,
-            stanzaId: msg.message.messageContextInfo.stanzaId || msg.message.messageContextInfo.quotedMessageId
-        };
+        // Check if this is a REPLY sticker (has quotedMessage or quotedStanzaID)
+        const isReply = contextInfo?.quotedMessage ||
+                       contextInfo?.stanzaId ||
+                       contextInfo?.quotedMessageId ||
+                       contextInfo?.participant;
+
+        // CRITICAL FIX: Only treat as command if it's actually a reply to another message
+        // Regular stickers (even with messageContextInfo) should NOT be treated as commands
+        if (isReply && contextInfo?.participant && (contextInfo?.stanzaId || contextInfo?.quotedMessageId)) {
+            console.log(`[DEBUG] STICKER REPLY DETECTED - this is a #kick command`);
+
+            return {
+                isCommand: true,
+                type: 'sticker_reply',
+                contextInfo: contextInfo,
+                participant: contextInfo.participant,
+                stanzaId: contextInfo.stanzaId || contextInfo.quotedMessageId
+            };
+        } else {
+            // This is just a regular sticker, not a reply
+            console.log(`[DEBUG] Regular sticker (not a reply) - ignoring`);
+            return { isCommand: false };
+        }
     }
 
     // Check for reaction messages (some users might react with specific emojis as commands)

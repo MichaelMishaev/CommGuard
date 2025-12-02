@@ -29,10 +29,11 @@ const groupMuteStatus = new Map();
 class CommandHandler {
     // Track processed messages to prevent duplicates
     static processedMessages = new Set();
-    
+
     constructor(sock) {
         this.sock = sock;
-        
+        this.config = config; // CRITICAL FIX: Store config reference to prevent "Cannot read properties of undefined" errors
+
         // Sassy Hebrew responses for unauthorized users
         this.sassyResponses = [
             'מה אני עובד אצלך?',
