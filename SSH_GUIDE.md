@@ -24,7 +24,7 @@ pm2 status
 - **Server IP**: `209.38.231.184`
 - **Username**: `root`
 - **Project Path**: `/root/CommGuard`
-- **Bot Process**: `commguard` (PM2)
+- **Bot Process**: `commguard-bot` (PM2)
 
 ---
 
@@ -36,19 +36,19 @@ pm2 status
 pm2 status
 
 # View bot logs (real-time)
-pm2 logs commguard
+pm2 logs commguard-bot
 
 # View last 20 lines of logs
-pm2 logs commguard --lines 20
+pm2 logs commguard-bot --lines 20
 
 # Restart bot
-pm2 restart commguard
+pm2 restart commguard-bot
 
 # Stop bot
-pm2 stop commguard
+pm2 stop commguard-bot
 
 # Start bot
-pm2 start commguard
+pm2 start commguard-bot
 
 # Delete old processes
 pm2 delete whatsapp-bot
@@ -113,7 +113,7 @@ scp firebaseConfig.js root@209.38.231.184:/root/CommGuard/
 scp guard1-d43a3-firebase-adminsdk-fbsvc-e40f231d96.json root@209.38.231.184:/root/CommGuard/
 
 # Restart bot
-pm2 restart commguard
+pm2 restart commguard-bot
 ```
 
 ### Stream Error 515 (Multiple Connections)
@@ -122,7 +122,7 @@ pm2 restart commguard
 rm -rf baileys_auth_info
 
 # Restart bot
-pm2 restart commguard
+pm2 restart commguard-bot
 
 # Check for multiple instances
 ps aux | grep node
@@ -142,7 +142,7 @@ pm2 flush
 
 # Reset PM2
 pm2 kill
-pm2 start index.js --name commguard
+pm2 start index.js --name commguard-bot
 ```
 
 ### Server Resources
@@ -171,7 +171,7 @@ ps aux | grep node
 - `config.js` - Bot configuration
 
 ### Bot Process & Logs
-- **PM2 Process Name**: `commguard`
+- **PM2 Process Name**: `commguard-bot`
 - **Logs Location**: `~/.pm2/logs/`
 - **Working Directory**: `/root/CommGuard`
 - **Lock File**: `.commguard.lock` (prevents multiple instances)
@@ -193,12 +193,12 @@ ps aux | grep node
 ### Bot Won't Start
 1. Check Firebase files: `ls -la firebaseConfig.js`
 2. Copy missing files from local machine
-3. Restart: `pm2 restart commguard`
+3. Restart: `pm2 restart commguard-bot`
 
 ### Bot Disconnected
-1. Check logs: `pm2 logs commguard`
+1. Check logs: `pm2 logs commguard-bot`
 2. Clear auth: `rm -rf baileys_auth_info`
-3. Restart: `pm2 restart commguard`
+3. Restart: `pm2 restart commguard-bot`
 
 ### Multiple Connection Error
 1. Choose one location (cloud OR local)
@@ -208,4 +208,4 @@ ps aux | grep node
 ### PM2 Issues
 1. Check status: `pm2 status`
 2. Delete old processes: `pm2 delete process-name`
-3. Restart: `pm2 restart commguard` 
+3. Restart: `pm2 restart commguard-bot` 
