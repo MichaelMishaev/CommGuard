@@ -244,13 +244,14 @@ function startAdminRefreshScheduler(sock) {
                 
                 // Refresh if older than 1 hour
                 if (age > DB_UPDATE_INTERVAL) {
+                    let metadata = null; // Define outside try block to avoid scope issues in catch
                     try {
                         await new Promise(resolve => setTimeout(resolve, 2000)); // Spread out API calls
-                        const metadata = await sock.groupMetadata(groupId);
+                        metadata = await sock.groupMetadata(groupId);
                         const adminList = metadata.participants
                             .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
                             .map(p => p.id);
-                        
+
                         // Sanitize metadata to prevent Firestore undefined value errors
                         const sanitizedMetadata = advancedLogger.sanitizeForFirestore(metadata);
 
@@ -260,14 +261,14 @@ function startAdminRefreshScheduler(sock) {
                             groupName: metadata.subject || 'Unknown Group',
                             fullMetadata: sanitizedMetadata
                         });
-                        
+
                         // Update memory cache too
                         groupAdminCache.set(groupId, {
                             admins: new Set(adminList),
                             timestamp: Date.now(),
                             fullMetadata: metadata
                         });
-                        
+
                         refreshCount++;
                     } catch (error) {
                         advancedLogger.logFirestoreError(error, 'refresh_admin_list', { groupId, metadata });
