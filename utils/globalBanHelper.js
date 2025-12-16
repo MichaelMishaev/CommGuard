@@ -96,12 +96,41 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 }
 
                 // Check if user is a member of this group
-                const userParticipant = metadata.participants.find(p => {
-                    const participantJid = jidKey(p.id);
-                    // Check both JID and phone number
-                    return participantJid === normalizedUserJid ||
-                           participantJid.includes(userPhone);
-                });
+                // Need to match by phone number, handling both @lid and @s.whatsapp.net formats
+                const userParticipant = await (async () => {
+                    for (const p of metadata.participants) {
+                        const participantJid = jidKey(p.id);
+
+                        // Direct JID match
+                        if (participantJid === normalizedUserJid) {
+                            return p;
+                        }
+
+                        // Check if participant phone matches user phone
+                        if (participantJid.includes(userPhone)) {
+                            return p;
+                        }
+
+                        // If participant is LID, decode it and check if it matches user phone
+                        if (p.id.includes('@lid')) {
+                            const participantPhone = await decodeLIDToPhone(sock, p.id);
+                            if (participantPhone && participantPhone === userPhone) {
+                                return p;
+                            }
+                            // Also check with country code variations
+                            if (participantPhone && userPhone.includes(participantPhone.replace(/^972/, ''))) {
+                                return p;
+                            }
+                        }
+
+                        // Check if user phone (without country code) matches participant
+                        const userPhoneWithout972 = userPhone.replace(/^972/, '0');
+                        if (participantJid.includes(userPhoneWithout972.replace(/^0/, '972'))) {
+                            return p;
+                        }
+                    }
+                    return null;
+                })();
 
                 if (!userParticipant) {
                     report.groupsWhereUserNotMember++;
