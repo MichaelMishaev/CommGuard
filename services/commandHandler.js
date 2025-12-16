@@ -303,7 +303,7 @@ class CommandHandler {
 • *#kick* - Reply to message → Kicks user + deletes message + asks for blacklist
 • *#kickglobal* - Reply to message → Kicks user + deletes message + kicks from ALL your groups
 • *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
-• *#clear* - ⚠️ NOT IMPLEMENTED (will show "not yet implemented")
+• *#clear* - Remove all blacklisted users from current group
 
 *🔇 Mute Commands:*
 • *#mute 30* - Mutes entire group for 30 minutes (only admins can speak)
@@ -1245,24 +1245,123 @@ class CommandHandler {
     }
 
     async handleClear(msg, isAdmin) {
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🧹 #clear command received (clean blacklisted users)`);
+
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Only admins can use #clear'
             });
             return true;
         }
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #clear command can only be used in groups.\n\nUsage: In a group, type #clear to clear recent messages' 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ The #clear command can only be used in groups.\n\nUsage: Type #clear in a group to remove all blacklisted users from current group'
             });
             return true;
         }
 
-        await this.sock.sendMessage(msg.key.remoteJid, { 
-            text: '⚠️ Clear command not yet implemented in Baileys version.' 
-        });
+        const groupId = msg.key.remoteJid;
+
+        try {
+            // Get group metadata
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
+            const groupName = groupMetadata.subject || 'Unknown Group';
+
+            console.log(`[${require('../utils/logger').getTimestamp()}] 🧹 Cleaning blacklisted users from: ${groupName}`);
+
+            // Get blacklist
+            const blacklistService = require('../services/blacklistService');
+
+            // Find blacklisted users in this group
+            const blacklistedInGroup = [];
+            for (const participant of groupMetadata.participants) {
+                const participantId = participant.id;
+                const participantPhone = participantId.split('@')[0];
+
+                // Skip admins
+                if (participant.admin) {
+                    continue;
+                }
+
+                // Check if blacklisted
+                const isBlacklisted = await blacklistService.isBlacklisted(participantId);
+                if (isBlacklisted) {
+                    blacklistedInGroup.push({
+                        id: participantId,
+                        phone: participantPhone
+                    });
+                }
+            }
+
+            if (blacklistedInGroup.length === 0) {
+                await this.sock.sendMessage(groupId, {
+                    text: '✅ No blacklisted users found in this group.\n\nGroup is clean!'
+                });
+                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ No blacklisted users found in ${groupName}`);
+                return true;
+            }
+
+            // Send start message
+            await this.sock.sendMessage(groupId, {
+                text: `🧹 *Cleaning Group*\n\n` +
+                      `Found ${blacklistedInGroup.length} blacklisted user(s)\n` +
+                      `⏳ Removing them now...`
+            });
+
+            // Remove blacklisted users with delays
+            let removed = 0;
+            let failed = 0;
+
+            for (let i = 0; i < blacklistedInGroup.length; i++) {
+                const user = blacklistedInGroup[i];
+
+                try {
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Removing blacklisted user: ${user.phone}`);
+
+                    await this.sock.groupParticipantsUpdate(groupId, [user.id], 'remove');
+                    removed++;
+
+                    console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${user.phone}`);
+
+                    // Progress update every 5 users
+                    if ((i + 1) % 5 === 0 && (i + 1) < blacklistedInGroup.length) {
+                        await this.sock.sendMessage(groupId, {
+                            text: `🧹 Progress: ${i + 1}/${blacklistedInGroup.length} removed...`
+                        });
+                    }
+
+                    // SAFE: 2 second delay between kicks
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+
+                } catch (error) {
+                    failed++;
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to remove ${user.phone}: ${error.message}`);
+
+                    // Continue with next user
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            // Send completion report
+            const report = `✅ *Group Cleaned!*\n\n` +
+                          `📊 Results:\n` +
+                          `   • Successfully removed: ${removed}\n` +
+                          (failed > 0 ? `   • Failed to remove: ${failed}\n` : '') +
+                          `   • Group: ${groupName}`;
+
+            await this.sock.sendMessage(groupId, { text: report });
+
+            console.log(`[${require('../utils/logger').getTimestamp()}] 🏁 Clean complete: ${removed} removed, ${failed} failed`);
+
+        } catch (error) {
+            console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to clean group:`, error);
+            await this.sock.sendMessage(groupId, {
+                text: '❌ Failed to clean group. Check logs for details.'
+            });
+        }
+
         return true;
     }
 
