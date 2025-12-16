@@ -260,4 +260,5 @@ finalRegressionTest.js
 *RegressionTest.js
 
 # SSH Configuration (for reference only - do not commit actual keys!)
-# github_ssh_key.txt
+# github_ssh_key.txtdatabase_backups/*.sql
+database_backups/*.dump
