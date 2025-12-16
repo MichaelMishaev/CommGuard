@@ -24,8 +24,8 @@ async function checkUserInGroup() {
     });
 
     const targetGroups = [
-        'נתניה צפון העיר',
-        'יד2 נתניה'
+        'נתניה, צפון העיר',
+        'יד 2 נתניה'
     ];
     const targetPhone = '972527332312';
     const targetLid = '77709346664559';
