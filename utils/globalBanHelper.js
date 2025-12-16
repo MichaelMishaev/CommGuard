@@ -86,6 +86,10 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 // WhatsApp provides both 'id' (LID) and 'phoneNumber' (real phone) in participant objects
                 // We need to match against BOTH to find the user regardless of which format was used
                 const userParticipant = metadata.participants.find(p => {
+                    // Extract phone number from userJid for comparison
+                    // If userJid is LID (77709346664559@lid), we need to extract just the number part for partial matching
+                    const userIdPart = userJid.split('@')[0];  // Gets "77709346664559" or "972527332312"
+
                     // Method 1: Direct match on participant.id (e.g., 77709346664559@lid)
                     if (p.id === userJid) {
                         console.log(`[${getTimestamp()}]    ✓ Matched by ID: ${p.id}`);
@@ -114,6 +118,17 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                         const participantLidOnly = p.id.split('@')[0];
                         if (userLidOnly === participantLidOnly) {
                             console.log(`[${getTimestamp()}]    ✓ Matched by LID: ${userLidOnly}`);
+                            return true;
+                        }
+                    }
+
+                    // Method 5: Check if participant.phoneNumber contains the user's phone (for partial matching)
+                    // This handles cases where userJid is LID but participant has phoneNumber field
+                    if (p.phoneNumber) {
+                        // Try matching just the last 9 digits (e.g., "527332312")
+                        const last9Digits = userIdPart.slice(-9);
+                        if (p.phoneNumber.includes(last9Digits)) {
+                            console.log(`[${getTimestamp()}]    ✓ Matched by phoneNumber partial (last 9 digits): ${last9Digits} in ${p.phoneNumber}`);
                             return true;
                         }
                     }
