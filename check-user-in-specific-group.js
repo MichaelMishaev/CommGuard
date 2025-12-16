@@ -23,28 +23,37 @@ async function checkUserInGroup() {
         });
     });
 
-    const targetGroupName = 'נתניה צפון העיר';
+    const targetGroups = [
+        'נתניה צפון העיר',
+        'יד2 נתניה'
+    ];
     const targetPhone = '972527332312';
     const targetLid = '77709346664559';
 
-    console.log(`\n🔍 Searching for group: "${targetGroupName}"`);
+    console.log(`\n🔍 Searching for groups: ${targetGroups.join(', ')}`);
     console.log(`   Looking for user: ${targetPhone} or LID: ${targetLid}\n`);
 
     const groups = await sock.groupFetchAllParticipating();
+    let groupsChecked = 0;
 
     for (const [groupId, group] of Object.entries(groups)) {
-        if (group.subject.includes(targetGroupName)) {
+        // Check if this is one of our target groups
+        const matchesTarget = targetGroups.some(name => group.subject.includes(name));
+
+        if (matchesTarget) {
+            groupsChecked++;
             console.log(`\n📍 FOUND GROUP: ${group.subject}`);
             console.log(`   Group ID: ${groupId}`);
 
             const metadata = await sock.groupMetadata(groupId);
             console.log(`   Total participants: ${metadata.participants.length}\n`);
 
-            console.log('   👥 All participants:');
+            console.log('   👥 Checking for target user...');
             let foundTarget = false;
 
             for (const p of metadata.participants) {
                 const pid = p.id;
+                const pPhone = p.phoneNumber;  // WhatsApp's native phoneNumber field
                 const normalized = jidKey(pid);
 
                 // Check if this is our target
@@ -53,26 +62,41 @@ async function checkUserInGroup() {
                                 normalized.includes(targetPhone) ||
                                 normalized.includes(targetLid) ||
                                 pid.includes('527332312') ||
-                                normalized.includes('527332312');
+                                normalized.includes('527332312') ||
+                                (pPhone && pPhone.includes(targetPhone)) ||
+                                (pPhone && pPhone.includes('527332312'));
 
                 if (isTarget) {
                     console.log(`\n   ✅✅✅ FOUND TARGET USER! ✅✅✅`);
                     console.log(`      Raw ID: ${pid}`);
+                    console.log(`      PhoneNumber field: ${pPhone}`);
                     console.log(`      Normalized: ${normalized}`);
                     console.log(`      Admin: ${p.admin || 'no'}\n`);
                     foundTarget = true;
                 }
-
-                // Print all participants for debugging
-                console.log(`      ${pid} → ${normalized}${p.admin ? ' (admin)' : ''}`);
             }
 
             if (!foundTarget) {
                 console.log(`\n   ❌ Target user NOT found in this group!`);
-            }
+                console.log(`   Showing first 10 participants for debugging:\n`);
 
-            break; // Only check the first matching group
+                for (let i = 0; i < Math.min(10, metadata.participants.length); i++) {
+                    const p = metadata.participants[i];
+                    console.log(`      ID: ${p.id}`);
+                    console.log(`      phoneNumber: ${p.phoneNumber || 'N/A'}`);
+                    console.log(`      normalized: ${jidKey(p.id)}`);
+                    console.log(`      ---`);
+                }
+            }
         }
+    }
+
+    if (groupsChecked === 0) {
+        console.log(`\n❌ No target groups found!`);
+        console.log(`\nAll groups:`);
+        Object.values(groups).forEach(g => console.log(`   - ${g.subject}`));
+    } else {
+        console.log(`\n✅ Checked ${groupsChecked} target groups`);
     }
 
     process.exit(0);
