@@ -2,7 +2,7 @@
 // Global Ban Helper - Remove user from all groups where admin has admin privileges
 
 const { getTimestamp } = require('./logger');
-const { normalizeJid, decodeLIDToPhone } = require('./jidUtils');
+const { jidKey, decodeLIDToPhone } = require('./jidUtils');
 const { robustKick } = require('./kickHelper');
 
 /**
@@ -40,7 +40,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
         const adminJid = `${adminPhone}@s.whatsapp.net`;
 
         // Normalize user JID
-        const normalizedUserJid = normalizeJid(userJid);
+        const normalizedUserJid = jidKey(userJid);
 
         // Decode LID if needed
         let userPhone = userJid.replace('@s.whatsapp.net', '').replace('@lid', '');
@@ -73,7 +73,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
 
                 // Check if admin is actually an admin in this group
                 const adminParticipant = metadata.participants.find(p =>
-                    normalizeJid(p.id) === normalizeJid(adminJid)
+                    jidKey(p.id) === jidKey(adminJid)
                 );
 
                 if (!adminParticipant || !adminParticipant.admin) {
@@ -89,7 +89,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
 
                 // Check if user is a member of this group
                 const userParticipant = metadata.participants.find(p => {
-                    const participantJid = normalizeJid(p.id);
+                    const participantJid = jidKey(p.id);
                     // Check both JID and phone number
                     return participantJid === normalizedUserJid ||
                            participantJid.includes(userPhone);
