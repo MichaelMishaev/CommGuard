@@ -67,14 +67,15 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 console.log(`[${getTimestamp()}] 🔄 Progress: ${processedCount}/${groupIds.length} groups checked...`);
             }
 
-            // ULTRA-SAFE: Add delay every 3 groups to avoid rate limiting
-            if (processedCount % 3 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay every 3 groups
+            // ULTRA-SAFE: Add longer delay every 5 groups to avoid rate limiting
+            if (processedCount % 5 === 0) {
+                console.log(`[${getTimestamp()}] ⏸️  Pausing 10 seconds to avoid rate limiting...`);
+                await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second delay every 5 groups
             }
 
             try {
-                // ULTRA-SAFE: Delay before each metadata fetch to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between each group
+                // ULTRA-SAFE: Longer delay before each metadata fetch to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between each group
 
                 // Get group metadata with participants
                 const metadata = await sock.groupMetadata(groupId);
