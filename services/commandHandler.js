@@ -1353,6 +1353,18 @@ class CommandHandler {
 
             await this.sock.sendMessage(groupId, { text: report });
 
+            // Send detailed private report to admin (0544345287)
+            const adminJid = '0544345287@s.whatsapp.net';
+            const detailedReport = `🧹 *Group Cleanup Report*\n\n` +
+                                  `📍 Group: ${groupName}\n` +
+                                  `📊 Successfully removed ${removed} blacklisted user(s):\n\n` +
+                                  (blacklistedInGroup.length > 0
+                                      ? blacklistedInGroup.map(u => `   • +${u.phone}`).join('\n')
+                                      : '   (none found)') +
+                                  (failed > 0 ? `\n\n⚠️ Failed to remove: ${failed}` : '');
+
+            await this.sock.sendMessage(adminJid, { text: detailedReport });
+
             console.log(`[${require('../utils/logger').getTimestamp()}] 🏁 Clean complete: ${removed} removed, ${failed} failed`);
 
         } catch (error) {
