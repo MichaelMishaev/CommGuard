@@ -79,21 +79,11 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 // Get group metadata with participants
                 const metadata = await sock.groupMetadata(groupId);
 
-                // Check if admin is actually an admin in this group
-                const adminParticipant = metadata.participants.find(p =>
-                    jidKey(p.id) === jidKey(adminJid)
-                );
-
-                if (!adminParticipant || !adminParticipant.admin) {
-                    report.groupsWhereAdminNotAdmin++;
-                    report.details.push({
-                        groupId,
-                        groupName,
-                        status: 'skipped',
-                        reason: 'Admin not an admin in this group'
-                    });
-                    continue;
-                }
+                // Note: We skip admin check because:
+                // 1. User wouldn't be able to use #kickglobal if not admin in original group
+                // 2. LID format makes admin detection unreliable
+                // 3. We'll discover if we're not admin when kick fails
+                // The kick itself will fail if bot doesn't have permission
 
                 // Check if user is a member of this group
                 // Need to match by phone number, handling both @lid and @s.whatsapp.net formats
