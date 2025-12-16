@@ -67,14 +67,14 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 console.log(`[${getTimestamp()}] 🔄 Progress: ${processedCount}/${groupIds.length} groups checked...`);
             }
 
-            // Add delay every 5 groups to avoid rate limiting
-            if (processedCount % 5 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay every 5 groups
+            // ULTRA-SAFE: Add delay every 3 groups to avoid rate limiting
+            if (processedCount % 3 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay every 3 groups
             }
 
             try {
-                // Small delay before each metadata fetch to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 100)); // 100ms between each group
+                // ULTRA-SAFE: Delay before each metadata fetch to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between each group
 
                 // Get group metadata with participants
                 const metadata = await sock.groupMetadata(groupId);
@@ -133,8 +133,8 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
 
                     console.log(`[${getTimestamp()}] ✅ Successfully kicked from: ${groupName}`);
 
-                    // Small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // ULTRA-SAFE: Longer delay after successful kick to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds after each kick
 
                 } catch (kickError) {
                     report.failedKicks++;
@@ -149,10 +149,10 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 }
 
             } catch (groupError) {
-                // Handle rate limiting with longer delay
+                // Handle rate limiting with ULTRA-SAFE delay
                 if (groupError.message && groupError.message.includes('rate-overlimit')) {
-                    console.log(`[${getTimestamp()}] ⏳ Rate limited - waiting 5 seconds before continuing...`);
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds on rate limit
+                    console.log(`[${getTimestamp()}] ⏳ Rate limited - waiting 15 seconds before continuing...`);
+                    await new Promise(resolve => setTimeout(resolve, 15000)); // Wait 15 seconds on rate limit
                 }
 
                 // Error getting group metadata
