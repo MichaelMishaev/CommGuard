@@ -79,30 +79,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 // Get group metadata with participants
                 const metadata = await sock.groupMetadata(groupId);
 
-                // Check if BOT is admin in this group (not the human admin!)
-                const botJid = sock.user?.id; // Bot's JID (e.g., 972555020829:25@s.whatsapp.net)
-                const botParticipant = metadata.participants.find(p => {
-                    const participantJid = jidKey(p.id);
-                    const normalizedBotJid = jidKey(botJid);
-                    return participantJid === normalizedBotJid;
-                });
-
-                // Check if bot has admin or superadmin role
-                const botIsAdmin = botParticipant && (
-                    botParticipant.admin === 'admin' ||
-                    botParticipant.admin === 'superadmin'
-                );
-
-                if (!botIsAdmin) {
-                    report.groupsWhereAdminNotAdmin++;
-                    report.details.push({
-                        groupId,
-                        groupName,
-                        status: 'skipped',
-                        reason: 'Bot not admin in this group'
-                    });
-                    continue;
-                }
+                // No admin check - just try to kick. If it fails, we'll catch the error.
 
                 // Check if user is a member of this group
                 // Need to match by phone number, handling both @lid and @s.whatsapp.net formats
@@ -244,19 +221,18 @@ function formatGlobalBanReport(report) {
 
     message += `\n`;
     message += `ℹ️ Additional Info:\n`;
-    message += `   • You're not admin in: ${report.groupsWhereAdminNotAdmin} groups\n`;
     message += `   • User not member of: ${report.groupsWhereUserNotMember} groups\n`;
 
-    // Show failed groups if any
+    // Show failed groups if any (bot not admin)
     if (report.failedKicks > 0) {
-        message += `\n❌ Failed Groups:\n`;
+        message += `\n❌ Failed Groups (Bot Not Admin):\n`;
         const failedGroups = report.details.filter(d => d.status === 'failed');
-        failedGroups.slice(0, 5).forEach(group => {
-            message += `   • ${group.groupName}: ${group.reason}\n`;
+        failedGroups.forEach(group => {
+            const groupUrl = `https://chat.whatsapp.com/${group.groupId}`;
+            message += `   • ${group.groupName}\n`;
+            message += `     Reason: ${group.reason}\n`;
+            message += `     URL: ${groupUrl}\n\n`;
         });
-        if (failedGroups.length > 5) {
-            message += `   ... and ${failedGroups.length - 5} more\n`;
-        }
     }
 
     return message;
