@@ -103,7 +103,10 @@ class CommandHandler {
                     
                 case '#kick':
                     return await this.handleKick(msg, isAdmin);
-                    
+
+                case '#kickglobal':
+                    return await this.handleKickGlobal(msg, isAdmin);
+
                 case '#ban':
                     return await this.handleBan(msg, isAdmin);
                     
@@ -297,7 +300,8 @@ class CommandHandler {
 • *#categories* - Show category statistics (private chat)
 
 *👮 Moderation Commands:*
-• *#kick* - Reply to message → Kicks user + deletes their message + adds to blacklist (bot only)
+• *#kick* - Reply to message → Kicks user + deletes message + asks for blacklist
+• *#kickglobal* - Reply to message → Kicks user + deletes message + kicks from ALL your groups
 • *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
 • *#clear* - ⚠️ NOT IMPLEMENTED (will show "not yet implemented")
 
@@ -1043,10 +1047,10 @@ class CommandHandler {
                 violations: violations
             });
 
-            // Store pending blacklist request
+            // Store pending blacklist request with groupId
             if (alertResult && alertResult.key) {
                 const { storePendingRequest } = require('../utils/blacklistPendingRequests');
-                storePendingRequest(alertResult.key.id, userPhone, targetUserId, 'kicked_by_admin');
+                storePendingRequest(alertResult.key.id, userPhone, targetUserId, 'kicked_by_admin', groupId);
                 console.log(`[${require('../utils/logger').getTimestamp()}] 📋 Stored pending blacklist request for: ${userPhone}`);
             }
 
@@ -1056,6 +1060,184 @@ class CommandHandler {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to kick user:`, error);
             await this.sock.sendMessage(groupId, { 
                 text: '❌ Need to be an admin' 
+            });
+        }
+
+        return true;
+    }
+
+    async handleKickGlobal(msg, isAdmin) {
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🌍 #kickglobal command received from ${isAdmin ? 'admin' : 'user'}`);
+
+        // Check if user is admin
+        if (!isAdmin && !msg.key.fromMe) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Only admins can use #kickglobal.'
+            });
+            return true;
+        }
+
+        // Check if in private chat
+        if (this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ The #kickglobal command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kickglobal'
+            });
+            return true;
+        }
+
+        // Check if this is a reply to another message - same logic as #kick
+        let quotedMsg = null;
+        let targetUserId = null;
+        let messageId = null;
+
+        // Method 1: extendedTextMessage with contextInfo
+        if (msg.message?.extendedTextMessage?.contextInfo) {
+            const contextInfo = msg.message.extendedTextMessage.contextInfo;
+            targetUserId = contextInfo.participant;
+            messageId = contextInfo.stanzaId;
+            quotedMsg = contextInfo;
+        }
+        // Method 2: Regular conversation message with contextInfo
+        else if (msg.message?.conversation && msg.message?.contextInfo) {
+            const contextInfo = msg.message.contextInfo;
+            targetUserId = contextInfo.participant;
+            messageId = contextInfo.stanzaId;
+            quotedMsg = contextInfo;
+        }
+        // Method 3: imageMessage, videoMessage, etc. with contextInfo
+        else {
+            const messageType = Object.keys(msg.message || {})[0];
+            if (msg.message?.[messageType]?.contextInfo) {
+                const contextInfo = msg.message[messageType].contextInfo;
+                if (contextInfo.quotedMessage || contextInfo.participant) {
+                    targetUserId = contextInfo.participant;
+                    messageId = contextInfo.stanzaId;
+                    quotedMsg = contextInfo;
+                }
+            }
+        }
+
+        if (!quotedMsg || !targetUserId) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ Please reply to a message from the user you want to globally kick.\n\nUsage: Reply to a user\'s message and type #kickglobal'
+            });
+            return true;
+        }
+
+        const groupId = msg.key.remoteJid;
+
+        try {
+            // Get group metadata to check permissions
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
+
+            // Check if target user is admin
+            const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
+            if (targetParticipant && (targetParticipant.admin === 'admin' || targetParticipant.admin === 'superadmin')) {
+                await this.sock.sendMessage(groupId, {
+                    text: '❌ Cannot kick admin users.'
+                });
+                return true;
+            }
+
+            // Check if target user is still in group
+            if (!targetParticipant) {
+                await this.sock.sendMessage(groupId, {
+                    text: '❌ User is not in this group.'
+                });
+                return true;
+            }
+
+            console.log(`[${require('../utils/logger').getTimestamp()}] 🌍 Global kick initiated: ${targetUserId}`);
+
+            // Delete the replied-to message first
+            if (messageId) {
+                try {
+                    await this.sock.sendMessage(groupId, {
+                        delete: {
+                            remoteJid: groupId,
+                            fromMe: false,
+                            id: messageId,
+                            participant: targetUserId
+                        }
+                    });
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted target user's message`);
+                } catch (deleteError) {
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete target message:`, deleteError.message);
+                }
+            }
+
+            // Delete the #kickglobal command message
+            try {
+                await this.sock.sendMessage(groupId, {
+                    delete: msg.key
+                });
+                console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted #kickglobal command message`);
+            } catch (deleteError) {
+                console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete #kickglobal message:`, deleteError);
+            }
+
+            // Kick user from THIS group first (same as #kick)
+            let kickSuccessful = false;
+            const maxRetries = 3;
+            const retryDelay = 2000;
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    const kickPromise = this.sock.groupParticipantsUpdate(groupId, [targetUserId], 'remove');
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Kick operation timed out')), 10000)
+                    );
+
+                    await Promise.race([kickPromise, timeoutPromise]);
+                    kickSuccessful = true;
+                    console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Kicked from current group`);
+                    break;
+                } catch (error) {
+                    console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Kick attempt ${attempt} failed:`, error.message);
+                    if (attempt < maxRetries) {
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    }
+                }
+            }
+
+            if (!kickSuccessful) {
+                await this.sock.sendMessage(groupId, {
+                    text: `⚠️ Failed to kick user from this group. Cannot proceed with global ban.`
+                });
+                return true;
+            }
+
+            // Send "processing" message to admin
+            const adminPhone = this.config.ALERT_PHONE;
+            const adminJid = `${adminPhone}@s.whatsapp.net`;
+            const userPhone = targetUserId.split('@')[0];
+
+            await this.sock.sendMessage(adminJid, {
+                text: `🌍 *Global Ban Started*\n\n` +
+                      `👤 User: ${targetUserId}\n` +
+                      `📞 Phone: +${userPhone}\n` +
+                      `📍 Kicked from: ${groupMetadata?.subject || 'Unknown'}\n\n` +
+                      `⏳ Scanning all your groups for this user...`
+            });
+
+            // Execute global ban
+            const { removeUserFromAllAdminGroups, formatGlobalBanReport } = require('../utils/globalBanHelper');
+            const report = await removeUserFromAllAdminGroups(
+                this.sock,
+                targetUserId,
+                adminPhone
+            );
+
+            // Send report to admin
+            const reportMessage = formatGlobalBanReport(report);
+            await this.sock.sendMessage(adminJid, { text: reportMessage });
+
+            console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Global ban completed for: ${targetUserId}`);
+
+        } catch (error) {
+            console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to execute #kickglobal:`, error);
+            await this.sock.sendMessage(groupId, {
+                text: '❌ Failed to execute global kick. Check logs for details.'
             });
         }
 

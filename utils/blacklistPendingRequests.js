@@ -9,12 +9,14 @@ const pendingBlacklistRequests = new Map();
  * @param {string} phoneNumber - User phone number
  * @param {string} userId - Full WhatsApp user ID
  * @param {string} reason - Violation type ('invite_link', 'kicked_by_admin')
+ * @param {string} groupId - Optional group ID where violation occurred
  */
-function storePendingRequest(messageId, phoneNumber, userId, reason) {
+function storePendingRequest(messageId, phoneNumber, userId, reason, groupId = null) {
     pendingBlacklistRequests.set(messageId, {
         phoneNumber,
         userId,
         reason,
+        groupId,
         timestamp: Date.now()
     });
 

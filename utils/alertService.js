@@ -79,11 +79,13 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
             `⏰ Time: ${timestamp}\n` +
             `📧 Spam Link: ${spamLink || 'N/A'}\n` +
             `⚠️ Violations: ${violationsText}\n\n` +
-            `✅ User was kicked from group\n\n` +
-            `❓ Add to blacklist?\n` +
+            `✅ User was kicked from this group\n\n` +
+            `❓ Choose action:\n` +
             `Reply with:\n` +
-            `  1️⃣ = Yes, blacklist\n` +
-            `  0️⃣ = No, skip`;
+            `  1️⃣ = Blacklist Only (prevent rejoin)\n` +
+            `  2️⃣ = Global Ban Only (kick from all your groups)\n` +
+            `  3️⃣ = Blacklist + Global Ban (both!)\n` +
+            `  0️⃣ = Ignore (do nothing)`;
 
         // Send alert and return the message info for reply handling
         return await sock.sendMessage(formatPhoneForAlert(config.ALERT_PHONE), { text: alertMessage });
@@ -99,11 +101,13 @@ async function sendKickAlert(sock, { userPhone, userName, groupName, groupId, re
             `🔗 Group URL: ${groupInviteLink || 'N/A'}\n` +
             `⏰ Time: ${timestamp}\n` +
             `⚠️ Violations: ${violationsText}\n\n` +
-            `✅ User was kicked by admin\n\n` +
-            `❓ Add to blacklist?\n` +
+            `✅ User was kicked from this group\n\n` +
+            `❓ Choose action:\n` +
             `Reply with:\n` +
-            `  1️⃣ = Yes, blacklist\n` +
-            `  0️⃣ = No, skip`;
+            `  1️⃣ = Blacklist Only (prevent rejoin)\n` +
+            `  2️⃣ = Global Ban Only (kick from all your groups)\n` +
+            `  3️⃣ = Blacklist + Global Ban (both!)\n` +
+            `  0️⃣ = Ignore (do nothing)`;
 
         return await sock.sendMessage(formatPhoneForAlert(config.ALERT_PHONE), { text: alertMessage });
     }

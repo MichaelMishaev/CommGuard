@@ -1141,38 +1141,116 @@ async function handleMessage(sock, msg, commandHandler) {
             if (quotedMessage && quotedMsgId) {
                 console.log(`   Reply Detected - Quoted Message ID: ${quotedMsgId}`);
 
-                // Check if admin replied "1" (blacklist) or "0" (skip)
-                if (messageText === '1' || messageText === '0') {
-                    console.log(`   Blacklist Decision: ${messageText === '1' ? 'YES' : 'NO'}`);
-
+                // Check if admin replied with action choice (1, 2, 3, or 0)
+                if (messageText === '1' || messageText === '2' || messageText === '3' || messageText === '0') {
                     const pendingRequest = getPendingRequest(quotedMsgId);
 
                     if (pendingRequest) {
                         console.log(`   Found Pending Request for: ${pendingRequest.phoneNumber}`);
+                        console.log(`   Action chosen: ${messageText}`);
 
-                        if (messageText === '1') {
-                            // Blacklist the user
-                            try {
-                                await blacklistUser(pendingRequest.phoneNumber, `Admin approved - ${pendingRequest.reason}`);
-                                await cacheBlacklistedUser(pendingRequest.phoneNumber);
+                        const adminPhone = config.ALERT_PHONE; // Your phone number for global ban
 
-                                await sock.sendMessage(chatId, {
-                                    text: `✅ User +${pendingRequest.phoneNumber} has been blacklisted.\n\nViolation: ${pendingRequest.reason}`
-                                });
+                        // Import global ban helper
+                        const { removeUserFromAllAdminGroups, formatGlobalBanReport } = require('./utils/globalBanHelper');
 
-                                console.log(`✅ Blacklisted user: ${pendingRequest.phoneNumber}`);
-                            } catch (error) {
-                                console.error(`❌ Failed to blacklist user:`, error.message);
-                                await sock.sendMessage(chatId, {
-                                    text: `❌ Failed to blacklist user: ${error.message}`
-                                });
+                        switch (messageText) {
+                            case '1': {
+                                // Blacklist Only (prevent rejoin)
+                                console.log(`   Action: Blacklist Only`);
+                                try {
+                                    await blacklistUser(pendingRequest.phoneNumber, `Admin approved - ${pendingRequest.reason}`);
+                                    await cacheBlacklistedUser(pendingRequest.phoneNumber);
+
+                                    await sock.sendMessage(chatId, {
+                                        text: `✅ User +${pendingRequest.phoneNumber} has been blacklisted.\n\n` +
+                                              `📋 Action: Blacklist Only\n` +
+                                              `🚫 User cannot rejoin any group\n` +
+                                              `ℹ️ Violation: ${pendingRequest.reason}`
+                                    });
+
+                                    console.log(`✅ Blacklisted user: ${pendingRequest.phoneNumber}`);
+                                } catch (error) {
+                                    console.error(`❌ Failed to blacklist user:`, error.message);
+                                    await sock.sendMessage(chatId, {
+                                        text: `❌ Failed to blacklist user: ${error.message}`
+                                    });
+                                }
+                                break;
                             }
-                        } else {
-                            // Skip blacklisting
-                            await sock.sendMessage(chatId, {
-                                text: `⏭️ Skipped blacklisting for +${pendingRequest.phoneNumber}`
-                            });
-                            console.log(`⏭️ Admin skipped blacklisting: ${pendingRequest.phoneNumber}`);
+
+                            case '2': {
+                                // Global Ban Only (kick from all admin groups)
+                                console.log(`   Action: Global Ban Only`);
+                                try {
+                                    await sock.sendMessage(chatId, {
+                                        text: `🌍 Starting Global Ban for +${pendingRequest.phoneNumber}...\n\n` +
+                                              `⏳ This may take a moment...`
+                                    });
+
+                                    const report = await removeUserFromAllAdminGroups(
+                                        sock,
+                                        pendingRequest.userId,
+                                        adminPhone
+                                    );
+
+                                    const reportMessage = formatGlobalBanReport(report);
+                                    await sock.sendMessage(chatId, { text: reportMessage });
+
+                                    console.log(`✅ Global ban completed for: ${pendingRequest.phoneNumber}`);
+                                } catch (error) {
+                                    console.error(`❌ Failed global ban:`, error.message);
+                                    await sock.sendMessage(chatId, {
+                                        text: `❌ Global Ban failed: ${error.message}`
+                                    });
+                                }
+                                break;
+                            }
+
+                            case '3': {
+                                // Blacklist + Global Ban (BOTH!)
+                                console.log(`   Action: Blacklist + Global Ban`);
+                                try {
+                                    // Step 1: Blacklist
+                                    await blacklistUser(pendingRequest.phoneNumber, `Admin approved - ${pendingRequest.reason} (Global Ban)`);
+                                    await cacheBlacklistedUser(pendingRequest.phoneNumber);
+
+                                    await sock.sendMessage(chatId, {
+                                        text: `🌍 *Full Protection Activated*\n\n` +
+                                              `✅ User +${pendingRequest.phoneNumber} blacklisted\n` +
+                                              `⏳ Starting global ban across all your groups...`
+                                    });
+
+                                    // Step 2: Global Ban
+                                    const report = await removeUserFromAllAdminGroups(
+                                        sock,
+                                        pendingRequest.userId,
+                                        adminPhone
+                                    );
+
+                                    const reportMessage = formatGlobalBanReport(report);
+                                    await sock.sendMessage(chatId, { text: reportMessage });
+
+                                    console.log(`✅ Blacklist + Global ban completed for: ${pendingRequest.phoneNumber}`);
+                                } catch (error) {
+                                    console.error(`❌ Failed blacklist + global ban:`, error.message);
+                                    await sock.sendMessage(chatId, {
+                                        text: `❌ Operation failed: ${error.message}`
+                                    });
+                                }
+                                break;
+                            }
+
+                            case '0': {
+                                // Ignore (do nothing)
+                                console.log(`   Action: Ignore`);
+                                await sock.sendMessage(chatId, {
+                                    text: `⏭️ Ignored action for +${pendingRequest.phoneNumber}\n\n` +
+                                          `ℹ️ No changes made.`
+                                });
+                                console.log(`⏭️ Admin ignored action for: ${pendingRequest.phoneNumber}`);
+                                break;
+                            }
                         }
 
                         removePendingRequest(quotedMsgId);
@@ -1780,9 +1858,9 @@ async function handleMessage(sock, msg, commandHandler) {
                     violations: violations
                 });
 
-                // Store pending blacklist request
+                // Store pending blacklist request with groupId
                 if (alertResult && alertResult.key) {
-                    storePendingRequest(alertResult.key.id, phoneDisplay, senderId, 'invite_link');
+                    storePendingRequest(alertResult.key.id, phoneDisplay, senderId, 'invite_link', groupId);
                     console.log(`[${getTimestamp()}] 📋 Stored pending blacklist request for: ${phoneDisplay}`);
                 }
 
