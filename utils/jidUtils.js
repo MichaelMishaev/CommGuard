@@ -27,12 +27,27 @@ function jidKey(ref) {
 
   // --- 1) If a string was provided -----------------------------------------
   if (typeof ref === 'string') {
+    // Check if has explicit domain BEFORE stripping resource
+    const hasExplicitDomain = ref.includes('@s.whatsapp.net') || ref.includes('@lid') || ref.includes('@c.us');
+
     // Strip any resource part (WhatsApp sometimes appends ":16" etc.)
     let s = ref.split(':')[0].trim();
 
-    // Has explicit domain (c.us / lid) → already a JID
+    // Has explicit domain (c.us / lid / s.whatsapp.net) → already a JID
     if (s.includes('@')) {
       return s.toLowerCase();
+    }
+
+    // If original had @s.whatsapp.net or @lid but got stripped, reconstruct it
+    if (hasExplicitDomain) {
+      const phone = ref.split('@')[0].split(':')[0]; // Extract phone/lid before colon
+
+      if (ref.includes('@s.whatsapp.net')) {
+        return `${phone}@s.whatsapp.net`.toLowerCase();
+      }
+      if (ref.includes('@lid')) {
+        return `${phone}@lid`.toLowerCase();
+      }
     }
 
     // Otherwise treat as phone number → keep digits only and convert
