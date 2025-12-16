@@ -10,9 +10,10 @@ const { robustKick } = require('./kickHelper');
  * @param {Object} sock - WhatsApp socket connection
  * @param {string} userJid - User's WhatsApp ID (JID) to remove
  * @param {string} adminPhone - Admin's phone number (without @s.whatsapp.net)
+ * @param {string} userPhoneDecoded - Decoded real phone number (optional, for better matching)
  * @returns {Object} Summary report of the operation
  */
-async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
+async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null) {
     console.log(`[${getTimestamp()}] 🌍 Starting Global Ban for user: ${userJid}`);
     console.log(`   Admin phone: ${adminPhone}`);
 
@@ -86,10 +87,6 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 // WhatsApp provides both 'id' (LID) and 'phoneNumber' (real phone) in participant objects
                 // We need to match against BOTH to find the user regardless of which format was used
                 const userParticipant = metadata.participants.find(p => {
-                    // Extract phone number from userJid for comparison
-                    // If userJid is LID (77709346664559@lid), we need to extract just the number part for partial matching
-                    const userIdPart = userJid.split('@')[0];  // Gets "77709346664559" or "972527332312"
-
                     // Method 1: Direct match on participant.id (e.g., 77709346664559@lid)
                     if (p.id === userJid) {
                         console.log(`[${getTimestamp()}]    ✓ Matched by ID: ${p.id}`);
@@ -98,7 +95,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
 
                     // Method 2: Match on participant.phoneNumber (e.g., 972527332312@s.whatsapp.net)
                     if (p.phoneNumber && p.phoneNumber === userJid) {
-                        console.log(`[${getTimestamp()}]    ✓ Matched by phoneNumber: ${p.phoneNumber}`);
+                        console.log(`[${getTimestamp()}]    ✓ Matched by phoneNumber exact: ${p.phoneNumber}`);
                         return true;
                     }
 
@@ -122,13 +119,18 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                         }
                     }
 
-                    // Method 5: Check if participant.phoneNumber contains the user's phone (for partial matching)
-                    // This handles cases where userJid is LID but participant has phoneNumber field
-                    if (p.phoneNumber) {
-                        // Try matching just the last 9 digits (e.g., "527332312")
-                        const last9Digits = userIdPart.slice(-9);
-                        if (p.phoneNumber.includes(last9Digits)) {
-                            console.log(`[${getTimestamp()}]    ✓ Matched by phoneNumber partial (last 9 digits): ${last9Digits} in ${p.phoneNumber}`);
+                    // Method 5: Use decoded phone number for matching (CRITICAL FIX)
+                    // If we have a decoded phone (e.g., "972527332312"), match against participant.phoneNumber
+                    if (userPhoneDecoded && p.phoneNumber) {
+                        // Check if phoneNumber contains the decoded phone digits
+                        // Remove any non-digit characters for comparison
+                        const decodedDigits = userPhoneDecoded.replace(/\D/g, '');
+                        const participantPhoneDigits = p.phoneNumber.split('@')[0];
+
+                        // Match last 9 digits of real phone (e.g., "527332312")
+                        const last9 = decodedDigits.slice(-9);
+                        if (participantPhoneDigits.includes(last9)) {
+                            console.log(`[${getTimestamp()}]    ✓ Matched by decoded phone (last 9): ${last9} in ${p.phoneNumber}`);
                             return true;
                         }
                     }

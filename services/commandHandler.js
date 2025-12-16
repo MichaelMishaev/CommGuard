@@ -1235,7 +1235,8 @@ class CommandHandler {
             const report = await removeUserFromAllAdminGroups(
                 this.sock,
                 targetUserId,
-                adminPhone
+                adminPhone,
+                userPhone  // Pass decoded phone for better matching
             );
 
             // Send report to admin
