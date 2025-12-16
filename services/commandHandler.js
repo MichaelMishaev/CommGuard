@@ -1210,7 +1210,17 @@ class CommandHandler {
             // Send "processing" message to admin
             const adminPhone = this.config.ALERT_PHONE;
             const adminJid = `${adminPhone}@s.whatsapp.net`;
-            const userPhone = targetUserId.split('@')[0];
+
+            // Decode LID if needed to get real phone number
+            const { decodeLIDToPhone } = require('../utils/jidUtils');
+            let userPhone = targetUserId.split('@')[0];
+            if (targetUserId.includes('@lid')) {
+                const decoded = await decodeLIDToPhone(this.sock, targetUserId);
+                if (decoded) {
+                    userPhone = decoded;
+                    console.log(`[${require('../utils/logger').getTimestamp()}] 🔓 Decoded LID for display: ${targetUserId} → ${userPhone}`);
+                }
+            }
 
             await this.sock.sendMessage(adminJid, {
                 text: `🌍 *Global Ban Started*\n\n` +
