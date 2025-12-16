@@ -82,41 +82,43 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone) {
                 // No admin check - just try to kick. If it fails, we'll catch the error.
 
                 // Check if user is a member of this group
-                // Need to match by phone number, handling both @lid and @s.whatsapp.net formats
-                const userParticipant = await (async () => {
-                    for (const p of metadata.participants) {
-                        const participantJid = jidKey(p.id);
+                // WhatsApp provides both 'id' (LID) and 'phoneNumber' (real phone) in participant objects
+                // We need to match against BOTH to find the user regardless of which format was used
+                const userParticipant = metadata.participants.find(p => {
+                    // Method 1: Direct match on participant.id (e.g., 77709346664559@lid)
+                    if (p.id === userJid) {
+                        console.log(`[${getTimestamp()}]    ✓ Matched by ID: ${p.id}`);
+                        return true;
+                    }
 
-                        // Direct JID match
-                        if (participantJid === normalizedUserJid) {
-                            return p;
-                        }
+                    // Method 2: Match on participant.phoneNumber (e.g., 972527332312@s.whatsapp.net)
+                    if (p.phoneNumber && p.phoneNumber === userJid) {
+                        console.log(`[${getTimestamp()}]    ✓ Matched by phoneNumber: ${p.phoneNumber}`);
+                        return true;
+                    }
 
-                        // Check if participant phone matches user phone
-                        if (participantJid.includes(userPhone)) {
-                            return p;
-                        }
-
-                        // If participant is LID, decode it and check if it matches user phone
-                        if (p.id.includes('@lid')) {
-                            const participantPhone = await decodeLIDToPhone(sock, p.id);
-                            if (participantPhone && participantPhone === userPhone) {
-                                return p;
-                            }
-                            // Also check with country code variations
-                            if (participantPhone && userPhone.includes(participantPhone.replace(/^972/, ''))) {
-                                return p;
-                            }
-                        }
-
-                        // Check if user phone (without country code) matches participant
-                        const userPhoneWithout972 = userPhone.replace(/^972/, '0');
-                        if (participantJid.includes(userPhoneWithout972.replace(/^0/, '972'))) {
-                            return p;
+                    // Method 3: If userJid is a phone number, check if it matches participant.phoneNumber
+                    if (userJid.includes('@s.whatsapp.net') && p.phoneNumber) {
+                        const userPhoneOnly = userJid.split('@')[0];
+                        const participantPhoneOnly = p.phoneNumber.split('@')[0];
+                        if (userPhoneOnly === participantPhoneOnly) {
+                            console.log(`[${getTimestamp()}]    ✓ Matched by phone number: ${userPhoneOnly}`);
+                            return true;
                         }
                     }
-                    return null;
-                })();
+
+                    // Method 4: If userJid is a LID, check if participant.id matches
+                    if (userJid.includes('@lid') && p.id.includes('@lid')) {
+                        const userLidOnly = userJid.split('@')[0];
+                        const participantLidOnly = p.id.split('@')[0];
+                        if (userLidOnly === participantLidOnly) {
+                            console.log(`[${getTimestamp()}]    ✓ Matched by LID: ${userLidOnly}`);
+                            return true;
+                        }
+                    }
+
+                    return false;
+                });
 
                 if (!userParticipant) {
                     report.groupsWhereUserNotMember++;
