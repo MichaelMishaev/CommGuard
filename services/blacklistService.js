@@ -115,15 +115,39 @@ async function isBlacklisted(userId) {
 
 // Add user to blacklist
 async function addToBlacklist(userId, reason = '') {
-  const normalizedId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '');
-  
+  const normalizedId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
+
+  // SAFEGUARD 1: Never blacklist Israeli numbers
+  if (normalizedId.startsWith('972') || normalizedId.startsWith('+972')) {
+    console.warn(`⚠️ BLOCKED: Attempted to blacklist Israeli number ${normalizedId} - Israeli numbers are protected`);
+    return false;
+  }
+
+  // SAFEGUARD 2: Never blacklist LID format IDs (encrypted privacy IDs, not real phone numbers)
+  if (userId.includes('@lid') && normalizedId.length > 15) {
+    console.warn(`⚠️ BLOCKED: Attempted to blacklist LID format ${normalizedId} - Use real phone number instead`);
+    return false;
+  }
+
+  // SAFEGUARD 3: Never blacklist group IDs
+  if (userId.includes('@g.us')) {
+    console.warn(`⚠️ BLOCKED: Attempted to blacklist group ID ${normalizedId} - Groups cannot be blacklisted`);
+    return false;
+  }
+
+  // SAFEGUARD 4: Require a reason for blacklisting
+  if (!reason || reason.trim() === '') {
+    console.warn(`⚠️ WARNING: Adding ${normalizedId} to blacklist without a reason - this should be avoided`);
+    reason = 'No reason provided';
+  }
+
   // Add to cache
   blacklistCache.add(normalizedId);
   blacklistCache.add(userId);
-  
+
   // Save to local cache file (Firebase writes disabled for cost reduction)
   saveLocalCache();
-  console.log(`✅ Added ${normalizedId} to blacklist (memory-only)`);
+  console.log(`✅ Added ${normalizedId} to blacklist (memory-only) - Reason: ${reason}`);
   return true;
 
   /* FIREBASE WRITES DISABLED FOR BLACKLIST - Cost reduction

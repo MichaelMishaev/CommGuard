@@ -12,6 +12,7 @@ const SingleInstance = require('./single-instance');
 const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT, checkStickerCommand } = require('./utils/sessionManager');
 const stealthUtils = require('./utils/stealthUtils');
 const restartLimiter = require('./utils/restartLimiter');
+const { trackRestart } = require('./utils/restartTracker');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -689,7 +690,12 @@ async function startBot() {
                 console.log('✅ Stealth mode initialized with human-like behavior');
             }
 
-            // Send startup notification with error status
+            // Track restart reason BEFORE sending startup notification
+            const restartInfo = trackRestart();
+            const restartReasons = restartInfo.possibleReasons.join(', ');
+            const timeSinceLast = restartInfo.timeSinceLastStartFormatted || 'First start';
+
+            // Send startup notification with error status and restart reason
             try {
                 const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
                 const statusMessage = `🟢 CommGuard Bot Started\n\n` +
@@ -697,6 +703,8 @@ async function startBot() {
                                     `🔧 Enhanced session error recovery enabled\n` +
                                     `⚡ Fast startup mode active\n` +
                                     `📊 Connection stable after ${reconnectAttempts} attempts\n` +
+                                    `🔄 Restart Reason: ${restartReasons}\n` +
+                                    `⏱️ Time since last: ${timeSinceLast}\n` +
                                     `⏰ Time: ${getTimestamp()}`;
 
                 // Use stealth mode for startup notification if enabled

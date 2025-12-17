@@ -8,6 +8,7 @@ const searchService = require('./searchService');
 const { translationService } = require('./translationService');
 const groupJokeSettingsService = require('./groupJokeSettingsService');
 const groupService = require('../database/groupService');
+const { getRestartHistory } = require('../utils/restartTracker');
 
 // Conditionally load unblacklist request service
 let unblacklistRequestService;
@@ -91,7 +92,10 @@ class CommandHandler {
                     
                 case '#status':
                     return await this.handleStatus(msg);
-                    
+
+                case '#restarthistory':
+                    return await this.handleRestartHistory(msg, isAdmin);
+
                 case '#mute':
                     return await this.handleMute(msg, args, isAdmin);
                     
@@ -546,6 +550,52 @@ class CommandHandler {
 
         await this.sock.sendMessage(msg.key.remoteJid, { text: statusText });
         return true;
+    }
+
+    async handleRestartHistory(msg, isAdmin) {
+        // Only admins can view restart history
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return false;
+        }
+
+        try {
+            const history = getRestartHistory(10); // Get last 10 restarts
+
+            if (history.length === 0) {
+                await this.sock.sendMessage(msg.key.remoteJid, {
+                    text: '📊 *Bot Restart History*\n\nNo restart history available yet.'
+                });
+                return true;
+            }
+
+            let historyText = `📊 *Bot Restart History* (Last ${history.length})\n\n`;
+
+            history.forEach((restart, index) => {
+                const timeSince = restart.timeSinceLastStartFormatted || 'N/A';
+                const reasons = restart.possibleReasons.join(', ');
+                const memUsage = (restart.memory.heapUsed / 1024 / 1024).toFixed(0);
+
+                historyText += `*${index + 1}. ${restart.timestampLocal}*\n`;
+                historyText += `🔄 Reason: ${reasons}\n`;
+                historyText += `⏱️ Time since last: ${timeSince}\n`;
+                historyText += `💾 Memory: ${memUsage}MB\n`;
+                historyText += `🆔 PID: ${restart.pid}\n\n`;
+            });
+
+            historyText += `\n📁 Full log: restart_history.jsonl`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: historyText });
+            return true;
+        } catch (error) {
+            console.error('Error fetching restart history:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error fetching restart history. Check logs.'
+            });
+            return false;
+        }
     }
 
     async handleMute(msg, args, isAdmin) {
