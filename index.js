@@ -518,10 +518,16 @@ async function startBot() {
             const disconnectReason = lastDisconnect?.error?.output?.statusCode;
             const errorMessage = lastDisconnect?.error?.message || 'Unknown error';
             const boom = lastDisconnect?.error;
-            
-            console.error(`\n[${getTimestamp()}] ❌ Connection closed:`);
-            console.error(`   Error: ${errorMessage}`);
-            console.error(`   Status Code: ${disconnectReason}`);
+
+            console.error(`\n${'='.repeat(80)}`);
+            console.error(`[${getTimestamp()}] ❌ CONNECTION CLOSED`);
+            console.error(`${'='.repeat(80)}`);
+            console.error(`📊 Status Code: ${disconnectReason}`);
+            console.error(`💬 Error Message: ${errorMessage}`);
+            console.error(`🔄 Reconnect Attempt: ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}`);
+            console.error(`⚠️  Error 515 Count: ${error515Count}/${MAX_515_ERRORS}`);
+            console.error(`⏰ Timestamp: ${new Date().toISOString()}`);
+            console.error(`${'='.repeat(80)}\n`);
             
             // Enhanced error 515 detection and handling
             const isError515 = errorMessage.includes('515') || 
@@ -627,15 +633,21 @@ async function startBot() {
                 startupTimer = setTimeout(clearStartupPhase, STARTUP_TIMEOUT);
             }
             
-            console.log(`\n[${getTimestamp()}] ✅ Bot connected successfully!`);
-            console.log(`Bot ID: ${sock.user.id}`);
-            console.log(`Bot Name: ${sock.user.name}`);
-            console.log(`Bot Platform: ${sock.user.platform || 'Unknown'}`);
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`[${getTimestamp()}] ✅ BOT CONNECTED SUCCESSFULLY!`);
+            console.log(`${'='.repeat(80)}`);
+            console.log(`🆔 Bot ID: ${sock.user.id}`);
+            console.log(`👤 Bot Name: ${sock.user.name}`);
+            console.log(`📱 Platform: ${sock.user.platform || 'Unknown'}`);
+            console.log(`📞 Bot Phone: ${sock.user.id.split(':')[0].split('@')[0]}`);
+            console.log(`🔄 Reconnect Attempts: ${reconnectAttempts}`);
+            console.log(`⏰ Connected At: ${new Date().toISOString()}`);
 
             // Log timestamp filtering info
             const cutoffTime = new Date(BOT_START_TIME - MESSAGE_GRACE_PERIOD);
-            console.log(`⏭️ Ignoring messages older than: ${cutoffTime.toLocaleString()}`);
+            console.log(`⏭️  Ignoring messages older than: ${cutoffTime.toLocaleString()}`);
             console.log(`⚡ This will skip message backlog from while bot was down`);
+            console.log(`${'='.repeat(80)}\n`);
 
             // Notify admin of successful connection with restart count
             try {
@@ -695,6 +707,25 @@ async function startBot() {
             const restartReasons = restartInfo.possibleReasons.join(', ');
             const timeSinceLast = restartInfo.timeSinceLastStartFormatted || 'First start';
 
+            // LOG RESTART INFO TO PRODUCTION CONSOLE
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`[${getTimestamp()}] 🔄 BOT RESTART DETECTED`);
+            console.log(`${'='.repeat(80)}`);
+            console.log(`📊 Restart Reasons: ${restartReasons}`);
+            console.log(`⏱️  Time since last restart: ${timeSinceLast}`);
+            console.log(`🆔 Process ID: ${restartInfo.pid}`);
+            console.log(`💾 Memory Usage: ${(restartInfo.memory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+            if (restartInfo.lastProcess) {
+                console.log(`📈 Previous Memory: ${(restartInfo.lastProcess.memory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+                console.log(`⏰ Previous PID: ${restartInfo.lastProcess.pid}`);
+            }
+            if (restartInfo.gitPullTime) {
+                const gitPullDate = new Date(restartInfo.gitPullTime);
+                console.log(`🚀 Last Git Pull: ${gitPullDate.toLocaleString('en-GB')}`);
+            }
+            console.log(`📁 Restart log: restart_history.jsonl`);
+            console.log(`${'='.repeat(80)}\n`);
+
             // Send startup notification with error status and restart reason
             try {
                 const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
@@ -707,14 +738,19 @@ async function startBot() {
                                     `⏱️ Time since last: ${timeSinceLast}\n` +
                                     `⏰ Time: ${getTimestamp()}`;
 
+                console.log(`[${getTimestamp()}] 📱 Sending startup notification to admin...`);
+
                 // Use stealth mode for startup notification if enabled
                 if (config.FEATURES.STEALTH_MODE) {
                     await stealthUtils.sendHumanLikeMessage(sock, adminId, { text: statusMessage });
                 } else {
                     await sock.sendMessage(adminId, { text: statusMessage });
                 }
+
+                console.log(`[${getTimestamp()}] ✅ Startup notification sent successfully`);
             } catch (err) {
-                console.error('Failed to send startup notification:', err.message);
+                console.error(`[${getTimestamp()}] ❌ Failed to send startup notification:`, err.message);
+                console.error(`   Stack: ${err.stack}`);
             }
         } else if (connection === 'connecting') {
             console.log(`[${getTimestamp()}] 🔄 Connecting to WhatsApp...`);

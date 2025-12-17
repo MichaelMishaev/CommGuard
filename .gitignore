@@ -81,6 +81,11 @@ ecosystem.config.local.js
 .bot.lock
 *.lock
 
+# Restart tracking runtime files
+restart_history.jsonl
+last_process_info.json
+restart_log.json
+
 # ===================
 # LOGS & MONITORING
 # ===================
