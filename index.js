@@ -650,12 +650,14 @@ async function startBot() {
             console.log(`${'='.repeat(80)}\n`);
 
             // Notify admin of successful connection with restart count
-            try {
-                const restartStats = restartLimiter.getStats();
-                await restartLimiter.notifyAdmin(sock, restartStats.todayCount, 'Connection successful');
-            } catch (notifyError) {
-                console.log('Could not notify admin of connection:', notifyError.message);
-            }
+            // DISABLED: This was causing the bot to hang during startup
+            // The main startup notification below includes restart tracking info
+            // try {
+            //     const restartStats = restartLimiter.getStats();
+            //     await restartLimiter.notifyAdmin(sock, restartStats.todayCount, 'Connection successful');
+            // } catch (notifyError) {
+            //     console.log('Could not notify admin of connection:', notifyError.message);
+            // }
             
             // Store bot phone for later use
             const botPhone = sock.user.id.split(':')[0].split('@')[0];
