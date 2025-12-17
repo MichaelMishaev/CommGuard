@@ -703,28 +703,37 @@ async function startBot() {
             }
 
             // Track restart reason BEFORE sending startup notification
-            const restartInfo = trackRestart();
-            const restartReasons = restartInfo.possibleReasons.join(', ');
-            const timeSinceLast = restartInfo.timeSinceLastStartFormatted || 'First start';
+            let restartInfo, restartReasons, timeSinceLast;
+            try {
+                restartInfo = trackRestart();
+                restartReasons = restartInfo.possibleReasons.join(', ');
+                timeSinceLast = restartInfo.timeSinceLastStartFormatted || 'First start';
 
-            // LOG RESTART INFO TO PRODUCTION CONSOLE
-            console.log(`\n${'='.repeat(80)}`);
-            console.log(`[${getTimestamp()}] 🔄 BOT RESTART DETECTED`);
-            console.log(`${'='.repeat(80)}`);
-            console.log(`📊 Restart Reasons: ${restartReasons}`);
-            console.log(`⏱️  Time since last restart: ${timeSinceLast}`);
-            console.log(`🆔 Process ID: ${restartInfo.pid}`);
-            console.log(`💾 Memory Usage: ${(restartInfo.memory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
-            if (restartInfo.lastProcess) {
-                console.log(`📈 Previous Memory: ${(restartInfo.lastProcess.memory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
-                console.log(`⏰ Previous PID: ${restartInfo.lastProcess.pid}`);
+                // LOG RESTART INFO TO PRODUCTION CONSOLE
+                console.log(`\n${'='.repeat(80)}`);
+                console.log(`[${getTimestamp()}] 🔄 BOT RESTART DETECTED`);
+                console.log(`${'='.repeat(80)}`);
+                console.log(`📊 Restart Reasons: ${restartReasons}`);
+                console.log(`⏱️  Time since last restart: ${timeSinceLast}`);
+                console.log(`🆔 Process ID: ${restartInfo.pid}`);
+                console.log(`💾 Memory Usage: ${(restartInfo.memory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+                if (restartInfo.lastProcess) {
+                    console.log(`📈 Previous Memory: ${(restartInfo.lastProcess.memory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+                    console.log(`⏰ Previous PID: ${restartInfo.lastProcess.pid}`);
+                }
+                if (restartInfo.gitPullTime) {
+                    const gitPullDate = new Date(restartInfo.gitPullTime);
+                    console.log(`🚀 Last Git Pull: ${gitPullDate.toLocaleString('en-GB')}`);
+                }
+                console.log(`📁 Restart log: restart_history.jsonl`);
+                console.log(`${'='.repeat(80)}\n`);
+            } catch (restartTrackingError) {
+                console.error(`[${getTimestamp()}] ❌ RESTART TRACKING ERROR:`, restartTrackingError.message);
+                console.error(`   Stack: ${restartTrackingError.stack}`);
+                // Set defaults if tracking fails
+                restartReasons = 'Unknown - tracking failed';
+                timeSinceLast = 'Unknown';
             }
-            if (restartInfo.gitPullTime) {
-                const gitPullDate = new Date(restartInfo.gitPullTime);
-                console.log(`🚀 Last Git Pull: ${gitPullDate.toLocaleString('en-GB')}`);
-            }
-            console.log(`📁 Restart log: restart_history.jsonl`);
-            console.log(`${'='.repeat(80)}\n`);
 
             // Send startup notification with error status and restart reason
             try {
