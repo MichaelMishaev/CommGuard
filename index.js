@@ -13,6 +13,8 @@ const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEO
 const stealthUtils = require('./utils/stealthUtils');
 const restartLimiter = require('./utils/restartLimiter');
 const { trackRestart } = require('./utils/restartTracker');
+const memoryMonitor = require('./utils/memoryMonitor');
+const memoryLeakDetector = require('./utils/memoryLeakDetector');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -711,6 +713,9 @@ async function startBot() {
                 restartReasons = restartInfo.possibleReasons.join(', ');
                 timeSinceLast = restartInfo.timeSinceLastStartFormatted || 'First start';
 
+                // Check memory health at startup
+                const memoryHealth = memoryMonitor.getSafeStartupRecommendation();
+
                 // LOG RESTART INFO TO PRODUCTION CONSOLE
                 console.log(`\n${'='.repeat(80)}`);
                 console.log(`[${getTimestamp()}] 🔄 BOT RESTART DETECTED`);
@@ -727,6 +732,13 @@ async function startBot() {
                     const gitPullDate = new Date(restartInfo.gitPullTime);
                     console.log(`🚀 Last Git Pull: ${gitPullDate.toLocaleString('en-GB')}`);
                 }
+
+                // Display memory health
+                console.log(`${'='.repeat(80)}`);
+                console.log(memoryHealth.message);
+                const memStats = memoryMonitor.getMemoryStats();
+                console.log(memoryMonitor.formatMemoryStats(memStats));
+                console.log(`${'='.repeat(80)}\n`);
                 console.log(`📁 Restart log: restart_history.jsonl`);
                 console.log(`${'='.repeat(80)}\n`);
             } catch (restartTrackingError) {
@@ -740,13 +752,18 @@ async function startBot() {
             // Send startup notification with error status and restart reason
             try {
                 const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
+                const memStats = memoryMonitor.getMemoryStats();
+                const memHealth = memoryMonitor.getMemoryHealth(memStats);
                 const statusMessage = `🟢 CommGuard Bot Started\n\n` +
                                     `✅ Bot is now online and monitoring groups\n` +
                                     `🔧 Enhanced session error recovery enabled\n` +
                                     `⚡ Fast startup mode active\n` +
                                     `📊 Connection stable after ${reconnectAttempts} attempts\n` +
                                     `🔄 Restart Reason: ${restartReasons}\n` +
-                                    `⏱️ Time since last: ${timeSinceLast}\n` +
+                                    `⏱️ Time since last: ${timeSinceLast}\n\n` +
+                                    `${memHealth.emoji} *Memory Status:*\n` +
+                                    `System: ${memStats.system.usedGB}GB / ${memStats.system.totalGB}GB (${memStats.system.usedPercent}%)\n` +
+                                    `Bot: ${memStats.process.rssMB}MB\n\n` +
                                     `⏰ Time: ${getTimestamp()}`;
 
                 console.log(`[${getTimestamp()}] 📱 Sending startup notification to admin...`);
@@ -759,6 +776,38 @@ async function startBot() {
                 }
 
                 console.log(`[${getTimestamp()}] ✅ Startup notification sent successfully`);
+
+                // Start memory monitoring and leak detection
+                console.log(`[${getTimestamp()}] 🔍 Starting memory monitoring systems...`);
+
+                // Set up admin notifier for memory alerts
+                memoryMonitor.setAdminNotifier(async (sock, message) => {
+                    try {
+                        await sock.sendMessage(adminId, { text: message });
+                    } catch (err) {
+                        console.error(`[${getTimestamp()}] Failed to send memory alert:`, err.message);
+                    }
+                });
+
+                // Start monitoring
+                memoryMonitor.startMonitoring(sock);
+
+                // Start leak detection with alert callback
+                memoryLeakDetector.startMonitoring(async (analysis, snapshot) => {
+                    try {
+                        const alertMessage = `🚨 *MEMORY LEAK DETECTED*\n\n` +
+                            `${analysis.message}\n\n` +
+                            `Current heap: ${snapshot.heapUsedMB}MB\n` +
+                            `Growth pattern: ${analysis.consecutiveGrowth} consecutive increases\n\n` +
+                            `⚠️ Consider restarting the bot to prevent crashes.`;
+
+                        await sock.sendMessage(adminId, { text: alertMessage });
+                    } catch (err) {
+                        console.error(`[${getTimestamp()}] Failed to send leak alert:`, err.message);
+                    }
+                });
+
+                console.log(`[${getTimestamp()}] ✅ Memory monitoring systems started`);
             } catch (err) {
                 console.error(`[${getTimestamp()}] ❌ Failed to send startup notification:`, err.message);
                 console.error(`   Stack: ${err.stack}`);

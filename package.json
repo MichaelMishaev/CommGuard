@@ -4,11 +4,12 @@
   "description": "WhatsApp Community Guard Bot using Baileys",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "fresh": "node start-fresh.js",
+    "start": "node --expose-gc index.js",
+    "dev": "nodemon --expose-gc index.js",
+    "fresh": "node --expose-gc start-fresh.js",
     "diagnose": "node diagnose.js",
     "test": "node tests/runTests.js",
+    "test:memory": "node tests/testMemoryMonitoring.js",
     "migrate": "node database/migrate-groups-to-db.js"
   },
   "keywords": [

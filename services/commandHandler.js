@@ -9,6 +9,8 @@ const { translationService } = require('./translationService');
 const groupJokeSettingsService = require('./groupJokeSettingsService');
 const groupService = require('../database/groupService');
 const { getRestartHistory } = require('../utils/restartTracker');
+const memoryMonitor = require('../utils/memoryMonitor');
+const memoryLeakDetector = require('../utils/memoryLeakDetector');
 
 // Conditionally load unblacklist request service
 let unblacklistRequestService;
@@ -95,6 +97,17 @@ class CommandHandler {
 
                 case '#restarthistory':
                     return await this.handleRestartHistory(msg, isAdmin);
+
+                case '#memory':
+                case '#memcheck':
+                    return await this.handleMemoryCheck(msg, isAdmin);
+
+                case '#memreport':
+                    return await this.handleMemoryReport(msg, isAdmin);
+
+                case '#gc':
+                case '#clearmem':
+                    return await this.handleForceGC(msg, isAdmin);
 
                 case '#mute':
                     return await this.handleMute(msg, args, isAdmin);
@@ -395,6 +408,12 @@ class CommandHandler {
    - Features: Smart rotation, usage tracking, 125+ modern Hebrew jokes
    - Group Control: Can enable/disable per group (#jokeson/#jokesoff)
 
+*🧠 Memory & Performance Commands:*
+• *#memory* or *#memcheck* - Quick memory status check
+• *#memreport* - Detailed memory report with leak detection
+• *#gc* or *#clearmem* - Force garbage collection (requires --expose-gc)
+• *#restarthistory* - View last 10 bot restarts with reasons
+
 *⚙️ SPECIAL BEHAVIORS:*
 • Bot needs admin to work (bypass enabled for LID issues)
 • #kick now deletes the target message too
@@ -404,6 +423,8 @@ class CommandHandler {
 • Blacklist synced across PostgreSQL + Firebase + Redis
 • Muted users kicked after 10 messages
 • Session errors handled automatically
+• Automatic memory monitoring with alerts at 85%+ usage
+• Memory leak detection with 5-minute snapshots
 
 *🔒 SECURITY NOTES:*
 • #help only works in private chat
@@ -463,6 +484,11 @@ class CommandHandler {
 • *#blacklst* or *#blklst* - List blacklisted numbers with violations
 • *#botkick* - Scan group and kick all blacklisted users
 • *#rejoinlinks <phone>* - Show rejoin links for kicked user
+
+*🧠 Memory & Performance:*
+• *#memory* - Quick memory status check
+• *#memreport* - Detailed memory report
+• *#gc* - Force garbage collection
 
 *📊 Violation Tracking:*
 • Reply *1* or *0* to kick alerts to blacklist/skip
@@ -3553,6 +3579,124 @@ Example: #setcategory family`
         }
 
         return true;
+    }
+
+    /**
+     * Handle #memory or #memcheck command - Quick memory status check
+     */
+    async handleMemoryCheck(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        try {
+            const stats = memoryMonitor.getMemoryStats();
+            const health = memoryMonitor.getMemoryHealth(stats);
+            const trend = memoryMonitor.getMemoryTrend();
+
+            const statusText = `${health.emoji} *MEMORY STATUS*\n\n` +
+                `*Health:* ${health.status}\n` +
+                `*Trend:* ${trend.direction} ${trend.trend}\n\n` +
+                `*System Memory:*\n` +
+                `• Used: ${stats.system.usedGB}GB / ${stats.system.totalGB}GB (${stats.system.usedPercent}%)\n` +
+                `• Free: ${stats.system.freeGB}GB\n\n` +
+                `*Bot Memory:*\n` +
+                `• RSS: ${stats.process.rssMB}MB\n` +
+                `• Heap: ${stats.process.heapUsedMB}MB / ${stats.process.heapTotalMB}MB\n\n` +
+                `⏰ ${getTimestamp()}`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: statusText });
+            console.log(`[${getTimestamp()}] ✅ Memory check sent to admin`);
+            return true;
+        } catch (error) {
+            console.error('Error checking memory:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error checking memory. Check logs for details.'
+            });
+            return false;
+        }
+    }
+
+    /**
+     * Handle #memreport command - Detailed memory report with leak detection
+     */
+    async handleMemoryReport(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        try {
+            // Generate comprehensive memory report
+            const memReport = memoryMonitor.generateReport();
+            const leakReport = memoryLeakDetector.generateReport();
+
+            const fullReport = `${memReport}\n\n${'─'.repeat(40)}\n\n${leakReport}`;
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: fullReport });
+            console.log(`[${getTimestamp()}] ✅ Full memory report sent to admin`);
+            return true;
+        } catch (error) {
+            console.error('Error generating memory report:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error generating memory report. Check logs for details.'
+            });
+            return false;
+        }
+    }
+
+    /**
+     * Handle #gc or #clearmem command - Force garbage collection
+     */
+    async handleForceGC(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: this.getRandomSassyResponse()
+            });
+            return true;
+        }
+
+        try {
+            const beforeStats = memoryMonitor.getMemoryStats();
+            const beforeHeap = beforeStats.process.heapUsedMB;
+
+            // Attempt garbage collection
+            const freed = memoryMonitor.forceGarbageCollection();
+
+            const afterStats = memoryMonitor.getMemoryStats();
+            const afterHeap = afterStats.process.heapUsedMB;
+            const actualFreed = beforeHeap - afterHeap;
+
+            let resultText;
+            if (freed === 0) {
+                resultText = `⚠️ *Garbage Collection Not Available*\n\n` +
+                    `To enable GC, restart the bot with:\n` +
+                    `\`node --expose-gc index.js\`\n\n` +
+                    `Current heap: ${afterHeap}MB`;
+            } else {
+                resultText = `🧹 *Garbage Collection Complete*\n\n` +
+                    `*Before:* ${beforeHeap}MB\n` +
+                    `*After:* ${afterHeap}MB\n` +
+                    `*Freed:* ${actualFreed}MB\n\n` +
+                    `System memory: ${afterStats.system.usedPercent}%\n` +
+                    `⏰ ${getTimestamp()}`;
+            }
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: resultText });
+            console.log(`[${getTimestamp()}] ✅ GC command executed`);
+            return true;
+        } catch (error) {
+            console.error('Error forcing GC:', error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Error forcing garbage collection. Check logs for details.'
+            });
+            return false;
+        }
     }
 }
 
