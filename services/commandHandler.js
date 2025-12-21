@@ -86,7 +86,23 @@ class CommandHandler {
 
     async handleCommand(msg, command, args, isAdmin, isSuperAdmin) {
         const cmd = command.toLowerCase();
-        
+
+        // Check if this is a pending global ban group selection response
+        const senderPhone = msg.key.remoteJid.split('@')[0];
+        const pendingBanKey = `pending_global_ban_${senderPhone}`;
+
+        if (global[pendingBanKey] && this.isPrivateChat(msg)) {
+            // This might be a group selection response
+            const messageText = msg.message?.conversation ||
+                              msg.message?.extendedTextMessage?.text ||
+                              '';
+
+            // Check if it looks like a group selection (numbers with commas or "all")
+            if (/^\d+(,\s*\d+)*$/.test(messageText.trim()) || messageText.trim().toLowerCase() === 'all') {
+                return await this.handleGroupSelectionResponse(msg, messageText.trim());
+            }
+        }
+
         try {
             switch (cmd) {
                 case '#help':
@@ -318,7 +334,7 @@ class CommandHandler {
 
 *👮 Moderation Commands:*
 • *#kick* - Reply to message → Kicks user + deletes message + asks for blacklist
-• *#kickglobal* - Reply to message → Kicks user + deletes message + kicks from ALL your groups
+• *#kickglobal* - Reply to message → Shows group list → Select specific groups (max 10 recommended)
 • *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
 • *#clear* - Remove all blacklisted users from current group
 
@@ -1306,20 +1322,35 @@ class CommandHandler {
                       `⏳ Scanning all your groups for this user...`
             });
 
-            // Execute global ban
-            const { removeUserFromAllAdminGroups, formatGlobalBanReport } = require('../utils/globalBanHelper');
-            const report = await removeUserFromAllAdminGroups(
-                this.sock,
+            // Show group selection interface
+            const { listGroupsForSelection } = require('../utils/globalBanHelper');
+            const groupList = await listGroupsForSelection(this.sock, targetUserId, userPhone);
+
+            // Store context for when user replies with group selection
+            const pendingBanKey = `pending_global_ban_${adminPhone}`;
+            global[pendingBanKey] = {
                 targetUserId,
-                adminPhone,
-                userPhone  // Pass decoded phone for better matching
-            );
+                userPhone,
+                groupId,  // Original group where command was issued
+                timestamp: Date.now()
+            };
 
-            // Send report to admin
-            const reportMessage = formatGlobalBanReport(report);
-            await this.sock.sendMessage(adminJid, { text: reportMessage });
+            // Send group selection message to admin
+            await this.sock.sendMessage(adminJid, {
+                text: `🌍 *Global Ban - Group Selection*\n\n` +
+                      `👤 User: ${targetUserId}\n` +
+                      `📞 Phone: +${userPhone}\n\n` +
+                      `📋 *Select groups to ban from:*\n\n` +
+                      groupList +
+                      `\n\n` +
+                      `💡 *How to use:*\n` +
+                      `Reply with group numbers separated by commas\n` +
+                      `Example: 1,3,5,7,10\n\n` +
+                      `Or reply "all" to ban from all groups (not recommended)\n\n` +
+                      `⚠️ *Safety Tip:* Select max 10 groups to avoid Meta bans`
+            });
 
-            console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Global ban completed for: ${targetUserId}`);
+            console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Group selection sent to admin for: ${targetUserId}`);
 
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to execute #kickglobal:`, error);
@@ -3695,6 +3726,111 @@ Example: #setcategory family`
             await this.sock.sendMessage(msg.key.remoteJid, {
                 text: '❌ Error forcing garbage collection. Check logs for details.'
             });
+            return false;
+        }
+    }
+
+    async handleGroupSelectionResponse(msg, selection) {
+        const senderPhone = msg.key.remoteJid.split('@')[0];
+        const pendingBanKey = `pending_global_ban_${senderPhone}`;
+        const pendingBan = global[pendingBanKey];
+
+        if (!pendingBan) {
+            return false; // No pending ban found
+        }
+
+        console.log(`[${require('../utils/logger').getTimestamp()}] 🌍 Processing group selection: ${selection}`);
+
+        try {
+            const { executeGlobalBanOnSelectedGroups, formatSelectedGroupsBanReport } = require('../utils/globalBanHelper');
+
+            // Send processing message
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: `⏳ Processing your selection...\nThis may take a few minutes.`
+            });
+
+            let selectedGroupIds = [];
+
+            if (selection.toLowerCase() === 'all') {
+                // Use all groups from the map
+                if (!global.groupSelectionMap) {
+                    await this.sock.sendMessage(msg.key.remoteJid, {
+                        text: `❌ Group selection expired. Please run #kickglobal again.`
+                    });
+                    delete global[pendingBanKey];
+                    return true;
+                }
+                selectedGroupIds = global.groupSelectionMap.map(g => g.groupId);
+                console.log(`[${require('../utils/logger').getTimestamp()}] 🌍 Selected ALL groups (${selectedGroupIds.length})`);
+            } else {
+                // Parse selected numbers
+                const numbers = selection.split(',').map(n => parseInt(n.trim()));
+                console.log(`[${require('../utils/logger').getTimestamp()}] 🌍 Selected group numbers: ${numbers.join(', ')}`);
+
+                if (!global.groupSelectionMap) {
+                    await this.sock.sendMessage(msg.key.remoteJid, {
+                        text: `❌ Group selection expired. Please run #kickglobal again.`
+                    });
+                    delete global[pendingBanKey];
+                    return true;
+                }
+
+                // Convert numbers to group IDs
+                for (const num of numbers) {
+                    const group = global.groupSelectionMap.find(g => g.index === num);
+                    if (group) {
+                        selectedGroupIds.push(group.groupId);
+                    } else {
+                        console.log(`[${require('../utils/logger').getTimestamp()}] ⚠️ Invalid group number: ${num}`);
+                    }
+                }
+
+                if (selectedGroupIds.length === 0) {
+                    await this.sock.sendMessage(msg.key.remoteJid, {
+                        text: `❌ No valid groups selected. Please try again with valid group numbers.`
+                    });
+                    return true;
+                }
+
+                // Safety warning if more than 10 groups
+                if (selectedGroupIds.length > 10) {
+                    await this.sock.sendMessage(msg.key.remoteJid, {
+                        text: `⚠️ *Warning:* You selected ${selectedGroupIds.length} groups.\n` +
+                              `For safety, it's recommended to limit to 10 groups at a time.\n\n` +
+                              `Reply "continue" to proceed anyway, or send new selection.`
+                    });
+
+                    // Store the selection and wait for confirmation
+                    global[`${pendingBanKey}_needs_confirm`] = selectedGroupIds;
+                    return true;
+                }
+            }
+
+            // Execute the ban
+            const report = await executeGlobalBanOnSelectedGroups(
+                this.sock,
+                pendingBan.targetUserId,
+                selectedGroupIds,
+                pendingBan.userPhone
+            );
+
+            // Send report
+            const reportMessage = formatSelectedGroupsBanReport(report);
+            await this.sock.sendMessage(msg.key.remoteJid, { text: reportMessage });
+
+            // Cleanup
+            delete global[pendingBanKey];
+            delete global.groupSelectionMap;
+
+            console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Global ban completed`);
+            return true;
+
+        } catch (error) {
+            console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Error processing group selection:`, error);
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: `❌ Error processing selection: ${error.message}`
+            });
+            delete global[pendingBanKey];
             return false;
         }
     }

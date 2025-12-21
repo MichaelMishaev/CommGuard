@@ -4,6 +4,7 @@
 const { getTimestamp } = require('./logger');
 const { jidKey, decodeLIDToPhone } = require('./jidUtils');
 const { robustKick } = require('./kickHelper');
+const globalBanTracker = require('../services/globalBanTracker');
 
 /**
  * Remove a user from ALL groups where the specified admin is an admin
@@ -11,20 +12,24 @@ const { robustKick } = require('./kickHelper');
  * @param {string} userJid - User's WhatsApp ID (JID) to remove
  * @param {string} adminPhone - Admin's phone number (without @s.whatsapp.net)
  * @param {string} userPhoneDecoded - Decoded real phone number (optional, for better matching)
+ * @param {number} maxGroups - Maximum number of groups to process (default: 10 for safety)
  * @returns {Object} Summary report of the operation
  */
-async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null) {
+async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null, maxGroups = 10) {
     console.log(`[${getTimestamp()}] 🌍 Starting Global Ban for user: ${userJid}`);
     console.log(`   Admin phone: ${adminPhone}`);
+    console.log(`   ⚠️ SAFETY LIMIT: Processing max ${maxGroups} groups to prevent Meta bans`);
 
     const report = {
         totalGroups: 0,
+        groupsProcessed: 0,
         groupsWhereUserFound: 0,
         successfulKicks: 0,
         failedKicks: 0,
         skippedGroups: 0,
         groupsWhereAdminNotAdmin: 0,
         groupsWhereUserNotMember: 0,
+        limitReached: false,
         details: []
     };
 
@@ -36,6 +41,26 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
         report.totalGroups = groupIds.length;
 
         console.log(`[${getTimestamp()}] ✅ Found ${groupIds.length} total groups`);
+
+        // Get already processed groups for this user
+        const processedGroups = await globalBanTracker.getProcessedGroups(userJid);
+        console.log(`[${getTimestamp()}] 📋 Already processed ${processedGroups.length} groups for this user`);
+
+        // Filter out already processed groups
+        const unprocessedGroups = groupIds.filter(gid => !processedGroups.includes(gid));
+        console.log(`[${getTimestamp()}] 📋 ${unprocessedGroups.length} groups remaining to process`);
+
+        if (unprocessedGroups.length === 0) {
+            console.log(`[${getTimestamp()}] ✅ All groups already processed for this user!`);
+            report.allGroupsProcessed = true;
+            return report;
+        }
+
+        // Safety check: Limit to maxGroups to prevent Meta bans
+        if (unprocessedGroups.length > maxGroups) {
+            console.log(`[${getTimestamp()}] ⚠️ SAFETY: Limiting to first ${maxGroups} groups (out of ${unprocessedGroups.length} remaining)`);
+            report.limitReached = true;
+        }
 
         // Normalize admin JID for comparison
         const adminJid = `${adminPhone}@s.whatsapp.net`;
@@ -56,16 +81,19 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
         // Note: Israeli number protection exists for BLACKLISTING (blacklistService.js)
         // Global ban (kicking) is allowed for all numbers including Israeli
 
-        // Step 2: Process each group
+        // Step 2: Process each group (LIMITED to maxGroups for safety)
         let processedCount = 0;
-        for (const groupId of groupIds) {
+        const groupsToProcess = groupIds.slice(0, maxGroups); // Only take first maxGroups
+
+        for (const groupId of groupsToProcess) {
             processedCount++;
+            report.groupsProcessed = processedCount;
             const group = groups[groupId];
             const groupName = group.subject || 'Unknown Group';
 
-            // Progress update every 10 groups
-            if (processedCount % 10 === 0) {
-                console.log(`[${getTimestamp()}] 🔄 Progress: ${processedCount}/${groupIds.length} groups checked...`);
+            // Progress update every 5 groups
+            if (processedCount % 5 === 0) {
+                console.log(`[${getTimestamp()}] 🔄 Progress: ${processedCount}/${groupsToProcess.length} groups checked...`);
             }
 
             // ULTRA-SAFE: Add VERY long delay every 3 groups to avoid rate limiting
@@ -230,8 +258,17 @@ function formatGlobalBanReport(report) {
     }
 
     let message = `🌍 *Global Ban Report*\n\n`;
+
+    // Safety warning if limit was reached
+    if (report.limitReached) {
+        message += `⚠️ *SAFETY MODE ACTIVE*\n`;
+        message += `   Limited to ${report.groupsProcessed} groups (of ${report.totalGroups} total)\n`;
+        message += `   This prevents Meta bans from mass actions\n\n`;
+    }
+
     message += `📊 Summary:\n`;
-    message += `   • Total Groups Checked: ${report.totalGroups}\n`;
+    message += `   • Groups Processed: ${report.groupsProcessed}${report.limitReached ? ` (limited)` : ``}\n`;
+    message += `   • Total Groups Available: ${report.totalGroups}\n`;
     message += `   • User Found In: ${report.groupsWhereUserFound} groups\n`;
     message += `   • Successfully Removed: ${report.successfulKicks} ✅\n`;
 
@@ -242,6 +279,12 @@ function formatGlobalBanReport(report) {
     message += `\n`;
     message += `ℹ️ Additional Info:\n`;
     message += `   • User not member of: ${report.groupsWhereUserNotMember} groups\n`;
+
+    if (report.limitReached) {
+        const remaining = report.totalGroups - report.groupsProcessed;
+        message += `\n💡 *Tip:* ${remaining} groups not checked yet.\n`;
+        message += `   Run #kickglobal again to process next batch.\n`;
+    }
 
     // Show failed groups if any (bot not admin)
     if (report.failedKicks > 0) {
@@ -258,7 +301,216 @@ function formatGlobalBanReport(report) {
     return message;
 }
 
+/**
+ * List all groups where user is a member, formatted for selection
+ * @param {Object} sock - WhatsApp socket connection
+ * @param {string} userJid - User's WhatsApp ID (JID)
+ * @param {string} userPhone - User's decoded phone number
+ * @returns {string} Formatted list of groups
+ */
+async function listGroupsForSelection(sock, userJid, userPhone) {
+    try {
+        console.log(`[${getTimestamp()}] 📋 Listing groups for selection...`);
+
+        // Get all groups
+        const groups = await sock.groupFetchAllParticipating();
+        const groupIds = Object.keys(groups);
+
+        const groupsWithUser = [];
+        let index = 1;
+
+        for (const groupId of groupIds) {
+            try {
+                const metadata = await sock.groupMetadata(groupId);
+
+                // Check if user is a member (same matching logic as removeUserFromAllAdminGroups)
+                const userParticipant = metadata.participants.find(p => {
+                    if (p.id === userJid) return true;
+                    if (p.phoneNumber && p.phoneNumber === userJid) return true;
+
+                    if (userJid.includes('@s.whatsapp.net') && p.phoneNumber) {
+                        const userPhoneOnly = userJid.split('@')[0];
+                        const participantPhoneOnly = p.phoneNumber.split('@')[0];
+                        if (userPhoneOnly === participantPhoneOnly) return true;
+                    }
+
+                    if (userJid.includes('@lid') && p.id.includes('@lid')) {
+                        const userLidOnly = userJid.split('@')[0];
+                        const participantLidOnly = p.id.split('@')[0];
+                        if (userLidOnly === participantLidOnly) return true;
+                    }
+
+                    if (userPhone && p.phoneNumber) {
+                        const decodedDigits = userPhone.replace(/\D/g, '');
+                        const participantPhoneDigits = p.phoneNumber.split('@')[0];
+                        const last9 = decodedDigits.slice(-9);
+                        if (participantPhoneDigits.includes(last9)) return true;
+                    }
+
+                    return false;
+                });
+
+                if (userParticipant) {
+                    const groupName = metadata.subject || 'Unknown Group';
+                    const memberCount = metadata.participants.length;
+                    groupsWithUser.push({
+                        index: index++,
+                        groupId,
+                        groupName,
+                        memberCount
+                    });
+                }
+
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+            } catch (error) {
+                console.error(`[${getTimestamp()}] ⚠️ Error checking group: ${error.message}`);
+            }
+        }
+
+        // Format the list
+        if (groupsWithUser.length === 0) {
+            return `❌ User is not a member of any of your groups`;
+        }
+
+        let list = `Found in ${groupsWithUser.length} groups:\n\n`;
+        groupsWithUser.forEach(g => {
+            list += `${g.index}. ${g.groupName} (${g.memberCount} members)\n`;
+        });
+
+        // Store the mapping for later use
+        global.groupSelectionMap = groupsWithUser;
+
+        return list;
+
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to list groups:`, error.message);
+        return `❌ Error listing groups: ${error.message}`;
+    }
+}
+
+/**
+ * Execute global ban on selected groups
+ * @param {Object} sock - WhatsApp socket connection
+ * @param {string} userJid - User's WhatsApp ID (JID) to remove
+ * @param {Array<string>} selectedGroupIds - Array of group IDs to ban from
+ * @param {string} userPhone - User's decoded phone number
+ * @returns {Object} Summary report
+ */
+async function executeGlobalBanOnSelectedGroups(sock, userJid, selectedGroupIds, userPhone) {
+    console.log(`[${getTimestamp()}] 🌍 Executing Global Ban on ${selectedGroupIds.length} selected groups`);
+
+    const report = {
+        totalGroupsSelected: selectedGroupIds.length,
+        successfulKicks: 0,
+        failedKicks: 0,
+        details: []
+    };
+
+    for (const groupId of selectedGroupIds) {
+        try {
+            const metadata = await sock.groupMetadata(groupId);
+            const groupName = metadata.subject || 'Unknown Group';
+
+            // Find user participant (same matching logic)
+            const userParticipant = metadata.participants.find(p => {
+                if (p.id === userJid) return true;
+                if (p.phoneNumber && p.phoneNumber === userJid) return true;
+
+                if (userJid.includes('@s.whatsapp.net') && p.phoneNumber) {
+                    const userPhoneOnly = userJid.split('@')[0];
+                    const participantPhoneOnly = p.phoneNumber.split('@')[0];
+                    if (userPhoneOnly === participantPhoneOnly) return true;
+                }
+
+                if (userPhone && p.phoneNumber) {
+                    const decodedDigits = userPhone.replace(/\D/g, '');
+                    const participantPhoneDigits = p.phoneNumber.split('@')[0];
+                    const last9 = decodedDigits.slice(-9);
+                    if (participantPhoneDigits.includes(last9)) return true;
+                }
+
+                return false;
+            });
+
+            if (!userParticipant) {
+                report.failedKicks++;
+                report.details.push({
+                    groupName,
+                    status: 'failed',
+                    reason: 'User not found in group'
+                });
+                continue;
+            }
+
+            // Kick user
+            console.log(`[${getTimestamp()}] 🎯 Kicking from: ${groupName}`);
+            await robustKick(sock, groupId, [userParticipant.id]);
+
+            report.successfulKicks++;
+            report.details.push({
+                groupName,
+                status: 'success',
+                reason: 'User kicked successfully'
+            });
+
+            console.log(`[${getTimestamp()}] ✅ Kicked from: ${groupName}`);
+
+            // Delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+        } catch (error) {
+            report.failedKicks++;
+            report.details.push({
+                groupName: 'Unknown',
+                status: 'failed',
+                reason: error.message
+            });
+            console.error(`[${getTimestamp()}] ❌ Error kicking from group:`, error.message);
+        }
+    }
+
+    return report;
+}
+
+/**
+ * Format selected groups ban report
+ * @param {Object} report - Report from executeGlobalBanOnSelectedGroups
+ * @returns {string} Formatted message
+ */
+function formatSelectedGroupsBanReport(report) {
+    let message = `🌍 *Global Ban Complete*\n\n`;
+    message += `📊 Summary:\n`;
+    message += `   • Groups Selected: ${report.totalGroupsSelected}\n`;
+    message += `   • Successfully Removed: ${report.successfulKicks} ✅\n`;
+    message += `   • Failed Removals: ${report.failedKicks} ❌\n\n`;
+
+    if (report.successfulKicks > 0) {
+        message += `✅ *Successful Kicks:*\n`;
+        const successful = report.details.filter(d => d.status === 'success');
+        successful.forEach(g => {
+            message += `   • ${g.groupName}\n`;
+        });
+        message += `\n`;
+    }
+
+    if (report.failedKicks > 0) {
+        message += `❌ *Failed Kicks:*\n`;
+        const failed = report.details.filter(d => d.status === 'failed');
+        failed.forEach(g => {
+            message += `   • ${g.groupName}\n`;
+            message += `     Reason: ${g.reason}\n`;
+        });
+    }
+
+    return message;
+}
+
 module.exports = {
     removeUserFromAllAdminGroups,
-    formatGlobalBanReport
+    formatGlobalBanReport,
+    listGroupsForSelection,
+    executeGlobalBanOnSelectedGroups,
+    formatSelectedGroupsBanReport
 };
