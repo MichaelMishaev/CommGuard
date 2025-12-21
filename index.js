@@ -1478,11 +1478,15 @@ async function handleMessage(sock, msg, commandHandler) {
     }
 
     // Check if user is individually muted
-    if (await muteService.isMuted(senderId) && !isAdmin) {
+    const userIsMuted = await muteService.isMuted(senderId);
+    console.log(`[${getTimestamp()}] 🔍 MUTE DEBUG - senderId: ${senderId}, isMuted: ${userIsMuted}, isAdmin: ${isAdmin}`);
+
+    if (userIsMuted && !isAdmin) {
+        console.log(`[${getTimestamp()}] 🔇 ATTEMPTING TO DELETE MESSAGE FROM MUTED USER`);
         try {
             await sock.sendMessage(groupId, { delete: msg.key });
             const msgCount = await muteService.incrementMutedMessageCount(senderId);
-            console.log(`[${getTimestamp()}] 🔇 Deleted message from muted user (${msgCount} messages deleted)`);
+            console.log(`[${getTimestamp()}] 🔇 ✅ SUCCESS: Deleted message from muted user (${msgCount} messages deleted)`);
             
             // Send warning at 7 messages with remaining mute time
             if (msgCount === 7) {
@@ -1546,9 +1550,16 @@ async function handleMessage(sock, msg, commandHandler) {
                 }
             }
         } catch (error) {
-            console.error('Failed to delete muted user message:', error);
+            console.error(`[${getTimestamp()}] ❌ MUTE ERROR: Failed to delete muted user message:`, error.message);
+            console.error(`[${getTimestamp()}] ❌ Error details:`, {
+                name: error.name,
+                message: error.message,
+                stack: error.stack?.split('\n')[0]
+            });
         }
         return;
+    } else if (userIsMuted && isAdmin) {
+        console.log(`[${getTimestamp()}] ⚠️ MUTE SKIP: User is muted but is an admin - allowing message`);
     }
 
     // Debug check for any text containing #kick
