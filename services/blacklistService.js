@@ -88,6 +88,12 @@ async function loadBlacklistCache() {
 
 // Check if a user is blacklisted
 async function isBlacklisted(userId) {
+  // Ensure userId is a string
+  if (typeof userId !== 'string') {
+    console.error('❌ isBlacklisted called with non-string userId:', userId);
+    return false;
+  }
+
   // Normalize the user ID
   const normalizedId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '');
   
@@ -115,6 +121,12 @@ async function isBlacklisted(userId) {
 
 // Add user to blacklist
 async function addToBlacklist(userId, reason = '') {
+  // Ensure userId is a string
+  if (typeof userId !== 'string') {
+    console.error('❌ addToBlacklist called with non-string userId:', userId);
+    return false;
+  }
+
   const normalizedId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
 
   // SAFEGUARD 1: Never blacklist Israeli numbers
@@ -190,8 +202,14 @@ async function addToBlacklist(userId, reason = '') {
 
 // Remove user from blacklist
 async function removeFromBlacklist(userId) {
+  // Ensure userId is a string
+  if (typeof userId !== 'string') {
+    console.error('❌ removeFromBlacklist called with non-string userId:', userId);
+    return false;
+  }
+
   const normalizedId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '');
-  
+
   // Remove from cache
   blacklistCache.delete(normalizedId);
   blacklistCache.delete(userId);

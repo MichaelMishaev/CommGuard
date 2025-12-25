@@ -34,6 +34,11 @@ async function loadRequestCache() {
 
 // Normalize user ID for consistent handling
 function normalizeUserId(userId) {
+    // Ensure userId is a string
+    if (typeof userId !== 'string') {
+        console.error('❌ normalizeUserId called with non-string userId:', userId);
+        return '';
+    }
     return userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
 }
 

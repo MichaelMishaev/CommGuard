@@ -2087,31 +2087,56 @@ class CommandHandler {
     
     async handleBlacklistRemove(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: 'מה אני עובד אצלך?!'
             });
             return true;
         }
 
-        if (!args) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ Please provide a phone number. Example: #unblacklist 972555123456' 
+        // Convert args to string if it's an array
+        let phoneNumber = Array.isArray(args) ? args.join(' ').trim() : (args || '').trim();
+
+        // If no args provided, try to extract from quoted message (alert reply)
+        if (!phoneNumber || phoneNumber === '') {
+            // Check if replying to a message (alert)
+            const quotedMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+            const quotedText = quotedMessage?.conversation ||
+                             quotedMessage?.extendedTextMessage?.text || '';
+
+            // Try to extract phone number from alert message
+            // Pattern: "Phone: +972539632985" or "User: 3655507063087@lid"
+            const phoneMatch = quotedText.match(/Phone:\s*\+?(\d+)/);
+            const userMatch = quotedText.match(/User:\s*(\d+)@/);
+
+            if (phoneMatch) {
+                phoneNumber = phoneMatch[1];
+                console.log(`[${require('../utils/logger').getTimestamp()}] 📞 Extracted phone from quoted message: ${phoneNumber}`);
+            } else if (userMatch) {
+                phoneNumber = userMatch[1];
+                console.log(`[${require('../utils/logger').getTimestamp()}] 👤 Extracted user ID from quoted message: ${phoneNumber}`);
+            }
+        }
+
+        // Validate we have a phone number
+        if (!phoneNumber || phoneNumber === '') {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ Please provide a phone number or reply to an alert message.\n\nUsage:\n• #unblacklist 972555123456\n• Reply #ub to an alert message'
             });
             return true;
         }
 
         // Remove from Firebase blacklist
         const { removeFromBlacklist } = require('./blacklistService');
-        const firebaseSuccess = await removeFromBlacklist(args);
+        const firebaseSuccess = await removeFromBlacklist(phoneNumber);
 
         // Remove from PostgreSQL database if available
         let dbSuccess = false;
         if (process.env.DATABASE_URL) {
             try {
                 const { unblacklistUser } = require('../database/groupService');
-                await unblacklistUser(args);
+                await unblacklistUser(phoneNumber);
                 dbSuccess = true;
-                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${args} from PostgreSQL blacklist`);
+                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${phoneNumber} from PostgreSQL blacklist`);
             } catch (error) {
                 console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to remove from database:`, error.message);
             }
@@ -2121,8 +2146,8 @@ class CommandHandler {
         if (process.env.REDIS_URL) {
             try {
                 const { removeFromBlacklistCache } = require('../services/redisService');
-                await removeFromBlacklistCache(args);
-                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${args} from Redis cache`);
+                await removeFromBlacklistCache(phoneNumber);
+                console.log(`[${require('../utils/logger').getTimestamp()}] ✅ Removed ${phoneNumber} from Redis cache`);
             } catch (error) {
                 console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to remove from cache:`, error.message);
             }
@@ -2131,11 +2156,11 @@ class CommandHandler {
         const success = firebaseSuccess || dbSuccess;
         if (success) {
             await this.sock.sendMessage(msg.key.remoteJid, {
-                text: `✅ Removed +${args} from blacklist.\n\nViolation history preserved for record keeping.`
+                text: `✅ Removed +${phoneNumber} from blacklist.\n\nViolation history preserved for record keeping.`
             });
         } else {
             await this.sock.sendMessage(msg.key.remoteJid, {
-                text: `❌ Failed to remove ${args} from blacklist.`
+                text: `❌ Failed to remove ${phoneNumber} from blacklist.`
             });
         }
         return true;
