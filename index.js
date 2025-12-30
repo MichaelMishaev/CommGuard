@@ -2106,22 +2106,20 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 continue; // Skip all checks for whitelisted users
             }
             
-            // Check if user is blacklisted (check both Firebase and PostgreSQL)
-            const isBlacklistedFirebase = await blacklistService.isBlacklisted(participantId);
-            let isBlacklistedDB = false;
+            // Check if user is blacklisted (PostgreSQL only)
+            let isBlacklisted = false;
             let violations = {};
 
             console.log(`🔍 Blacklist check for: ${phoneNumber}`);
-            console.log(`   Firebase blacklist: ${isBlacklistedFirebase}`);
 
-            // Check PostgreSQL database if available
+            // Check PostgreSQL database
             if (process.env.DATABASE_URL) {
                 try {
                     const user = await getUserByPhone(phoneNumber);
                     if (user) {
-                        isBlacklistedDB = user.is_blacklisted;
+                        isBlacklisted = user.is_blacklisted;
                         violations = user.violations || {};
-                        console.log(`   Database blacklist: ${isBlacklistedDB}`);
+                        console.log(`   Database blacklist: ${isBlacklisted}`);
                         console.log(`   Violations: ${JSON.stringify(violations)}`);
                     } else {
                         console.log(`   Database: User not found`);
@@ -2131,7 +2129,6 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 }
             }
 
-            const isBlacklisted = isBlacklistedFirebase || isBlacklistedDB;
             console.log(`   FINAL BLACKLIST STATUS: ${isBlacklisted}`);
 
             if (!addedByAdmin && isBlacklisted) {
