@@ -24,6 +24,10 @@ const groupAdminCache = new Map(); // Memory cache for speed
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
 const DB_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour DB updates
 
+// Track recent bot promotions to avoid mass-scanning on member list sync
+const recentPromotions = new Map(); // groupId -> timestamp
+const PROMOTION_SYNC_WINDOW = 10000; // 10 seconds after promotion
+
 // Startup phase management for session optimization
 let isStartupPhase = true;
 
@@ -985,19 +989,52 @@ async function startBot() {
         console.log(`   Participants: ${JSON.stringify(participants)}`);
         console.log(`   Author: ${author || 'unknown'}`);
 
+        // Handle bot being promoted to admin
+        if (action === 'promote') {
+            const botJid = sock.user.id;
+            const botPhone = sock.user.id.split(':')[0].split('@')[0];
+
+            // Check if bot was promoted
+            const botPromoted = participants.some(p => {
+                return p === botJid ||
+                       String(p?.id || p).includes(botPhone) ||
+                       String(p?.id || p).startsWith(botPhone);
+            });
+
+            if (botPromoted) {
+                console.log(`   ✅ Bot promoted to admin in ${id}`);
+                // Track this promotion with timestamp
+                recentPromotions.set(id, Date.now());
+
+                // Clean up old promotion records after sync window
+                setTimeout(() => {
+                    recentPromotions.delete(id);
+                }, PROMOTION_SYNC_WINDOW);
+            }
+        }
+
         if (action === 'add') {
+            // Check if this is a mass-sync event after bot promotion
+            const lastPromotion = recentPromotions.get(id);
+            const isMassSync = lastPromotion && (Date.now() - lastPromotion < PROMOTION_SYNC_WINDOW);
+
+            if (isMassSync && participants.length > 50) {
+                console.log(`   ⏭️  Skipping mass-sync event (${participants.length} users) after recent bot promotion`);
+                return; // Don't process member list sync as new joins
+            }
+
             // Check if the bot itself was added to the group
             const botJid = sock.user.id;
             const botPhone = sock.user.id.split(':')[0].split('@')[0];
             console.log(`   Bot ID: ${botJid}, Bot Phone: ${botPhone}`);
-            
+
             // Check for bot using multiple matching patterns (handles LID format)
             const botAddedToGroup = participants.some(p => {
-                return p === botJid || 
-                       String(p?.id || p).includes(botPhone) || 
+                return p === botJid ||
+                       String(p?.id || p).includes(botPhone) ||
                        String(p?.id || p).startsWith(botPhone);
             });
-            
+
             if (botAddedToGroup) {
                 // Bot was added to a new group - send welcome message
                 await handleBotWelcome(sock, id, author);
