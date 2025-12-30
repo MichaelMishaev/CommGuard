@@ -15,6 +15,8 @@ const restartLimiter = require('./utils/restartLimiter');
 const { trackRestart } = require('./utils/restartTracker');
 const memoryMonitor = require('./utils/memoryMonitor');
 const memoryLeakDetector = require('./utils/memoryLeakDetector');
+const { queueScan } = require('./services/scanQueueService');
+const { startScanWorker } = require('./services/blacklistScanWorker');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -1010,6 +1012,23 @@ async function startBot() {
                 setTimeout(() => {
                     recentPromotions.delete(id);
                 }, PROMOTION_SYNC_WINDOW);
+
+                // Queue blacklist scan after 30 second delay
+                setTimeout(async () => {
+                    try {
+                        const groupMetadata = await sock.groupMetadata(id);
+                        const adminList = groupMetadata.participants
+                            .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+                            .map(p => p.id.split('@')[0].split(':')[0]);
+
+                        const memberCount = groupMetadata.participants.length;
+
+                        console.log(`[${getTimestamp()}] 📋 Queueing scan for ${groupMetadata.subject} (${memberCount} members)`);
+                        await queueScan(id, memberCount, adminList);
+                    } catch (error) {
+                        console.error(`[${getTimestamp()}] ❌ Failed to queue scan:`, error.message);
+                    }
+                }, 30000); // 30 second delay
             }
         }
 
@@ -1044,7 +1063,11 @@ async function startBot() {
             }
         }
     });
-    
+
+    // Start blacklist scan worker
+    startScanWorker(sock);
+    console.log(`[${getTimestamp()}] 🚀 Blacklist scan worker started`);
+
     return sock;
 }
 

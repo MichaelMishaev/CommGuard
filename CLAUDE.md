@@ -6,6 +6,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 bCommGuard is a WhatsApp group moderation bot built with Baileys WebSocket API. It replaces the original CommGuard (which used whatsapp-web.js) for better performance and reliability. The bot automatically detects and removes WhatsApp group invite links, manages blacklists, and provides moderation commands.
 
+## Server Access
+
+### SSH Connection
+- **Server IP**: `209.38.231.184`
+- **Connection**: `ssh root@209.38.231.184`
+- **Bot Path**: `/root/CommGuard/`
+- **Process Manager**: PM2 (process name: `commguard`)
+- **Full SSH Guide**: See `docs/ssh.md` for complete server management instructions
+
+### Quick Server Commands
+```bash
+# Connect to server
+ssh root@209.38.231.184
+
+# Check bot status
+pm2 status
+
+# View logs
+pm2 logs commguard
+
+# Restart bot
+pm2 restart commguard
+
+# Check system resources (memory/CPU)
+free -h && df -h
+```
+
 ## Common Development Commands
 
 ### Running and Testing
@@ -176,11 +203,32 @@ n## Translation Features
 - `tests/testAlertService.js` - Alert notification system
 
 ## Performance Characteristics
-- Memory usage: ~50-100MB (vs 500MB+ for whatsapp-web.js)
+- Memory usage: ~50-100MB typical, max 400MB before auto-restart (vs 500MB+ for whatsapp-web.js)
 - Message processing: <0.1ms per message
 - Can handle 10,000+ messages per second
 - Instant message deletion and user kicks
 - WebSocket-based (no browser needed)
+
+### Memory Protection (Critical for 960MB Server)
+The bot has **triple-layer memory protection** to prevent OOM crashes:
+
+1. **PM2 Auto-Restart at 400MB** (`ecosystem.config.js: max_memory_restart`)
+   - Gracefully restarts before reaching OOM threshold (~500MB)
+   - Prevents hard crashes from Linux OOM killer
+
+2. **Daily Scheduled Restart at Midnight** (`ecosystem.config.js: cron_restart: '0 0 * * *'`)
+   - Proactive memory cleanup every 24 hours at 00:00
+   - Prevents gradual memory buildup
+   - Low-traffic time window for minimal disruption
+
+3. **1GB Swap Space** (`/swapfile`)
+   - Emergency buffer for memory spikes
+   - Configured via `/etc/fstab` for persistence
+
+**Verify protection:**
+```bash
+ssh root@209.38.231.184 "pm2 info commguard-bot | grep -E 'cron|memory' && swapon --show"
+```
 
 ## Security Considerations
 - Admin immunity for all bot actions
