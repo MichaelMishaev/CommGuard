@@ -1690,8 +1690,8 @@ async function handleMessage(sock, msg, commandHandler) {
             return;
         }
 
-        // Require admin for all other commands
-        if (!isAdmin) {
+        // Require admin for all other commands (allow fromMe for bot's own WhatsApp Web)
+        if (!isAdmin && !msg.key.fromMe) {
             console.log(`   Result: ❌ Non-admin tried to use command`);
 
             const adminOnlyText = config.FEATURES.RANDOMIZE_RESPONSES ?
