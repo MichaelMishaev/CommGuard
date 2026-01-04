@@ -7,7 +7,7 @@ module.exports = {
   // Example: '972555555555' for Israel (+972) 55-555-5555
   ADMIN_PHONE: process.env.ADMIN_PHONE || '972544345287', // YOUR phone to control the bot
   ALERT_PHONE: process.env.ALERT_PHONE || '972544345287', // Phone to receive kick alerts
-  ADMIN_LID: process.env.ADMIN_LID || '201769628000458', // Admin LID format (for multi-device accounts)
+  ADMIN_LID: process.env.ADMIN_LID || '171012763213843', // Admin LID format (for multi-device accounts)
   
   // Bot settings
   BOT_NAME: 'CommGuard Bot',
