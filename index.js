@@ -1350,6 +1350,16 @@ async function handleMessage(sock, msg, commandHandler) {
                     const groupService = require('./database/groupService');
                     const className = await groupService.getGroupClassName(chatId);
 
+                    // Try to get group invite link
+                    let groupLink = '';
+                    try {
+                        const inviteCode = await sock.groupInviteCode(chatId);
+                        groupLink = `https://chat.whatsapp.com/${inviteCode}`;
+                    } catch (err) {
+                        // If can't get invite code, use group JID (fallback)
+                        groupLink = `Group JID: ${chatId}`;
+                    }
+
                     // Log detection with v2.0 details
                     console.log(`\n[${getTimestamp()}] 🚨 BULLYWATCH v2.0 ALERT:`);
                     console.log(`   Group: ${groupSubject} (${chatId})`);
@@ -1368,6 +1378,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     const alertText = alertHeader +
                         `*Group:* ${groupSubject}\n` +
                         `📚 *Class:* ${className || 'Not set'}\n` +
+                        `🔗 *Group Link:* ${groupLink}\n` +
                         `*Sender:* ${senderPhone} (${msg.pushName})\n` +
                         `*Score:* ${result.score} - *${result.severity}*\n` +
                         `*Categories:* ${result.details.categories?.join(', ') || 'None'}\n` +
