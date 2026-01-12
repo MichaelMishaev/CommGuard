@@ -31,7 +31,8 @@ module.exports = {
     // Anti-Bullying System (#bullywatch)
     BULLYWATCH_ENABLED: true, // Enable bullying detection system
     BULLYWATCH_MONITOR_MODE: true, // CRITICAL: Start in monitor mode (no auto-deletions)
-    BULLYWATCH_GPT_ANALYSIS: true, // Use GPT for ambiguous cases (requires OPENAI_API_KEY)
+    BULLYWATCH_NANO_PREFILTER: true, // Use GPT-5-nano pre-filter to reduce false positives (Layer 0)
+    BULLYWATCH_GPT_ANALYSIS: true, // Use GPT-5-mini for ambiguous cases (Layer 4, requires OPENAI_API_KEY)
   },
   
   // Regex patterns
@@ -99,7 +100,7 @@ module.exports = {
       SCORE_RANGE: [11, 15], // Only analyze scores in this range (ambiguous YELLOW)
       CONTEXT_WINDOW_SIZE: 6, // 5-7 messages before/after for context
       MAX_CALLS_PER_HOUR: 20, // Rate limit to control costs
-      MODEL: 'gpt-4-turbo-preview', // OpenAI model
+      MODEL: 'gpt-5-mini', // OpenAI GPT-5-mini model (faster, cheaper than GPT-4)
     },
 
     // Friend group detection (Section 3.4)

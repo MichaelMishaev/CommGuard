@@ -9,6 +9,7 @@
  */
 
 const config = require('../../config');
+const nanoPreFilterService = require('./nanoPreFilterService');
 const scoringService = require('./scoringService');
 const gptAnalysisService = require('./gptAnalysisService');
 const feedbackService = require('./feedbackService');
@@ -21,6 +22,7 @@ class BullywatchOrchestrator {
     this.enabled = config.FEATURES.BULLYWATCH_ENABLED;
     this.monitorMode = config.FEATURES.BULLYWATCH_MONITOR_MODE;
     this.gptEnabled = config.FEATURES.BULLYWATCH_GPT_ANALYSIS;
+    this.nanoPreFilterEnabled = config.FEATURES.BULLYWATCH_NANO_PREFILTER || true;
     this.enabledGroups = new Set(); // Groups with #bullywatch tag
   }
 
@@ -39,6 +41,10 @@ class BullywatchOrchestrator {
 
     try {
       // Initialize all services
+      if (this.nanoPreFilterEnabled) {
+        await nanoPreFilterService.initialize();
+      }
+
       await scoringService.initialize();
       await feedbackService.initialize();
       await groupWhitelistService.initialize();
@@ -49,7 +55,7 @@ class BullywatchOrchestrator {
       }
 
       this.initialized = true;
-      console.log(`✅ Bullywatch initialized (Monitor Mode: ${this.monitorMode ? 'ON' : 'OFF'})`);
+      console.log(`✅ Bullywatch initialized (Monitor Mode: ${this.monitorMode ? 'ON' : 'OFF'}, Nano Pre-Filter: ${this.nanoPreFilterEnabled ? 'ON' : 'OFF'})`);
     } catch (error) {
       console.error('❌ Error initializing Bullywatch:', error);
       this.enabled = false;
@@ -98,6 +104,35 @@ class BullywatchOrchestrator {
     // This fixes the bug where database-enabled groups weren't in the in-memory Set.
 
     try {
+      // Layer 0: GPT-5-nano Pre-Filter (Fast safety check)
+      let nanoResult = null;
+      if (this.nanoPreFilterEnabled) {
+        nanoResult = await nanoPreFilterService.quickCheck(message, groupId);
+
+        // If nano says it's clearly safe, skip heavy scoring
+        if (nanoResult.shouldSkipScoring) {
+          return {
+            analyzed: true,
+            score: 0,
+            severity: 'SAFE',
+            action: {
+              type: 'none',
+              description: 'Nano pre-filter: Clearly safe message',
+              alertAdmin: false,
+              deleteMessage: false
+            },
+            details: {
+              nanoPreFilter: nanoResult,
+              skippedLayers: ['lexicon', 'temporal', 'scoring']
+            },
+            metadata: {
+              fastPath: true,
+              processingTimeMs: 0
+            }
+          };
+        }
+      }
+
       // Layer 1-3: Lexicon + Temporal + Scoring
       const scoreResult = await scoringService.scoreMessage(message, groupId, metadata);
 
@@ -122,6 +157,7 @@ class BullywatchOrchestrator {
         severity: scoreResult.severity,
         action: finalAction,
         details: {
+          nanoPreFilter: nanoResult,
           breakdown: scoreResult.breakdown,
           categories: scoreResult.details.categories,
           lexiconHits: scoreResult.details.lexiconHits,
@@ -216,6 +252,16 @@ class BullywatchOrchestrator {
   }
 
   /**
+   * Get nano pre-filter statistics
+   */
+  getNanoStats() {
+    if (!this.nanoPreFilterEnabled || !this.initialized) {
+      return null;
+    }
+    return nanoPreFilterService.getStats();
+  }
+
+  /**
    * Get status information
    */
   getStatus() {
@@ -224,8 +270,10 @@ class BullywatchOrchestrator {
       initialized: this.initialized,
       monitorMode: this.monitorMode,
       gptEnabled: this.gptEnabled,
+      nanoPreFilterEnabled: this.nanoPreFilterEnabled,
       enabledGroups: Array.from(this.enabledGroups),
-      accuracy: this.initialized ? feedbackService.getAccuracyMetrics() : null
+      accuracy: this.initialized ? feedbackService.getAccuracyMetrics() : null,
+      nanoStats: this.getNanoStats()
     };
   }
 

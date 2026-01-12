@@ -155,11 +155,12 @@ class LexiconService {
         {
           canonical: 'כלב',
           surfaceForms: ['כלב', 'כלבה', 'יאכלב', 'כלבימ', 'כלבוט'],  // Added plurals: כלבים, כלבות
-          category: 'sexual_harassment',
-          score: 12,
+          category: 'general_insult',  // FIXED: Changed from sexual_harassment to general_insult
+          score: 6,  // FIXED: Reduced from 12 to 6 (matches other general insults)
           displayName: 'כלב/כלבה/כלבים',
           transliterations: ['kalb', 'kalba', 'klabim'],
-          notes: 'Arabic-derived - dog (insult)'
+          notes: 'Arabic-derived - dog (insult), but literally means dog in Hebrew',
+          contextSensitive: true  // NEW: Mark for context-sensitive detection
         }
       ],
 
@@ -419,13 +420,33 @@ class LexiconService {
     const categories = new Set();
     let baseScore = 0;
 
+    // NEW: Check for narrative/descriptive context (reduces false positives)
+    const narrativeContext = this.detectNarrativeContext(text);
+    const narrativeDampener = narrativeContext.isNarrative ? 0.2 : 1.0; // 80% reduction if narrative
+    if (narrativeContext.isNarrative) {
+      console.log(`[LEXICON] 🎬 Narrative context detected: ${narrativeContext.pattern} (dampener: ${narrativeDampener})`);
+    }
+
     // NEW: Check structured lexicon patterns (with morphology support)
     if (this.patternCache) {
       const structuredResults = this.detectFromStructuredLexicon(text);
       if (structuredResults.hits.length > 0) {
-        hits.push(...structuredResults.hits);
+        // Apply narrative dampening to context-sensitive words (like כלב)
+        const dampenedHits = structuredResults.hits.map(hit => {
+          if (narrativeContext.isNarrative && hit.canonical === 'כלב') {
+            return {
+              ...hit,
+              weightedScore: (hit.weightedScore || hit.baseScore) * narrativeDampener,
+              dampenedBy: 'narrative_context'
+            };
+          }
+          return hit;
+        });
+
+        hits.push(...dampenedHits);
         structuredResults.categories.forEach(cat => categories.add(cat));
-        baseScore += structuredResults.score;
+        // Recalculate score with dampened hits
+        baseScore += dampenedHits.reduce((sum, hit) => sum + (hit.weightedScore || hit.baseScore || 0), 0);
       }
     }
 
@@ -923,6 +944,45 @@ class LexiconService {
     }
 
     return { hits, score };
+  }
+
+  /**
+   * NEW: Detect narrative/descriptive context to reduce false positives
+   * Returns { isNarrative: boolean, pattern: string, confidence: number }
+   */
+  detectNarrativeContext(text) {
+    // Narrative indicators (storytelling, describing events)
+    const narrativePatterns = [
+      { pattern: /ראיטי\s*(בסרכ|בחדשוט|בטיקטוכ|ביוטיוב|בפייסבוכ)/g, name: 'ראיתי ב...' },
+      { pattern: /שמאטי\s*(ש|אטאזו|על|על)/g, name: 'שמעתי ש...' },
+      { pattern: /כראטי\s*(ש|על|אטאזו)/g, name: 'קראתי ש...' },
+      { pattern: /ספרו\s*לי\s*(ש|על)/g, name: 'ספרו לי ש...' },
+      { pattern: /סיפרו\s*לי\s*(ש|על)/g, name: 'סיפרו לי ש...' },
+      { pattern: /מסופר\s*(ש|על)/g, name: 'מסופר ש...' },
+      { pattern: /איכ\s*\w+\s*מט/g, name: 'איך X מת (narrative death)' },
+      { pattern: /היה\s*פאמ/g, name: 'היה פעם (once upon a time)' },
+    ];
+
+    for (const { pattern, name } of narrativePatterns) {
+      if (pattern.test(text)) {
+        return { isNarrative: true, pattern: name, confidence: 0.9 };
+      }
+    }
+
+    // Literal animal context (NOT used as insult)
+    const animalContextPatterns = [
+      { pattern: /כלב\s*(מט|רצ|ישנ|אוכל|שוכב|זזי)/g, name: 'literal dog actions' },
+      { pattern: /חטול\s*(מט|רצ|ישנ|אוכל|שוכב|זזי)/g, name: 'literal cat actions' },
+      { pattern: /חיה\s*(מט|רצ|ישנ|אוכל|שוכב|זזי)/g, name: 'literal animal actions' },
+    ];
+
+    for (const { pattern, name } of animalContextPatterns) {
+      if (pattern.test(text)) {
+        return { isNarrative: true, pattern: name, confidence: 0.85 };
+      }
+    }
+
+    return { isNarrative: false, pattern: null, confidence: 0 };
   }
 
   /**

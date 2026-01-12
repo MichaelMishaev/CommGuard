@@ -6,6 +6,7 @@
 
 const OpenAI = require('openai');
 const temporalAnalysisService = require('./temporalAnalysisService');
+const nanoLoggingService = require('./nanoLoggingService');
 
 class GPTAnalysisService {
   constructor() {
@@ -35,7 +36,7 @@ class GPTAnalysisService {
   }
 
   /**
-   * Analyze message with GPT-4 using context window
+   * Analyze message with GPT-5-mini using context window
    * Only called for ambiguous cases (score 11-15)
    */
   async analyzeWithContext(message, groupId, scoreData) {
@@ -143,7 +144,7 @@ class GPTAnalysisService {
   }
 
   /**
-   * Call GPT-4 for analysis
+   * Call GPT-5-mini for deep analysis (with full logging)
    */
   async callGPT(conversationContext, scoreData) {
     const systemPrompt = `You are an expert in detecting online harassment and bullying in Hebrew WhatsApp groups, particularly among teenagers.
@@ -184,18 +185,61 @@ Detected categories: ${scoreData.details.categories.join(', ')}
 
 Is the flagged message harassment or banter?`;
 
-    const completion = await this.openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+    const requestPayload = {
+      model: 'gpt-5-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3, // Lower temperature for more consistent analysis
-      max_tokens: 500
-    });
+      max_tokens: 500,
+      reasoning_effort: 'medium', // GPT-5 parameter: minimal, low, medium, high
+      verbosity: 'low' // GPT-5 parameter: low, medium, high (keep analysis concise)
+    };
+
+    const completion = await this.openai.chat.completions.create(requestPayload);
 
     const response = JSON.parse(completion.choices[0].message.content);
+
+    // Log GPT-5-mini AI call (async, non-blocking)
+    setImmediate(() => {
+      nanoLoggingService.logDecision({
+        messageText: conversationContext.find(m => m.flagged)?.text || '',
+        sender: 'gpt-mini-analysis',
+        groupId: scoreData.groupId || 'unknown',
+        nanoVerdict: null, // Not from nano
+        nanoConfidence: null,
+        nanoReason: 'GPT-5-mini deep analysis (Layer 4)',
+        nanoCategories: [],
+        finalScore: response.adjustedScore,
+        finalSeverity: scoreData.severity,
+        finalAction: response.verdict,
+        processingTimeMs: 0,
+        aiRequest: {
+          model: requestPayload.model,
+          systemPrompt: systemPrompt,
+          userPrompt: userPrompt,
+          temperature: requestPayload.temperature,
+          maxTokens: requestPayload.max_tokens,
+          reasoningEffort: requestPayload.reasoning_effort,
+          verbosity: requestPayload.verbosity,
+          contextWindowSize: conversationContext.length,
+          timestamp: Date.now()
+        },
+        aiResponse: {
+          rawResponse: completion.choices[0].message.content,
+          finishReason: completion.choices[0].finish_reason,
+          usage: {
+            promptTokens: completion.usage?.prompt_tokens || 0,
+            completionTokens: completion.usage?.completion_tokens || 0,
+            totalTokens: completion.usage?.total_tokens || 0
+          },
+          model: completion.model,
+          timestamp: Date.now()
+        }
+      });
+    });
 
     return {
       verdict: response.verdict || 'ambiguous',
