@@ -68,13 +68,17 @@ class ScoringService {
       return this.createEmptyScore();
     }
 
+    console.log(`\n[SCORING DEBUG] Analyzing: "${messageText.substring(0, 50)}"`);
+
     // PHASE 1: Pre-Processing (Normalization)
     const normalizedText = lexiconService.normalizeHebrew(messageText);
     const transliteratedText = lexiconService.detectTransliteration(normalizedText);
+    console.log(`[SCORING DEBUG] Normalized: "${normalizedText.substring(0, 50)}"`);
 
     // PHASE 2: Base Scoring
     const lexiconResult = lexiconService.detect(transliteratedText);
     const baseScore = this.applyHardCap(lexiconResult);
+    console.log(`[SCORING DEBUG] Lexicon hits: ${lexiconResult.hits.length}, baseScore: ${baseScore}`);
 
     // PHASE 3: Context Modifiers
     let addOns = 0;
@@ -122,6 +126,9 @@ class ScoringService {
     // Determine severity and action
     const severity = this.determineSeverity(finalScore);
     const action = this.determineAction(finalScore, severity);
+
+    console.log(`[SCORING DEBUG] Final score: ${finalScore}, severity: ${severity}, alertAdmin: ${action.alertAdmin}`);
+    console.log(`[SCORING DEBUG] Categories: ${lexiconResult.categories.join(', ')}`);
 
     // Store violation for behavior tracking
     this.storeSenderViolation(message.sender, finalScore, severity);
