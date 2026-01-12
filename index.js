@@ -1258,6 +1258,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     const groupMetadata = await sock.groupMetadata(chatId).catch(() => null);
                     const sender = msg.key.participant || msg.key.remoteJid;
                     const senderPhone = sender.split('@')[0];
+                    const messageId = msg.key.id;
 
                     // Log detection
                     bullyingService.logDetection({
@@ -1273,10 +1274,13 @@ async function handleMessage(sock, msg, commandHandler) {
                         groupId: chatId,
                         senderPhone,
                         senderName: msg.pushName,
+                        senderJid: sender, // Full JID for LID decoding
                         messageText,
                         matchedWords: analysis.matchedWords,
                         timestamp: msg.messageTimestamp * 1000,
-                        severity: analysis.severity
+                        severity: analysis.severity,
+                        messageId, // For database tracking and deletion
+                        originalMessage: msg // For quoting in alert
                     });
 
                     // Continue processing - don't return here
@@ -1308,7 +1312,65 @@ async function handleMessage(sock, msg, commandHandler) {
                        senderId.includes(config.ADMIN_LID);
         
         console.log(`   Is Admin: ${isAdmin ? '✅ Yes' : '❌ No'}`);
-        
+
+        // Handle delete offensive message (reply with 'd' to bullying alert)
+        if (isAdmin && messageText && messageText.toLowerCase().trim() === 'd') {
+            const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+            const quotedStanzaId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+            const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
+            const quotedRemoteJid = msg.message?.extendedTextMessage?.contextInfo?.remoteJid;
+
+            if (quotedMsg && quotedStanzaId) {
+                try {
+                    const offensiveMessageService = require('./database/offensiveMessageService');
+
+                    // Get message from database to find group and verify it exists
+                    const offensive = await offensiveMessageService.getOffensiveMessage(quotedStanzaId);
+
+                    if (offensive) {
+                        // Delete the message from the group
+                        const groupId = offensive.whatsapp_group_id;
+                        const messageKey = {
+                            remoteJid: groupId,
+                            id: quotedStanzaId,
+                            participant: quotedParticipant || undefined
+                        };
+
+                        await sock.sendMessage(groupId, { delete: messageKey });
+
+                        // Mark as deleted in database
+                        await offensiveMessageService.markMessageAsDeleted(quotedStanzaId);
+
+                        await sock.sendMessage(chatId, {
+                            text: `✅ Offensive message deleted from "${offensive.group_name}"\n\n` +
+                                  `📱 User: ${offensive.sender_name}\n` +
+                                  `📞 Phone: ${offensive.sender_phone}\n` +
+                                  `💬 Message: "${offensive.message_text.substring(0, 100)}..."`
+                        });
+
+                        console.log(`[${getTimestamp()}] 🗑️  Admin deleted offensive message: ${quotedStanzaId}`);
+                        return;
+                    } else {
+                        await sock.sendMessage(chatId, {
+                            text: '❌ Message not found in database. It may have been already deleted or is too old.'
+                        });
+                        return;
+                    }
+                } catch (error) {
+                    console.error(`[${getTimestamp()}] ❌ Failed to delete offensive message:`, error.message);
+                    await sock.sendMessage(chatId, {
+                        text: `❌ Failed to delete message: ${error.message}`
+                    });
+                    return;
+                }
+            } else {
+                await sock.sendMessage(chatId, {
+                    text: '❌ Please reply with "d" to a bullying alert message to delete the offensive content.'
+                });
+                return;
+            }
+        }
+
         // Process commands in private chat
         if (messageText && messageText.startsWith('#')) {
             console.log(`   Command Detected: ${messageText}`);

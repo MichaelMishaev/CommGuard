@@ -2,6 +2,8 @@
 // Bullying detection and monitoring service
 
 const { ALL_OFFENSIVE_WORDS } = require('./offensiveWordsDatabase');
+const { decodeLIDToPhone } = require('../utils/jidUtils');
+const offensiveMessageService = require('../database/offensiveMessageService');
 const { getTimestamp } = require('../utils/logger');
 const sentimentAnalysisService = require('./sentimentAnalysisService');
 
@@ -92,11 +94,27 @@ class BullyingMonitoringService {
             groupId,
             senderPhone,
             senderName,
+            senderJid,
             messageText,
             matchedWords,
             timestamp,
-            severity
+            severity,
+            messageId,
+            originalMessage
         } = alertData;
+
+        // Extract real phone number (decode LID if needed)
+        let realPhone = senderPhone;
+        if (senderJid && senderJid.includes('@lid')) {
+            try {
+                const decoded = await decodeLIDToPhone(sock, senderJid);
+                if (decoded) {
+                    realPhone = decoded;
+                }
+            } catch (error) {
+                console.error(`[${getTimestamp()}] ⚠️  Failed to decode LID:`, error.message);
+            }
+        }
 
         // Format severity icon
         const severityIcons = {
@@ -111,17 +129,20 @@ class BullyingMonitoringService {
             `📊 Severity: ${severity.toUpperCase()}\n` +
             `👥 Group: ${groupName}\n` +
             `📱 User: ${senderName || 'Unknown'}\n` +
-            `📞 Phone: ${senderPhone}\n` +
+            `📞 Phone: ${realPhone}\n` +
             `⏰ Time: ${new Date(timestamp).toLocaleString('he-IL', {
                 timeZone: 'Asia/Jerusalem',
-                year: 'numeric',
-                month: '2-digit',
                 day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit'
-            })}\n\n` +
+            }).replace(',', '')}\n\n` +
             `💬 Message:\n"${messageText}"\n\n` +
             `⚠️  Matched words (${matchedWords.length}): ${matchedWords.join(', ')}`;
+
+        // Store GPT analysis for database saving
+        let gptAnalysisData = null;
 
         // GPT Sentiment Analysis (only if words matched)
         try {
@@ -133,6 +154,18 @@ class BullyingMonitoringService {
             );
 
             if (analysis.analyzed) {
+                // Store for database
+                gptAnalysisData = {
+                    analyzed: true,
+                    severity: analysis.severity,
+                    confidence: analysis.confidence,
+                    category: analysis.category,
+                    explanation: analysis.explanation,
+                    emotionalImpact: analysis.emotionalImpact,
+                    recommendation: analysis.recommendation,
+                    cost: analysis.cost
+                };
+
                 // Add GPT analysis to alert
                 const confidenceEmoji = analysis.confidence >= 80 ? '🔴' :
                                        analysis.confidence >= 60 ? '🟡' : '🟢';
@@ -147,7 +180,7 @@ class BullyingMonitoringService {
                     `💰 Cost: $${analysis.cost.toFixed(6)} | Budget: $${analysis.budgetInfo.remaining.toFixed(4)} left`;
 
             } else if (analysis.reason === 'Daily budget reached') {
-                // Check if we need to send budget alert
+                // Send budget exhausted alert
                 await sentimentAnalysisService.sendBudgetAlert(sock);
             }
         } catch (error) {
@@ -158,19 +191,42 @@ class BullyingMonitoringService {
         // Add action options
         alertMessage += `\n\n━━━━━━━━━━━━━━━━━━━━━\n` +
             `Actions:\n` +
+            `• Reply with 'd' to delete this message\n` +
             `• Reply with #kick to remove user\n` +
             `• Send #bullywatch off to disable monitoring\n` +
             `• Or ignore this message`;
 
+        // Save to database
+        try {
+            await offensiveMessageService.saveOffensiveMessage({
+                messageId,
+                whatsappGroupId: groupId,
+                groupName,
+                senderPhone: realPhone,
+                senderName,
+                senderJid,
+                messageText,
+                matchedWords,
+                gptAnalysis: gptAnalysisData
+            });
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ⚠️  Failed to save offensive message to DB:`, error.message);
+            // Continue with alert even if DB save fails
+        }
+
         const adminJid = `${this.adminPhone}@s.whatsapp.net`;
 
         try {
+            // Send as quoted reply to original message (so admin can reply with 'd' to delete)
+            const quotedMessage = originalMessage ? { quoted: originalMessage } : {};
+
             await sock.sendMessage(adminJid, {
                 text: alertMessage
-            });
+            }, quotedMessage);
 
             console.log(`[${getTimestamp()}] ✅ Bullying alert sent to admin for ${groupName}`);
             console.log(`[${getTimestamp()}] 📊 Severity: ${severity}, Matched: ${matchedWords.length} words`);
+            console.log(`[${getTimestamp()}] 📞 Real phone: ${realPhone}`);
 
             return true;
         } catch (error) {
