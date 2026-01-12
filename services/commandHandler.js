@@ -1587,16 +1587,16 @@ class CommandHandler {
                           `✅ *Bullying Monitoring ENABLED*\n\n` +
                           `🛡️ קבוצה / Group: ${groupName}\n` +
                           `📚 כיתה / Class: ${className}\n\n` +
-                          `הודעות פוגעניות יזוהו אוטומטית וידווחו למנהל (+${config.ALERT_PHONE}).\n` +
-                          `Offensive messages will be automatically detected and reported to the administrator (+${config.ALERT_PHONE}).\n\n` +
+                          `👁️ *הבוט עוקב אחר השיחה*\n` +
+                          `👁️ *Bot is watching the conversation*\n\n` +
                           `הבוט יפקח על:\n` +
                           `The bot will monitor for:\n` +
                           `• בריונות והטרדה / Bullying and harassment\n` +
                           `• השפלת גוף / Body shaming\n` +
                           `• איומים ואלימות / Threats and violence\n` +
                           `• אפליה / Discrimination\n\n` +
-                          `הודעות לא נמחקות אוטומטית - המנהל יבדוק ויחליט.\n` +
-                          `Messages are NOT deleted automatically - admin will review and decide.`,
+                          `💬 שמרו על כבוד הדדי\n` +
+                          `💬 Keep it respectful`,
                     quoted: msg
                 });
 
