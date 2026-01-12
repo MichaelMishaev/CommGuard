@@ -1301,17 +1301,24 @@ async function handleMessage(sock, msg, commandHandler) {
     // Bullywatch v2.0 Anti-Bullying System (ONLY for groups with monitoring enabled OR #bullywatch tag)
     if (isGroup && messageText && messageText.trim().length > 0) {
         try {
+            console.log(`[${getTimestamp()}] 🔍 BULLYWATCH: Checking if analysis needed for message: "${messageText.substring(0, 30)}..."`);
+
             // Get group metadata for bullywatch
             const groupMetadata = await sock.groupMetadata(chatId).catch(() => null);
             const groupSubject = groupMetadata?.subject || '';
+            console.log(`[${getTimestamp()}] 🔍 BULLYWATCH: Group subject: "${groupSubject}"`);
 
             // Check if monitoring is enabled via database OR #bullywatch tag
             const groupService = require('./database/groupService');
             const isDatabaseEnabled = await groupService.isBullyingMonitoringEnabled(chatId);
+            console.log(`[${getTimestamp()}] 🔍 BULLYWATCH: isDatabaseEnabled = ${isDatabaseEnabled}`);
+
             const bullywatch = require('./services/bullywatch');
             const hasHashtagEnabled = bullywatch.isGroupEnabled(chatId, groupSubject);
+            console.log(`[${getTimestamp()}] 🔍 BULLYWATCH: hasHashtagEnabled = ${hasHashtagEnabled}`);
 
             if (isDatabaseEnabled || hasHashtagEnabled) {
+                console.log(`[${getTimestamp()}] ✅ BULLYWATCH: Analysis starting...`);
                 // Use new Bullywatch v2.0 system
                 const sender = msg.key.participant || msg.key.remoteJid;
                 const senderPhone = sender.split('@')[0];
@@ -1383,10 +1390,15 @@ async function handleMessage(sock, msg, commandHandler) {
                             console.error(`   ❌ Failed to delete message:`, deleteError.message);
                         }
                     }
+                } else {
+                    console.log(`[${getTimestamp()}] ℹ️  BULLYWATCH: No action needed (analyzed=${result.analyzed}, alertAdmin=${result.action?.alertAdmin})`);
                 }
+            } else {
+                console.log(`[${getTimestamp()}] ⏭️  BULLYWATCH: Skipping - monitoring NOT enabled for this group`);
             }
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Bullywatch v2.0 error:`, error.message);
+            console.error(`[${getTimestamp()}] ❌ Error stack:`, error.stack);
             // Continue processing even if monitoring fails
         }
     }
