@@ -1323,23 +1323,48 @@ async function handleMessage(sock, msg, commandHandler) {
             if (quotedMsg && quotedStanzaId) {
                 try {
                     const offensiveMessageService = require('./database/offensiveMessageService');
+                    const { getRedis } = require('./services/redisService');
+
+                    // The quotedStanzaId is the ALERT message ID sent to admin
+                    // We need to look up the ORIGINAL message ID from Redis mapping
+                    let originalMessageId = null;
+
+                    try {
+                        const redis = getRedis();
+                        originalMessageId = await redis.get(`alert_to_original:${quotedStanzaId}`);
+
+                        if (originalMessageId) {
+                            console.log(`[${getTimestamp()}] 🔗 Found mapping: ${quotedStanzaId} → ${originalMessageId}`);
+                        } else {
+                            console.log(`[${getTimestamp()}] ⚠️  No Redis mapping found for alert ${quotedStanzaId}`);
+                        }
+                    } catch (redisError) {
+                        console.error(`[${getTimestamp()}] ⚠️  Redis lookup failed:`, redisError.message);
+                    }
+
+                    // Use the original message ID if found, otherwise try the quoted ID (fallback)
+                    const messageIdToDelete = originalMessageId || quotedStanzaId;
 
                     // Get message from database to find group and verify it exists
-                    const offensive = await offensiveMessageService.getOffensiveMessage(quotedStanzaId);
+                    const offensive = await offensiveMessageService.getOffensiveMessage(messageIdToDelete);
 
                     if (offensive) {
-                        // Delete the message from the group
+                        // Delete the message from the group using the ORIGINAL message ID
                         const groupId = offensive.whatsapp_group_id;
                         const messageKey = {
                             remoteJid: groupId,
-                            id: quotedStanzaId,
-                            participant: quotedParticipant || undefined
+                            id: messageIdToDelete,  // Use original message ID
+                            participant: offensive.sender_jid || undefined  // Use actual sender's JID from database
                         };
+
+                        console.log(`[${getTimestamp()}] 🗑️  Deleting message from group ${groupId}`);
+                        console.log(`[${getTimestamp()}] 📋 Message ID: ${messageIdToDelete}`);
+                        console.log(`[${getTimestamp()}] 👤 Participant: ${offensive.sender_jid}`);
 
                         await sock.sendMessage(groupId, { delete: messageKey });
 
                         // Mark as deleted in database
-                        await offensiveMessageService.markMessageAsDeleted(quotedStanzaId);
+                        await offensiveMessageService.markMessageAsDeleted(messageIdToDelete);
 
                         await sock.sendMessage(chatId, {
                             text: `✅ Offensive message deleted from "${offensive.group_name}"\n\n` +
@@ -1348,11 +1373,12 @@ async function handleMessage(sock, msg, commandHandler) {
                                   `💬 Message: "${offensive.message_text.substring(0, 100)}..."`
                         });
 
-                        console.log(`[${getTimestamp()}] 🗑️  Admin deleted offensive message: ${quotedStanzaId}`);
+                        console.log(`[${getTimestamp()}] 🗑️  Admin deleted offensive message: ${messageIdToDelete}`);
                         return;
                     } else {
                         await sock.sendMessage(chatId, {
-                            text: '❌ Message not found in database. It may have been already deleted or is too old.'
+                            text: '❌ Message not found in database. It may have been already deleted or is too old.\n\n' +
+                                  `🔍 Debug: Tried to find message ID: ${messageIdToDelete}`
                         });
                         return;
                     }

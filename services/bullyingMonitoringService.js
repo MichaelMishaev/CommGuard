@@ -220,9 +220,30 @@ class BullyingMonitoringService {
             // Send as quoted reply to original message (so admin can reply with 'd' to delete)
             const quotedMessage = originalMessage ? { quoted: originalMessage } : {};
 
-            await sock.sendMessage(adminJid, {
+            const sentMessage = await sock.sendMessage(adminJid, {
                 text: alertMessage
             }, quotedMessage);
+
+            // Store mapping of alert message ID → original message ID for delete functionality
+            // This allows admin to reply 'd' to the alert to delete the original offensive message
+            if (sentMessage && sentMessage.key && sentMessage.key.id && messageId) {
+                try {
+                    const { getRedis } = require('./redisService');
+                    const redis = getRedis();
+
+                    // Store mapping for 24 hours (messages older than this can't be deleted)
+                    await redis.setex(
+                        `alert_to_original:${sentMessage.key.id}`,
+                        86400,
+                        messageId
+                    );
+
+                    console.log(`[${getTimestamp()}] 🔗 Stored alert mapping: ${sentMessage.key.id} → ${messageId}`);
+                } catch (redisError) {
+                    console.error(`[${getTimestamp()}] ⚠️  Failed to store alert mapping:`, redisError.message);
+                    // Non-critical error - delete will still work if message is recent
+                }
+            }
 
             console.log(`[${getTimestamp()}] ✅ Bullying alert sent to admin for ${groupName}`);
             console.log(`[${getTimestamp()}] 📊 Severity: ${severity}, Matched: ${matchedWords.length} words`);
