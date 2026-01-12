@@ -20,7 +20,7 @@ class SentimentAnalysisService {
     constructor() {
         this.openai = null;
         this.dailyBudget = 1.00; // $1 per day
-        this.costPerMessage = 0.0024; // Estimated for GPT-5 mini (~300 tokens @ $8/1M tokens)
+        this.costPerMessage = 0.001; // Estimated for GPT-5 mini (~300 tokens @ $0.25 input + $2 output per 1M)
 
         // Load alert phone from config
         const config = require('../config');
@@ -33,8 +33,12 @@ class SentimentAnalysisService {
         this.budgetReachedAlertSent = false;
 
         // Model configuration
-        this.model = 'gpt-4o-mini'; // Stable, cost-efficient, reliable (gpt-5-mini had intermittent failures)
+        this.model = 'gpt-5-mini'; // Latest GPT-5 mini model
         this.maxTokens = 500; // Sufficient for JSON response generation
+
+        // GPT-5 specific parameters
+        this.verbosity = 'low'; // Keep responses concise to save tokens
+        this.reasoningEffort = 'low'; // Fast responses for bullying detection
 
         this.initialized = false;
     }
@@ -62,7 +66,7 @@ class SentimentAnalysisService {
 
             this.initialized = true;
             console.log(`${formatTimestamp()} 🧠 Sentiment Analysis Service initialized`);
-            console.log(`${formatTimestamp()} 📊 Model: ${this.model} (GPT-4o mini)`);
+            console.log(`${formatTimestamp()} 📊 Model: ${this.model} (GPT-5 mini with Responses API)`);
             console.log(`${formatTimestamp()} 💰 Daily budget: $${this.dailyBudget.toFixed(2)}`);
             console.log(`${formatTimestamp()} 💵 Today spent: $${this.todaySpent.toFixed(4)} (${this.messageCount} messages)`);
 
@@ -215,23 +219,17 @@ class SentimentAnalysisService {
             console.log(`${formatTimestamp()} 🧠 Analyzing message with GPT-5 mini...`);
             console.log(`${formatTimestamp()} 🔍 Prompt length: ${prompt.length} chars`);
 
+            // GPT-5 mini uses Responses API with new parameters
+            const fullPrompt = `You are an expert in detecting bullying, harassment, and emotional harm in teenage group chats. You understand both Hebrew and English, including slang, sarcasm, and cultural context.\n\n${prompt}`;
+
             // Add timeout to prevent hanging API calls
             const response = await Promise.race([
-                this.openai.chat.completions.create({
+                this.openai.responses.create({
                     model: this.model,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: 'You are an expert in detecting bullying, harassment, and emotional harm in teenage group chats. You understand both Hebrew and English, including slang, sarcasm, and cultural context.'
-                        },
-                        {
-                            role: 'user',
-                            content: prompt
-                        }
-                    ],
-                    max_completion_tokens: this.maxTokens // Use max_completion_tokens for GPT-5 models
-                    // Note: GPT-5 mini only supports temperature: 1 (default), so we omit it
-                    // Note: Removed response_format to test if it causes empty responses
+                    input: fullPrompt,
+                    reasoning: { effort: this.reasoningEffort },
+                    text: { verbosity: this.verbosity },
+                    max_completion_tokens: this.maxTokens
                 }),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('OpenAI API timeout after 15 seconds')), 15000)
@@ -241,14 +239,13 @@ class SentimentAnalysisService {
             // Debug: Log full response structure
             console.log(`${formatTimestamp()} 📊 Response metadata:`, {
                 model: response.model,
-                finish_reason: response.choices[0]?.finish_reason,
-                content_length: response.choices[0]?.message?.content?.length || 0
+                content_length: response.output_text?.length || 0
             });
 
             // Parse and validate JSON response
             let result;
             try {
-                const rawContent = response.choices[0].message.content;
+                const rawContent = response.output_text;
 
                 // Try to extract JSON from response (in case there's surrounding text)
                 let jsonContent = rawContent;
@@ -272,12 +269,12 @@ class SentimentAnalysisService {
                 console.log(`${formatTimestamp()} ✅ Successfully parsed GPT response`);
             } catch (parseError) {
                 console.error(`${formatTimestamp()} ❌ Failed to parse GPT response:`, parseError.message);
-                console.error(`${formatTimestamp()} Raw response (full):`, response.choices[0].message.content);
+                console.error(`${formatTimestamp()} Raw response (full):`, response.output_text);
 
                 return {
                     analyzed: false,
                     error: 'Invalid GPT response format',
-                    rawResponse: response.choices[0].message.content
+                    rawResponse: response.output_text
                 };
             }
 
@@ -383,10 +380,13 @@ Provide a JSON response with the following fields:
      * Calculate API call cost based on token usage
      */
     calculateCost(usage) {
-        // GPT-5 mini pricing estimate: ~$8 per 1M tokens (combined input/output)
-        // More accurate pricing TBD from OpenAI API
-        const inputCost = (usage.prompt_tokens / 1000000) * 4; // $4 per 1M input tokens
-        const outputCost = (usage.completion_tokens / 1000000) * 12; // $12 per 1M output tokens
+        // GPT-5 mini official pricing (2026)
+        // Source: https://openai.com/index/introducing-gpt-5-for-developers/
+        const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
+        const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
+
+        const inputCost = (inputTokens / 1000000) * 0.25; // $0.25 per 1M input tokens
+        const outputCost = (outputTokens / 1000000) * 2.0; // $2.00 per 1M output tokens
         return inputCost + outputCost;
     }
 
