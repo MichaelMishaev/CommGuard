@@ -4,6 +4,8 @@
  * Run: node database/apply-offensive-messages-table.js
  */
 
+require('dotenv').config(); // Load environment variables
+
 const fs = require('fs');
 const path = require('path');
 const { pool, query, initDatabase } = require('./connection');
