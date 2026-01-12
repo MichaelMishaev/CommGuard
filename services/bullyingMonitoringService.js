@@ -209,24 +209,62 @@ class BullyingMonitoringService {
         // Retrieve conversation context (last 5 messages) for better accuracy
         let conversationContext = [];
         try {
+            const CONFIG = require('./sentimentAnalysisConfig');
             const { getRedis } = require('./redisService');
             const redis = getRedis();
-            const contextKey = `group_context:${groupId}`;
+            const contextKey = `${CONFIG.REDIS_KEY_CONTEXT}:${groupId}`;
 
             // Get last 5 messages (excluding current one)
             const contextData = await redis.lrange(contextKey, 1, 5);
 
-            // Parse and format context messages
+            // Parse and VALIDATE context messages (SECURITY: prevent injection)
             conversationContext = contextData.map(data => {
                 try {
-                    return JSON.parse(data);
+                    const parsed = JSON.parse(data);
+
+                    // SECURITY: Validate structure and types
+                    if (!parsed || typeof parsed !== 'object') {
+                        console.warn(`[${getTimestamp()}] ⚠️  Invalid context: not an object`);
+                        return null;
+                    }
+
+                    if (!parsed.sender || typeof parsed.sender !== 'string') {
+                        console.warn(`[${getTimestamp()}] ⚠️  Invalid context: missing/invalid sender`);
+                        return null;
+                    }
+
+                    if (!parsed.text || typeof parsed.text !== 'string') {
+                        console.warn(`[${getTimestamp()}] ⚠️  Invalid context: missing/invalid text`);
+                        return null;
+                    }
+
+                    if (!parsed.timestamp || typeof parsed.timestamp !== 'number') {
+                        console.warn(`[${getTimestamp()}] ⚠️  Invalid context: missing/invalid timestamp`);
+                        return null;
+                    }
+
+                    // SECURITY: Validate timestamp is recent (prevent old/fake data)
+                    const age = Date.now() - parsed.timestamp;
+                    if (age < 0 || age > 3600000) { // Max 1 hour old
+                        console.warn(`[${getTimestamp()}] ⚠️  Invalid context: timestamp out of range (${Math.floor(age / 1000)}s old)`);
+                        return null;
+                    }
+
+                    // SECURITY: Validate text length (prevent abuse)
+                    if (parsed.text.length > 1000) {
+                        console.warn(`[${getTimestamp()}] ⚠️  Invalid context: text too long (${parsed.text.length} chars)`);
+                        return null;
+                    }
+
+                    return parsed;
                 } catch (e) {
+                    console.warn(`[${getTimestamp()}] ⚠️  Failed to parse context message:`, e.message);
                     return null;
                 }
             }).filter(Boolean);
 
             if (conversationContext.length > 0) {
-                console.log(`[${getTimestamp()}] 💬 Retrieved ${conversationContext.length} context messages for GPT analysis`);
+                console.log(`[${getTimestamp()}] 💬 Retrieved ${conversationContext.length} validated context messages for GPT analysis`);
             }
         } catch (error) {
             console.error(`[${getTimestamp()}] ⚠️  Failed to retrieve context:`, error.message);
@@ -323,8 +361,8 @@ class BullyingMonitoringService {
 
                     // Store mapping for 24 hours (messages older than this can't be deleted)
                     await redis.setex(
-                        `alert_to_original:${sentMessage.key.id}`,
-                        86400,
+                        `${CONFIG.REDIS_KEY_ALERT_MAP}:${sentMessage.key.id}`,
+                        CONFIG.ALERT_MAPPING_TTL_SECONDS,
                         messageId
                     );
 

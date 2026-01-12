@@ -1247,6 +1247,7 @@ async function handleMessage(sock, msg, commandHandler) {
     // This allows GPT to see conversation history for better accuracy
     if (isGroup && messageText && messageText.trim().length > 0) {
         try {
+            const CONFIG = require('./services/sentimentAnalysisConfig');
             const { getRedis } = require('./services/redisService');
             const redis = getRedis();
 
@@ -1258,11 +1259,11 @@ async function handleMessage(sock, msg, commandHandler) {
                 timestamp: msg.messageTimestamp * 1000
             });
 
-            // Store in Redis list (keep last 5 messages per group)
-            const contextKey = `group_context:${chatId}`;
+            // Store in Redis list (keep last N messages per group)
+            const contextKey = `${CONFIG.REDIS_KEY_CONTEXT}:${chatId}`;
             await redis.lpush(contextKey, messageData);
-            await redis.ltrim(contextKey, 0, 4); // Keep only last 5 messages
-            await redis.expire(contextKey, 3600); // Expire after 1 hour
+            await redis.ltrim(contextKey, 0, CONFIG.CONTEXT_WINDOW_SIZE - 1); // Keep last 5 messages (0-4)
+            await redis.expire(contextKey, CONFIG.CONTEXT_TTL_SECONDS); // Expire after 5 minutes
         } catch (error) {
             console.error(`[${getTimestamp()}] ⚠️  Failed to store message context:`, error.message);
             // Non-critical - continue processing
@@ -1356,8 +1357,9 @@ async function handleMessage(sock, msg, commandHandler) {
                     let originalMessageId = null;
 
                     try {
+                        const SENTIMENT_CONFIG = require('./services/sentimentAnalysisConfig');
                         const redis = getRedis();
-                        originalMessageId = await redis.get(`alert_to_original:${quotedStanzaId}`);
+                        originalMessageId = await redis.get(`${SENTIMENT_CONFIG.REDIS_KEY_ALERT_MAP}:${quotedStanzaId}`);
 
                         if (originalMessageId) {
                             console.log(`[${getTimestamp()}] 🔗 Found mapping: ${quotedStanzaId} → ${originalMessageId}`);

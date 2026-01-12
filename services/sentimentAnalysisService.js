@@ -1,5 +1,6 @@
 const { OpenAI } = require('openai');
 const { getTimestamp } = require('../utils/logger');
+const CONFIG = require('./sentimentAnalysisConfig');
 
 // Helper to format timestamp consistently
 const formatTimestamp = () => `[${getTimestamp()}]`;
@@ -9,18 +10,26 @@ const formatTimestamp = () => `[${getTimestamp()}]`;
  * Analyzes messages for bullying, harassment, and emotional harm
  *
  * Features:
- * - Context-aware sentiment analysis
+ * - Context-aware sentiment analysis with 5-message window
  * - Detects subtle bullying (sarcasm, exclusion, manipulation)
  * - Supports Hebrew and English
  * - Daily budget cap ($1/day)
+ * - Rate limiting (10 calls/min, 1s interval)
+ * - Prompt injection prevention via structured output
+ * - Atomic cost tracking with Redis
  * - Cost tracking and alerts
+ *
+ * Security:
+ * - Structured output enforces JSON schema (prevents prompt injection)
+ * - Input sanitization blocks instruction hijacking
+ * - Rate limiting prevents DoS and budget drain
+ * - Atomic Redis operations prevent race conditions
  */
 
 class SentimentAnalysisService {
     constructor() {
         this.openai = null;
-        this.dailyBudget = 1.00; // $1 per day
-        this.costPerMessage = 0.001; // Estimated for GPT-5 mini (~300 tokens @ $0.25 input + $2 output per 1M)
+        this.dailyBudget = CONFIG.DAILY_BUDGET_USD;
 
         // Load alert phone from config
         const config = require('../config');
@@ -33,12 +42,16 @@ class SentimentAnalysisService {
         this.budgetReachedAlertSent = false;
 
         // Model configuration
-        this.model = 'gpt-5-mini'; // Latest GPT-5 mini model
-        this.maxTokens = 500; // Sufficient for JSON response generation
+        this.model = CONFIG.MODEL;
+        this.maxTokens = CONFIG.MAX_OUTPUT_TOKENS;
+        this.verbosity = CONFIG.VERBOSITY;
+        this.reasoningEffort = CONFIG.REASONING_EFFORT;
 
-        // GPT-5 specific parameters
-        this.verbosity = 'low'; // Keep responses concise to save tokens
-        this.reasoningEffort = 'low'; // Fast responses for bullying detection
+        // Rate limiting (anti-abuse protection)
+        this.apiCallTimestamps = []; // Track recent calls
+        this.maxCallsPerMinute = CONFIG.MAX_CALLS_PER_MINUTE;
+        this.minCallInterval = CONFIG.MIN_CALL_INTERVAL_MS;
+        this.lastCallTime = 0;
 
         this.initialized = false;
     }
@@ -83,14 +96,15 @@ class SentimentAnalysisService {
             const { getRedis } = require('../services/redisService');
             const redis = getRedis();
             const today = new Date().toISOString().split('T')[0];
+            const key = `${CONFIG.REDIS_KEY_COSTS}:${today}`;
 
-            const costData = await redis.get(`sentiment_costs:${today}`);
+            // Load from hash
+            const costData = await redis.hgetall(key);
 
-            if (costData) {
-                const parsed = JSON.parse(costData);
-                this.todaySpent = parsed.spent || 0;
-                this.messageCount = parsed.count || 0;
-                this.budgetReachedAlertSent = parsed.alertSent || false;
+            if (costData && Object.keys(costData).length > 0) {
+                this.todaySpent = parseFloat(costData.spent) || 0;
+                this.messageCount = parseInt(costData.count) || 0;
+                this.budgetReachedAlertSent = costData.alertSent === '1';
                 console.log(`${formatTimestamp()} 📥 Loaded today's costs from Redis`);
             }
         } catch (error) {
@@ -100,23 +114,35 @@ class SentimentAnalysisService {
     }
 
     /**
-     * Save daily costs to Redis
+     * Save daily costs to Redis (ATOMIC - prevents race conditions)
+     * @param {number} costDelta - Cost to add (pass 0 to just update metadata)
      */
-    async saveDailyCosts() {
+    async saveDailyCosts(costDelta = 0) {
         try {
             const { getRedis } = require('../services/redisService');
             const redis = getRedis();
             const today = new Date().toISOString().split('T')[0];
+            const key = `${CONFIG.REDIS_KEY_COSTS}:${today}`;
 
-            const costData = {
-                spent: this.todaySpent,
-                count: this.messageCount,
-                alertSent: this.budgetReachedAlertSent,
-                lastUpdated: new Date().toISOString()
-            };
+            // Use Redis hash for atomic operations
+            const multi = redis.multi();
 
-            // Expire at end of day (24 hours + buffer)
-            await redis.setex(`sentiment_costs:${today}`, 86400 + 3600, JSON.stringify(costData));
+            if (costDelta > 0) {
+                multi.hincrbyfloat(key, 'spent', costDelta);
+                multi.hincrby(key, 'count', 1);
+            }
+            multi.hset(key, 'alertSent', this.budgetReachedAlertSent ? '1' : '0');
+            multi.hset(key, 'lastUpdated', new Date().toISOString());
+
+            // Expire at midnight + buffer
+            const now = new Date();
+            const midnight = new Date(now);
+            midnight.setHours(24, 0, 0, 0);
+            const secondsUntilMidnight = Math.floor((midnight - now) / 1000);
+            const expirySeconds = secondsUntilMidnight + (CONFIG.COST_EXPIRY_BUFFER_HOURS * 3600);
+            multi.expire(key, expirySeconds);
+
+            await multi.exec();
 
         } catch (error) {
             console.error(`${formatTimestamp()} ⚠️  Failed to save costs to Redis:`, error.message);
@@ -200,6 +226,38 @@ class SentimentAnalysisService {
      * @returns {Object} Analysis result
      */
     async analyzeMessage(messageText, matchedWords = [], senderName = '', groupName = '', conversationContext = []) {
+        // SECURITY: Rate limiting check (prevents DoS and budget drain)
+        const now = Date.now();
+
+        // 1. Minimum interval between calls (prevent rapid spam)
+        if (now - this.lastCallTime < this.minCallInterval) {
+            const waited = now - this.lastCallTime;
+            console.warn(`${formatTimestamp()} ⏱️  Rate limited: Too fast (${waited}ms < ${this.minCallInterval}ms)`);
+            return {
+                analyzed: false,
+                reason: 'Rate limited - calls too frequent',
+                rateLimitInfo: {
+                    minInterval: this.minCallInterval,
+                    actualInterval: waited
+                }
+            };
+        }
+
+        // 2. Maximum calls per minute (prevent burst attacks)
+        this.apiCallTimestamps = this.apiCallTimestamps.filter(t => now - t < 60000);
+        if (this.apiCallTimestamps.length >= this.maxCallsPerMinute) {
+            console.warn(`${formatTimestamp()} ⏱️  Rate limited: ${this.maxCallsPerMinute} calls/minute exceeded`);
+            return {
+                analyzed: false,
+                reason: 'Rate limited - too many calls per minute',
+                rateLimitInfo: {
+                    maxPerMinute: this.maxCallsPerMinute,
+                    currentCount: this.apiCallTimestamps.length
+                }
+            };
+        }
+
+        // SECURITY: Budget check
         const budgetCheck = this.canAnalyze();
 
         if (!budgetCheck.allowed) {
@@ -223,19 +281,30 @@ class SentimentAnalysisService {
             // GPT-5 mini uses Responses API with new parameters
             const fullPrompt = `You are an expert in detecting bullying, harassment, and emotional harm in teenage group chats. You understand both Hebrew and English, including slang, sarcasm, and cultural context.\n\n${prompt}`;
 
-            // Add timeout to prevent hanging API calls
+            // SECURITY: Structured output enforces JSON schema (prevents prompt injection)
+            // Timeout reduced from 15s to 5s for better UX
             const response = await Promise.race([
                 this.openai.responses.create({
                     model: this.model,
                     input: fullPrompt,
                     reasoning: { effort: this.reasoningEffort },
                     text: { verbosity: this.verbosity },
-                    max_output_tokens: this.maxTokens // Responses API uses max_output_tokens
+                    max_output_tokens: this.maxTokens,
+                    response_format: CONFIG.RESPONSE_SCHEMA // Enforces JSON structure
                 }),
                 new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('OpenAI API timeout after 15 seconds')), 15000)
+                    setTimeout(() => reject(new Error(`OpenAI API timeout after ${CONFIG.API_TIMEOUT_MS}ms`)), CONFIG.API_TIMEOUT_MS)
                 )
             ]);
+
+            // Track this call for rate limiting
+            this.lastCallTime = now;
+            this.apiCallTimestamps.push(now);
+
+            // Memory safety: prevent timestamp array from growing unbounded
+            if (this.apiCallTimestamps.length > CONFIG.MAX_TIMESTAMPS_STORED) {
+                this.apiCallTimestamps = this.apiCallTimestamps.slice(-100);
+            }
 
             // Debug: Log full response structure
             console.log(`${formatTimestamp()} 📊 Response metadata:`, {
@@ -279,11 +348,11 @@ class SentimentAnalysisService {
                 };
             }
 
-            // Track costs
+            // Track costs (ATOMIC - prevents race conditions)
             const cost = this.calculateCost(response.usage);
             this.todaySpent += cost;
             this.messageCount++;
-            await this.saveDailyCosts();
+            await this.saveDailyCosts(cost); // Pass delta for atomic increment
 
             console.log(`${formatTimestamp()} ✅ Analysis complete - Cost: $${cost.toFixed(6)} | Total: $${this.todaySpent.toFixed(4)}`);
 
@@ -310,6 +379,7 @@ class SentimentAnalysisService {
 
     /**
      * Sanitize user input to prevent prompt injection
+     * SECURITY: Enhanced protection against instruction hijacking and JSON injection
      * @param {string} input - Raw user input
      * @returns {string} Sanitized input
      */
@@ -319,12 +389,28 @@ class SentimentAnalysisService {
         }
 
         return input
-            .replace(/\*\*/g, '')     // Remove markdown bold
-            .replace(/```/g, '')      // Remove code blocks
-            .replace(/---/g, '')      // Remove horizontal rules
-            .replace(/#{1,6}\s/g, '') // Remove markdown headings
-            .replace(/\[|\]/g, '')    // Remove brackets
-            .slice(0, 500);           // Limit length to prevent abuse
+            // SECURITY: Remove instruction injection attempts
+            .replace(/ignore\s+(previous|all|above|earlier|prior)/gi, '[REMOVED]')
+            .replace(/\b(you\s+are|act\s+as|pretend|system|assistant|instruction|command)/gi, '[REMOVED]')
+            .replace(/\b(disregard|forget|override|bypass|skip)\b/gi, '[REMOVED]')
+
+            // SECURITY: Remove JSON structure characters (prevent JSON injection)
+            .replace(/[{}]/g, '')        // Remove braces
+            .replace(/["'`]/g, '')       // Remove quotes
+            .replace(/\\[nrt]/g, '')     // Remove escape sequences
+
+            // Remove markdown formatting (cosmetic)
+            .replace(/\*\*/g, '')        // Bold
+            .replace(/```/g, '')         // Code blocks
+            .replace(/---/g, '')         // Horizontal rules
+            .replace(/#{1,6}\s/g, '')    // Headings
+            .replace(/\[|\]/g, '')       // Brackets
+
+            // SECURITY: Normalize Unicode (prevent homoglyph attacks)
+            .normalize('NFKD')
+
+            // Limit length to prevent abuse
+            .slice(0, CONFIG.MAX_INPUT_LENGTH);
     }
 
     /**
@@ -430,8 +516,8 @@ Provide a JSON response with the following fields:
         const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
         const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
 
-        const inputCost = (inputTokens / 1000000) * 0.25; // $0.25 per 1M input tokens
-        const outputCost = (outputTokens / 1000000) * 2.0; // $2.00 per 1M output tokens
+        const inputCost = (inputTokens / 1000000) * CONFIG.INPUT_COST_PER_1M_TOKENS;
+        const outputCost = (outputTokens / 1000000) * CONFIG.OUTPUT_COST_PER_1M_TOKENS;
         return inputCost + outputCost;
     }
 
