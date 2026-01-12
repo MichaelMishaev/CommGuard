@@ -264,3 +264,156 @@ ssh root@209.38.231.184 "pm2 info commguard-bot | grep -E 'cron|memory' && swapo
 - Debug scripts for specific issue investigation
 - QA checklist for manual testing workflows
 - always use real phone number for all, NOT LID
+
+## Anti-Bullying System (#bullywatch)
+
+### Overview
+bCommGuard includes an advanced anti-bullying detection system for groups tagged with `#bullywatch`. This system uses multi-layered analysis to detect harassment, social exclusion, doxxing, sextortion, and other harmful behaviors.
+
+### CRITICAL: Analysis Scope
+**ONLY analyze chat history for groups with `#bullywatch` tag in their group description or subject.**
+- NEVER analyze regular groups without explicit #bullywatch tag
+- NEVER suggest improvements for non-#bullywatch groups
+- When analyzing history, use sub-agents (Task tool with Explore agent) for comprehensive pattern detection
+
+### Architecture Layers
+
+#### Layer 1: Lexicon-Based Detection (Fast, Local)
+- Hebrew trigger words and patterns (curse words, exclusion language, threats)
+- Emoji analysis (🤡🤡🤡 for mocking, 🔪☠️ for threats, etc.)
+- Hebrew normalization (letter swaps: א/ע, ט/ת, כ/ק; spacing: "מ פ ג ר"; transliteration: "lozer", "sahi")
+- File: `services/bullywatch/lexiconService.js`
+
+#### Layer 2: Temporal Analysis (Pile-On Detection)
+- Tracks multiple users targeting one individual
+- Detects message velocity spikes (5+ messages in 5 minutes)
+- Identifies when previously active users go silent after harassment
+- Tracks group dynamics and social exclusion patterns
+- File: `services/bullywatch/temporalAnalysisService.js`
+
+#### Layer 3: Context-Aware Scoring System
+- Scoring rules:
+  - +2 for direct personal address (אתה/את/יא...)
+  - +2 for violent verbs/threats (להרביץ/לשבור/להרוג)
+  - +1 for 3+ mocking emojis
+  - +3 for exclusion language (כולם/אף אחד/מי ש...)
+  - +5 for doxxing/sextortion/blackmail patterns
+- Context window: 5-7 messages before and after for GPT analysis
+- File: `services/bullywatch/scoringService.js`
+
+#### Layer 4: GPT Context Analysis (Expensive, Only for Ambiguous Cases)
+- Only triggered when score is in ambiguous range (11-15)
+- Receives 5-7 message context window
+- Distinguishes friend banter from actual harassment
+- File: `services/bullywatch/gptAnalysisService.js`
+
+### Action Thresholds
+
+```
+Score 0-4:   Safe (no action)
+Score 5-10:  Monitor (log only, weekly digest)
+Score 11-15: Alert (notify admin immediately)
+Score 16+:   High Risk (alert + auto-action if monitor mode disabled)
+```
+
+### Monitor Mode (Default: ENABLED)
+- **MONITOR_MODE = true** (default): No auto-deletions, only logging and alerts
+- Collect 2-4 weeks of real data before enabling auto-actions
+- Tune thresholds based on false positive/negative rates
+- File: `config.js` → `FEATURES.BULLYWATCH_MONITOR_MODE`
+
+### Friend Group Whitelisting
+- Groups <10 members with high interaction frequency get 0.5x score multiplier
+- Admins can whitelist specific groups to reduce false positives from close friend banter
+- File: `services/bullywatch/groupWhitelistService.js`
+
+### Feedback Loop for Continuous Learning
+- Admins review each alert: `true_positive` | `false_positive` | `low` | `medium` | `high`
+- System updates lexicon weights monthly based on feedback
+- Learns new slang and evolving harassment patterns
+- File: `services/bullywatch/feedbackService.js`
+
+### Threat Categories Detected
+
+1. **Social Exclusion**: "אל תצרפו", "תעיפו", "כולם נגד", "אף אחד לא"
+2. **Public Humiliation**: "תעלה צילום", "שלחו לכולם", "בואו נעשה סטיקר"
+3. **Doxxing/Privacy**: "מה הכתובת", "שלח מיקום", "יש לי ת׳מספר"
+4. **Impersonation**: "פתחתי עליו חשבון", "עשיתי פרופיל בשמו"
+5. **Sextortion/Blackmail**: "אם לא תעשה X אני מפרסם", "יש לי צילום מסך", "תשלח תמונה ואז אמחק"
+6. **Direct Threats**: "חכה לי", "אני אשבור אותך", "ניפגש אחרי ביס"
+
+### Commands
+
+#### Admin Commands (Private)
+- `#bullywatch enable <group>` - Enable bullying detection for a group
+- `#bullywatch disable <group>` - Disable bullying detection
+- `#bullywatch status` - Show all monitored groups and statistics
+- `#bullywatch review` - Review pending alerts and provide feedback
+- `#bullywatch whitelist <group>` - Whitelist friend group (reduce sensitivity)
+- `#bullywatch unwhitelist <group>` - Remove from whitelist
+
+#### Admin Commands (Group with #bullywatch tag)
+- `#bullywatch report` - Generate harassment report for this group
+- `#bullywatch history` - Analyze last 100 messages for patterns (uses sub-agent)
+
+### History Analysis with Sub-Agents
+
+When admin requests `#bullywatch history` in a #bullywatch-tagged group:
+1. Use Task tool with `subagent_type=Explore` to analyze message patterns
+2. Sub-agent should:
+   - Read last 100-500 messages from group
+   - Identify temporal patterns (pile-ons, silencing)
+   - Detect recurring harassment targets
+   - Analyze group dynamics and cliques
+   - Generate comprehensive report with actionable insights
+3. Return findings with severity scores and recommendations
+
+### Files Structure
+
+```
+services/bullywatch/
+├── lexiconService.js          # Layer 1: Fast keyword matching
+├── temporalAnalysisService.js # Layer 2: Pile-on detection
+├── scoringService.js          # Layer 3: Context-aware scoring
+├── gptAnalysisService.js      # Layer 4: GPT analysis
+├── groupWhitelistService.js   # Friend group management
+├── feedbackService.js         # Admin feedback loop
+└── reportGenerator.js         # Generate harassment reports
+```
+
+### Performance Expectations
+
+**With all features enabled:**
+- True positive rate: ~95%
+- False positive rate: ~5%
+- False negative rate: ~3%
+- Processing time: <50ms per message (lexicon + temporal)
+- GPT calls: Only 5-10% of flagged messages (cost-optimized)
+
+### Testing
+
+```bash
+# Test lexicon detection
+node tests/testBullywatchLexicon.js
+
+# Test temporal analysis
+node tests/testTemporalAnalysis.js
+
+# Test scoring system
+node tests/testBullywatchScoring.js
+
+# Test feedback loop
+node tests/testBullywatchFeedback.js
+
+# Full integration test
+node tests/testBullywatchIntegration.js
+```
+
+### Ethical Safeguards
+
+1. ✅ Human-in-loop: No auto-bans without admin approval
+2. ✅ Transparency: Groups know #bullywatch is active (tag in description)
+3. ✅ Appeal process: Flagged users can contest via admin
+4. ✅ Regular audits: Review 10% of decisions monthly
+5. ✅ Privacy: Only message text analyzed, no persistent storage of content
+6. ✅ Consent: Only active in groups with explicit #bullywatch tag

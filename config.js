@@ -27,6 +27,11 @@ module.exports = {
     STEALTH_MODE: true, // Enable human-like behavior to avoid detection
     RANDOMIZE_RESPONSES: true, // Use varied message responses
     SIMULATE_TYPING: true, // Show typing indicators before messages
+
+    // Anti-Bullying System (#bullywatch)
+    BULLYWATCH_ENABLED: true, // Enable bullying detection system
+    BULLYWATCH_MONITOR_MODE: true, // CRITICAL: Start in monitor mode (no auto-deletions)
+    BULLYWATCH_GPT_ANALYSIS: true, // Use GPT for ambiguous cases (requires OPENAI_API_KEY)
   },
   
   // Regex patterns
@@ -56,6 +61,45 @@ module.exports = {
     // Presence simulation
     PRESENCE_UPDATE_CHANCE: 0.8, // 80% chance to show typing
     RANDOM_DELAYS: true, // add random variations to all delays
+  },
+
+  // Anti-Bullying System (#bullywatch) Configuration
+  BULLYWATCH: {
+    // Scoring thresholds
+    THRESHOLDS: {
+      SAFE: 4,         // 0-4: No action
+      MONITOR: 10,     // 5-10: Log for weekly digest
+      ALERT: 15,       // 11-15: Alert admin immediately (GPT analysis triggered)
+      HIGH_RISK: 16,   // 16+: High risk (auto-action if monitor mode disabled)
+    },
+
+    // GPT Analysis settings
+    GPT: {
+      CONTEXT_WINDOW_SIZE: 5, // Number of messages before/after (total 11 with current)
+      MAX_CALLS_PER_HOUR: 20, // Rate limit per user
+      MODEL: 'gpt-4-turbo-preview', // OpenAI model to use
+    },
+
+    // Friend group detection (auto-whitelist)
+    FRIEND_GROUP: {
+      MAX_SIZE: 10, // Groups smaller than this may be friend groups
+      MIN_PARTICIPATION: 0.8, // 80% of members must be active to qualify
+    },
+
+    // Temporal analysis settings
+    TEMPORAL: {
+      PILE_ON_THRESHOLD: 3, // 3+ users targeting same person = pile-on
+      VELOCITY_THRESHOLD: 5, // 5+ messages in 5 minutes = spike
+      MESSAGE_HISTORY_SIZE: 500, // Keep last N messages per group
+      MESSAGE_HISTORY_TIME: 24 * 60 * 60 * 1000, // 24 hours
+    },
+
+    // Alert settings
+    ALERTS: {
+      WEEKLY_DIGEST: true, // Send weekly digest of MONITOR-level flags
+      IMMEDIATE_ALERT_THRESHOLD: 15, // Alert admin immediately at this score
+      INCLUDE_CONTEXT_IN_ALERT: true, // Include surrounding messages in alert
+    },
   },
 
   // Logging
