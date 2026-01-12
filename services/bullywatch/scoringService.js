@@ -125,7 +125,7 @@ class ScoringService {
 
     // Determine severity and action
     const severity = this.determineSeverity(finalScore);
-    const action = this.determineAction(finalScore, severity);
+    const action = this.determineAction(finalScore, severity, lexiconResult.categories);
 
     console.log(`[SCORING DEBUG] Final score: ${finalScore}, severity: ${severity}, alertAdmin: ${action.alertAdmin}`);
     console.log(`[SCORING DEBUG] Categories: ${lexiconResult.categories.join(', ')}`);
@@ -315,10 +315,30 @@ class ScoringService {
 
   /**
    * Determine required action based on severity - Section 6.1
+   * @param {number} score - Final score
+   * @param {string} severity - Severity tier (SAFE, YELLOW, RED-1, RED-2, RED-3)
+   * @param {Array} categories - Categories detected (to check for self_harm)
    */
-  determineAction(score, severity) {
+  determineAction(score, severity, categories = []) {
     const config = require('../../config');
     const monitorMode = config.FEATURES?.BULLYWATCH_MONITOR_MODE !== false; // Default true
+
+    // CRITICAL: Self-harm NEVER gets deleted - requires immediate intervention
+    const isSelfHarm = categories.includes('self_harm');
+
+    if (isSelfHarm) {
+      return {
+        type: 'self_harm_alert',
+        description: '🚨 SELF-HARM DETECTED - IMMEDIATE INTERVENTION REQUIRED',
+        alertAdmin: true,
+        deleteMessage: false, // NEVER delete - could prevent life-saving intervention
+        sendGroupMessage: false, // Don't send group message - handle privately
+        recommendCounselorContact: true,
+        recommendParentContact: true,
+        urgencyLevel: 'CRITICAL',
+        interventionRequired: true
+      };
+    }
 
     switch (severity) {
       case 'SAFE':

@@ -1360,7 +1360,12 @@ async function handleMessage(sock, msg, commandHandler) {
                     console.log(`   Action: ${result.action.description}`);
 
                     // Prepare alert message for admin
-                    const alertText = `🚨 *BULLYWATCH v2.0 DETECTION* 🚨\n\n` +
+                    const isSelfHarm = result.details.categories?.includes('self_harm');
+                    const alertHeader = isSelfHarm ?
+                        `🚨🆘 *SELF-HARM ALERT* 🆘🚨\n*IMMEDIATE INTERVENTION REQUIRED*\n\n` :
+                        `🚨 *BULLYWATCH v2.0 DETECTION* 🚨\n\n`;
+
+                    const alertText = alertHeader +
                         `*Group:* ${groupSubject}\n` +
                         `📚 *Class:* ${className || 'Not set'}\n` +
                         `*Sender:* ${senderPhone} (${msg.pushName})\n` +
@@ -1371,8 +1376,12 @@ async function handleMessage(sock, msg, commandHandler) {
                         `*Action:* ${result.action.description}\n` +
                         `*Monitor Mode:* ${bullywatch.getStatus().monitorMode ? 'ON (no auto-action)' : 'OFF'}\n\n` +
                         `${result.details.gptAnalysis ? `*GPT Analysis:* ${result.details.gptAnalysis.reasoning || 'N/A'}\n` : ''}` +
+                        `${isSelfHarm ? `⚠️ *CRITICAL:* Self-harm detected - do NOT delete message. Contact school counselor/parents IMMEDIATELY.\n\n` : ''}` +
                         `---\n` +
-                        `Reply with feedback: #bullywatch feedback ${messageId} [true_positive|false_positive|low|medium|high]`;
+                        `*Actions:*\n` +
+                        `• Reply with 'd' to delete this message\n` +
+                        `• Send #bullywatch off to disable monitoring\n` +
+                        `• Or ignore this message`;
 
                     // Send alert to admin
                     const adminJid = config.ADMIN_PHONE + '@s.whatsapp.net';
