@@ -137,6 +137,9 @@ class CommandHandler {
                 case '#bullywatch':
                     return await this.handleBullyWatch(msg, args, isAdmin);
 
+                case '#bullyalert':
+                    return await this.handleBullyAlert(msg, args, isAdmin);
+
                 case '#kick':
                     return await this.handleKick(msg, isAdmin);
 
@@ -342,6 +345,9 @@ class CommandHandler {
 • *#clear* - Remove all blacklisted users from current group
 • *#bullywatch on/off* - Enable/disable bullying monitoring (admin only)
   Monitors for offensive content and sends alerts
+• *#bullyalert on/off* - Send alerts to all group admins (admin only)
+  When ON: All group admins receive bullying alerts
+  When OFF: Only main admin receives alerts
 
 *🔇 Mute Commands:*
 • *#mute 30* - Mutes entire group for 30 minutes (only admins can speak)
@@ -1601,6 +1607,148 @@ class CommandHandler {
             console.error(`[${getTimestamp()}] ❌ Failed to set bullying monitoring:`, error);
             await this.sock.sendMessage(groupId, {
                 text: '❌ Failed to update bullying monitoring. Check logs for details.',
+                quoted: msg
+            });
+        }
+
+        return true;
+    }
+
+    async handleBullyAlert(msg, args, isAdmin) {
+        const { getTimestamp } = require('../utils/logger');
+        const config = require('../config');
+
+        console.log(`[${getTimestamp()}] 🔔 #bullyalert command received`);
+
+        // ADMIN ONLY - check using same pattern as bullywatch
+        const senderId = msg.key.participant || msg.key.remoteJid;
+        const senderPhone = senderId.split('@')[0];
+
+        // Check if it's the authorized admin (handles multiple formats)
+        const isAuthorizedAdmin =
+            senderPhone === config.ALERT_PHONE ||
+            senderPhone === config.ADMIN_PHONE ||
+            senderPhone === config.ADMIN_LID ||
+            senderId.includes(config.ALERT_PHONE) ||
+            senderId.includes(config.ADMIN_PHONE) ||
+            senderId.includes(config.ADMIN_LID);
+
+        console.log(`[${getTimestamp()}] 🔍 Admin check: sender=${senderPhone}, authorized=${isAuthorizedAdmin}`);
+
+        if (!isAuthorizedAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Only the bot administrator can use this command.',
+                quoted: msg
+            });
+            return true;
+        }
+
+        // Must be in a group
+        if (this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ This command can only be used in groups.\n\nUsage: Send #bullyalert on/off in a group chat',
+                quoted: msg
+            });
+            return true;
+        }
+
+        const groupId = msg.key.remoteJid;
+        const action = args && args[0] ? args[0].toLowerCase() : null;
+
+        if (!action || !['on', 'off'].includes(action)) {
+            await this.sock.sendMessage(groupId, {
+                text: '❌ Usage: #bullyalert on|off\n\n' +
+                      'Examples:\n' +
+                      '  • #bullyalert on - Send alerts to ALL group admins\n' +
+                      '  • #bullyalert off - Send alerts ONLY to main admin (+' + config.ALERT_PHONE + ')',
+                quoted: msg
+            });
+            return true;
+        }
+
+        const enabled = action === 'on';
+
+        try {
+            const groupService = require('../database/groupService');
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
+            const groupName = groupMetadata.subject || 'Unknown Group';
+
+            if (enabled) {
+                // Get all group admins (excluding bot and main admin)
+                const admins = groupMetadata.participants.filter(p => {
+                    const phone = p.id.split('@')[0];
+                    return p.admin &&
+                           !p.id.includes(':') && // Exclude bot
+                           phone !== config.ALERT_PHONE &&
+                           phone !== config.ADMIN_PHONE;
+                });
+
+                if (admins.length === 0) {
+                    await this.sock.sendMessage(groupId, {
+                        text: `ℹ️ No additional admins found in this group.\n\n` +
+                              `Only the main admin (+${config.ALERT_PHONE}) will receive alerts.`,
+                        quoted: msg
+                    });
+                    return true;
+                }
+
+                // Add all admins to alert recipients
+                for (const admin of admins) {
+                    const adminPhone = admin.id.split('@')[0];
+                    try {
+                        await groupService.addAlertRecipient(groupId, adminPhone);
+                        console.log(`[${getTimestamp()}] ➕ Added admin ${adminPhone} to alert recipients`);
+                    } catch (error) {
+                        console.error(`[${getTimestamp()}] ❌ Failed to add admin ${adminPhone}:`, error.message);
+                    }
+                }
+
+                // Get final recipient list
+                const recipients = await groupService.getAlertRecipients(groupId);
+
+                await this.sock.sendMessage(groupId, {
+                    text: `✅ *Multi-Admin Alerts ENABLED*\n\n` +
+                          `🛡️ Group: ${groupName}\n\n` +
+                          `Bullying alerts will be sent to:\n` +
+                          `• Main admin: +${config.ALERT_PHONE} (always)\n` +
+                          (recipients.length > 0
+                              ? `• ${recipients.length} additional admin(s): ${recipients.map(p => '+' + p).join(', ')}\n\n`
+                              : '\n') +
+                          `All group admins will be notified when offensive content is detected.`,
+                    quoted: msg
+                });
+
+                console.log(`[${getTimestamp()}] ✅ Multi-admin alerts ENABLED for ${groupName} (${recipients.length} additional recipients)`);
+
+            } else {
+                // Clear all alert recipients
+                const currentRecipients = await groupService.getAlertRecipients(groupId);
+
+                for (const phone of currentRecipients) {
+                    try {
+                        await groupService.removeAlertRecipient(groupId, phone);
+                        console.log(`[${getTimestamp()}] ➖ Removed ${phone} from alert recipients`);
+                    } catch (error) {
+                        console.error(`[${getTimestamp()}] ❌ Failed to remove ${phone}:`, error.message);
+                    }
+                }
+
+                await this.sock.sendMessage(groupId, {
+                    text: `⏸️ *Multi-Admin Alerts DISABLED*\n\n` +
+                          `Group: ${groupName}\n\n` +
+                          `Bullying alerts will only be sent to:\n` +
+                          `• Main admin: +${config.ALERT_PHONE}\n\n` +
+                          `Other group admins will no longer receive alerts.`,
+                    quoted: msg
+                });
+
+                console.log(`[${getTimestamp()}] ⏸️ Multi-admin alerts DISABLED for ${groupName}`);
+            }
+
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Failed to set multi-admin alerts:`, error);
+            await this.sock.sendMessage(groupId, {
+                text: '❌ Failed to update multi-admin alerts. Check logs for details.',
                 quoted: msg
             });
         }

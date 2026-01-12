@@ -577,6 +577,86 @@ async function isBullyingMonitoringEnabled(whatsappGroupId) {
     }
 }
 
+/**
+ * Add phone number to group's alert recipients list
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {string} phoneNumber - Phone number to add (e.g., '972501234567')
+ * @returns {Promise<boolean>} Success status
+ */
+async function addAlertRecipient(whatsappGroupId, phoneNumber) {
+    try {
+        // Validate phone number format
+        if (!/^[0-9]{10,15}$/.test(phoneNumber)) {
+            throw new Error('Invalid phone number format');
+        }
+
+        // Add to array if not already present (PostgreSQL array_append + DISTINCT)
+        await query(`
+            UPDATE groups
+            SET alert_recipients = (
+                SELECT ARRAY(
+                    SELECT DISTINCT unnest(alert_recipients || $2::text)
+                )
+            )
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId, phoneNumber]);
+
+        console.log(`[${getTimestamp()}] ➕ Added alert recipient ${phoneNumber} to group ${whatsappGroupId}`);
+        return true;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to add alert recipient:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Remove phone number from group's alert recipients list
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {string} phoneNumber - Phone number to remove
+ * @returns {Promise<boolean>} Success status
+ */
+async function removeAlertRecipient(whatsappGroupId, phoneNumber) {
+    try {
+        // Remove from array (PostgreSQL array_remove)
+        await query(`
+            UPDATE groups
+            SET alert_recipients = array_remove(alert_recipients, $2)
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId, phoneNumber]);
+
+        console.log(`[${getTimestamp()}] ➖ Removed alert recipient ${phoneNumber} from group ${whatsappGroupId}`);
+        return true;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to remove alert recipient:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Get all alert recipients for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @returns {Promise<Array<string>>} Array of phone numbers
+ */
+async function getAlertRecipients(whatsappGroupId) {
+    try {
+        const result = await query(`
+            SELECT alert_recipients
+            FROM groups
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId]);
+
+        if (result.rows.length === 0) {
+            return [];
+        }
+
+        // PostgreSQL returns array, handle null case
+        return result.rows[0].alert_recipients || [];
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to get alert recipients:`, error.message);
+        return [];
+    }
+}
+
 module.exports = {
     getAllGroups,
     getGroupByWhatsAppId,
@@ -602,6 +682,9 @@ module.exports = {
     setCategory,
     setNotes,
     getCategoryStats,
+    addAlertRecipient,
+    removeAlertRecipient,
+    getAlertRecipients,
     setBullyingMonitoring,
     isBullyingMonitoringEnabled
 };

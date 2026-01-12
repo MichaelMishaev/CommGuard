@@ -342,15 +342,51 @@ class BullyingMonitoringService {
             // Continue with alert even if DB save fails
         }
 
-        const adminJid = `${this.adminPhone}@s.whatsapp.net`;
+        // ALWAYS send to main admin (0544345287)
+        const mainAdminJid = `${this.adminPhone}@s.whatsapp.net`;
+
+        // Get additional alert recipients for this group
+        let additionalRecipients = [];
+        try {
+            const groupService = require('../database/groupService');
+            additionalRecipients = await groupService.getAlertRecipients(groupId);
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ⚠️  Failed to get alert recipients:`, error.message);
+            // Continue with main admin only
+        }
+
+        // Build list of all recipients (main admin + group-specific)
+        const allRecipients = [mainAdminJid];
+        for (const phone of additionalRecipients) {
+            allRecipients.push(`${phone}@s.whatsapp.net`);
+        }
+
+        console.log(`[${getTimestamp()}] 📤 Sending alert to ${allRecipients.length} recipient(s)`);
+        if (additionalRecipients.length > 0) {
+            console.log(`[${getTimestamp()}] ➕ Additional recipients: ${additionalRecipients.join(', ')}`);
+        }
 
         try {
             // Send as quoted reply to original message (so admin can reply with 'd' to delete)
             const quotedMessage = originalMessage ? { quoted: originalMessage } : {};
 
-            const sentMessage = await sock.sendMessage(adminJid, {
+            // Send to main admin first (keep reference for delete mapping)
+            const sentMessage = await sock.sendMessage(mainAdminJid, {
                 text: alertMessage
             }, quotedMessage);
+
+            // Send to additional recipients (if any)
+            for (const recipientJid of allRecipients.slice(1)) {
+                try {
+                    await sock.sendMessage(recipientJid, {
+                        text: alertMessage
+                    }, quotedMessage);
+                    console.log(`[${getTimestamp()}] ✅ Alert sent to additional recipient: ${recipientJid.split('@')[0]}`);
+                } catch (recipientError) {
+                    console.error(`[${getTimestamp()}] ❌ Failed to send to ${recipientJid}:`, recipientError.message);
+                    // Continue with other recipients
+                }
+            }
 
             // Store mapping of alert message ID → original message ID for delete functionality
             // This allows admin to reply 'd' to the alert to delete the original offensive message
