@@ -73,48 +73,55 @@ class TemporalAnalysisService {
 
   /**
    * Detect pile-on behavior: multiple users targeting one person
-   * Score: +5 if 3+ different users target same person in 5 minutes
-   * Score: +10 if 5+ different users (severe pile-on)
+   * CRITICAL: 1st attacker does NOT get +8, only 2nd+ attackers
+   * Returns: { isPileOn: boolean, isFirstAttacker: boolean, attackerCount: number }
+   * Section 4.2 from scoring system doc
    */
   detectPileOn(groupId, senderId, timestamp) {
-    const history = this.getRecentMessages(groupId, 5 * 60 * 1000); // Last 5 minutes
-    if (history.length < 3) return 0;
+    const history = this.getRecentMessages(groupId, 10 * 60 * 1000); // Last 10 minutes
+    if (history.length < 2) {
+      return { isPileOn: false, isFirstAttacker: true, attackerCount: 0 };
+    }
 
-    // Find messages that are replies or mention someone
-    const targetedMessages = history.filter(msg =>
-      msg.quotedMessage || this.containsMention(msg.text)
-    );
+    // Find messages targeting specific users (with negative sentiment)
+    const targetCounts = new Map(); // target -> Map of { sender -> timestamp }
 
-    if (targetedMessages.length === 0) return 0;
-
-    // Group by target
-    const targetCounts = new Map();
-    for (const msg of targetedMessages) {
+    for (const msg of history) {
       const target = msg.quotedMessage?.sender || this.extractMention(msg.text);
-      if (target) {
-        const senders = targetCounts.get(target) || new Set();
-        senders.add(msg.sender);
-        targetCounts.set(target, senders);
+      if (target && msg.baseScore > 0) { // Only count messages with negative sentiment
+        if (!targetCounts.has(target)) {
+          targetCounts.set(target, new Map());
+        }
+        const attackers = targetCounts.get(target);
+        // Store earliest attack from each sender
+        if (!attackers.has(msg.sender)) {
+          attackers.set(msg.sender, msg.timestamp);
+        }
       }
     }
 
-    // Check if any target is being attacked by multiple people
-    let maxAttackers = 0;
+    // Check if current sender is part of pile-on (2+ attackers targeting same victim)
     for (const [target, attackers] of targetCounts) {
-      if (attackers.size > maxAttackers) {
-        maxAttackers = attackers.size;
+      if (attackers.has(senderId) && attackers.size >= 2) {
+        // Determine who attacked first by timestamp
+        const attackerTimes = Array.from(attackers.entries())
+          .sort((a, b) => a[1] - b[1]); // Sort by timestamp (earliest first)
+
+        const firstAttackerId = attackerTimes[0][0];
+        const isFirstAttacker = (firstAttackerId === senderId);
+
+        console.log(`🚨 Pile-on detected: ${attackers.size} users targeting ${target}`);
+        console.log(`   Current sender is ${isFirstAttacker ? '1ST' : '2ND+'} attacker`);
+
+        return {
+          isPileOn: true,
+          isFirstAttacker,
+          attackerCount: attackers.size
+        };
       }
     }
 
-    if (maxAttackers >= 5) {
-      console.log(`🚨 Severe pile-on detected: ${maxAttackers} users targeting same person`);
-      return 10;
-    } else if (maxAttackers >= 3) {
-      console.log(`⚠️  Pile-on detected: ${maxAttackers} users targeting same person`);
-      return 5;
-    }
-
-    return 0;
+    return { isPileOn: false, isFirstAttacker: true, attackerCount: 0 };
   }
 
   /**
@@ -186,21 +193,25 @@ class TemporalAnalysisService {
   }
 
   /**
-   * Detect targeted harassment: same person repeatedly targeted
-   * Score: +3 per targeting event (max +9)
+   * Detect targeted harassment: same sender repeatedly targeting same victim
+   * Returns: { count: number, events: array }
+   * Section 4.3 from scoring system doc
    */
   detectTargetedHarassment(groupId, message, timestamp) {
     const target = message.quotedMessage?.sender || this.extractMention(message.text);
-    if (!target) return 0;
+    if (!target) {
+      return { count: 0, events: [] };
+    }
 
-    // Track targeting events
-    const key = `${groupId}:${target}`;
+    // Track targeting events by sender → target
+    const key = `${groupId}:${message.sender}:${target}`;
     const events = this.targetingPatterns.get(key) || [];
 
     // Add new event
     events.push({
       timestamp,
       sender: message.sender,
+      target,
       score: message.baseScore || 0
     });
 
@@ -209,14 +220,14 @@ class TemporalAnalysisService {
     const recentEvents = events.filter(e => e.timestamp > cutoff);
     this.targetingPatterns.set(key, recentEvents);
 
-    // Score based on frequency
-    const targetingScore = Math.min(recentEvents.length * 3, 9);
-
     if (recentEvents.length >= 3) {
-      console.log(`⚠️  Repeated targeting: ${target} targeted ${recentEvents.length} times`);
+      console.log(`⚠️  Repeated targeting: ${message.sender} targeted ${target} ${recentEvents.length} times in 30 min`);
     }
 
-    return targetingScore;
+    return {
+      count: recentEvents.length,
+      events: recentEvents
+    };
   }
 
   /**

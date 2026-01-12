@@ -36,7 +36,8 @@ class LexiconService {
       return { hits: [], categories: [], baseScore: 0 };
     }
 
-    const text = messageText.toLowerCase();
+    // IMPORTANT: Use original text for detection (patterns already handle Hebrew)
+    const text = messageText;
     const hits = [];
     const categories = new Set();
     let baseScore = 0;
@@ -113,188 +114,197 @@ class LexiconService {
     };
   }
 
-  // A) General Insults (Low-Medium severity)
+  // A) General Insults - Updated to match scoring system v2.0
+  // Section 2.1: Direct Insult = +4 points
   detectGeneralInsults(text) {
     const patterns = [
-      // Classic insults
-      { pattern: /מפגר|מפגרת|מפוגר|מ פ ג ר|מ\.פ\.ג\.ר/g, word: 'מפגר', score: 2 },
-      { pattern: /לוזר|lozer|loozer/g, word: 'לוזר', score: 2 },
-      { pattern: /דפוק|דפוקה|מטורף/g, word: 'דפוק', score: 2 },
-      { pattern: /אידיוט|idiot/g, word: 'אידיוט', score: 1 },
-      { pattern: /טמבל|טמבלה/g, word: 'טמבל', score: 1 },
-      { pattern: /מסריח|מסריחה/g, word: 'מסריח', score: 2 },
-      { pattern: /זבל|garbage|trash/g, word: 'זבל', score: 2 },
-      { pattern: /דוחה|מגעיל/g, word: 'דוחה', score: 2 },
-      { pattern: /פתטי|pathetic|cringe|קרינג/g, word: 'פתטי', score: 1 },
-      { pattern: /מביך|embarrassing/g, word: 'מביך', score: 1 },
-      { pattern: /שקרן|שקרנית|liar/g, word: 'שקרן', score: 1 },
-      { pattern: /גנב|גנבת|thief/g, word: 'גנב', score: 2 },
+      // Classic insults - ALL score 4 points (Direct Insult category)
+      { pattern: /מפגר|מפגרת|מפוגר|מ פ ג ר|מ\.פ\.ג\.ר/g, word: 'מפגר', score: 4, category: 'general_insult' },
+      { pattern: /טיפש|טיפשה|tipesh|tipsh/g, word: 'טיפש', score: 4, category: 'general_insult' },
+      { pattern: /לוזר|lozer|loozer|loser/g, word: 'לוזר', score: 4, category: 'general_insult' },
+      { pattern: /דפוק|דפוקה|מטורף/g, word: 'דפוק', score: 4, category: 'general_insult' },
+      { pattern: /אידיוט|idiot/g, word: 'אידיוט', score: 4, category: 'general_insult' },
+      { pattern: /טמבל|טמבלה/g, word: 'טמבל', score: 4, category: 'general_insult' },
+      { pattern: /מסריח|מסריחה/g, word: 'מסריח', score: 4, category: 'general_insult' },
+      { pattern: /זבל|garbage|trash/g, word: 'זבל', score: 4, category: 'general_insult' },
+      { pattern: /דוחה|מגעיל/g, word: 'דוחה', score: 4, category: 'general_insult' },
+      { pattern: /פתטי|pathetic|cringe|קרינג/g, word: 'פתטי', score: 4, category: 'general_insult' },
+      { pattern: /מביך|embarrassing/g, word: 'מביך', score: 4, category: 'general_insult' },
+      { pattern: /שקרן|שקרנית|liar/g, word: 'שקרן', score: 4, category: 'general_insult' },
+      { pattern: /גנב|גנבת|thief/g, word: 'גנב', score: 4, category: 'general_insult' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // B) Sexual/Harassment (High severity)
+  // B) Sexual/Harassment - Updated to match scoring system v2.0
+  // Section 2.1: Sexual Threat/Coercion = +20 points (Critical)
   detectSexualHarassment(text) {
     const patterns = [
-      // Note: Keeping this minimal and general - not listing explicit slurs
-      { pattern: /זונה|whore|slut/g, word: 'זונה', score: 5 },
-      { pattern: /בן זונה|בת זונה/g, word: 'בן/בת זונה', score: 5 },
-      { pattern: /שרמוטה/g, word: 'שרמוטה', score: 5 },
-      { pattern: /כלבה|bitch/g, word: 'כלבה', score: 3 },
+      // Note: These are critical threats - score 20 for sexual coercion
+      { pattern: /זונה|whore|slut|zona/g, word: 'זונה', score: 20, category: 'sexual_harassment' },
+      { pattern: /בן זונה|בת זונה|ben zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
+      { pattern: /שרמוטה|sharmuta/g, word: 'שרמוטה', score: 20, category: 'sexual_harassment' },
+      { pattern: /כלבה|bitch/g, word: 'כלבה', score: 16, category: 'sexual_harassment' },
+      { pattern: /תשלח תמונה|send pic/g, word: 'תשלח תמונה', score: 20, category: 'sexual_harassment' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // C) Social Exclusion (Medium-High severity)
+  // C) Social Exclusion - Updated to match scoring system v2.0
+  // Section 2.1: Exclusion/Boycott = +10 points
   detectSocialExclusion(text) {
     const patterns = [
-      { pattern: /אל תצרפו|לא לצרף/g, word: 'אל תצרפו', score: 4 },
-      { pattern: /תעיפו|תוציאו מהקבוצה/g, word: 'תעיפו', score: 4 },
-      { pattern: /חסום|חסמי|כולם לחסום/g, word: 'חסום', score: 3 },
-      { pattern: /מי שמדבר איתו|מי שמדברת איתה/g, word: 'מי שמדבר איתו', score: 5 },
-      { pattern: /אף אחד לא|כולם נגד/g, word: 'אף אחד לא/כולם נגד', score: 4 },
-      { pattern: /נפסל|disqualified/g, word: 'נפסל', score: 3 },
-      { pattern: /אנחנו לא רוצים אותך|אנחנו לא רוצים אותו/g, word: 'לא רוצים', score: 5 },
+      { pattern: /אל תצרפו|לא לצרף|al tatzrfu/g, word: 'אל תצרפו', score: 10, category: 'social_exclusion' },
+      { pattern: /תעיפו|תוציאו מהקבוצה|ta\'ifu/g, word: 'תעיפו', score: 10, category: 'social_exclusion' },
+      { pattern: /חסום|חסמי|כולם לחסום/g, word: 'חסום', score: 10, category: 'social_exclusion' },
+      { pattern: /מי שמדבר איתו|מי שמדברת איתה/g, word: 'מי שמדבר איתו', score: 10, category: 'social_exclusion' },
+      { pattern: /אף אחד לא|כולם נגד/g, word: 'אף אחד לא/כולם נגד', score: 10, category: 'social_exclusion' },
+      { pattern: /נפסל|disqualified/g, word: 'נפסל', score: 10, category: 'social_exclusion' },
+      { pattern: /אנחנו לא רוצים אותך|אנחנו לא רוצים אותו/g, word: 'לא רוצים', score: 10, category: 'social_exclusion' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // D) Direct Threats (High severity)
+  // D) Direct Threats - Updated to match scoring system v2.0
+  // Section 2.1: Violence Threat = +18 points (Critical)
   detectDirectThreats(text) {
     const patterns = [
-      { pattern: /חכה לי|חכה חכה/g, word: 'חכה לי', score: 4 },
-      { pattern: /אני אשבור אותך|אני מפרק אותך/g, word: 'אשבור אותך', score: 5 },
-      { pattern: /אני אבוא אליך/g, word: 'אבוא אליך', score: 5 },
-      { pattern: /אני אתפוס אותך/g, word: 'אתפוס אותך', score: 5 },
-      { pattern: /ניפגש אחרי בית ספר|ניפגש בחוץ/g, word: 'ניפגש אחרי ביס', score: 5 },
-      { pattern: /אני אדאג לך/g, word: 'אדאג לך', score: 4 },
-      { pattern: /תזהר ממני|תזהרי ממני/g, word: 'תזהר ממני', score: 5 },
-      { pattern: /אני אהרוג אותך|אני אמחק אותך/g, word: 'אהרוג/אמחק', score: 5 },
-      { pattern: /אני ארביץ לך|אני אשבור לך/g, word: 'ארביץ/אשבור', score: 5 },
+      { pattern: /חכה לי|חכה חכה|chake li/g, word: 'חכה לי', score: 18, category: 'direct_threat' },
+      { pattern: /אני אשבור אותך|אני מפרק אותך|ashbor/g, word: 'אשבור אותך', score: 18, category: 'direct_threat' },
+      { pattern: /אני אבוא אליך/g, word: 'אבוא אליך', score: 18, category: 'direct_threat' },
+      { pattern: /אני אתפוס אותך/g, word: 'אתפוס אותך', score: 18, category: 'direct_threat' },
+      { pattern: /ניפגש אחרי בית ספר|ניפגש בחוץ|אחרי ביס/g, word: 'ניפגש אחרי ביס', score: 18, category: 'direct_threat' },
+      { pattern: /אני אדאג לך/g, word: 'אדאג לך', score: 18, category: 'direct_threat' },
+      { pattern: /תזהר ממני|תזהרי ממני/g, word: 'תזהר ממני', score: 18, category: 'direct_threat' },
+      { pattern: /אני אהרוג אותך|אני אמחק אותך|aharog/g, word: 'אהרוג/אמחק', score: 20, category: 'direct_threat' },
+      { pattern: /אני ארביץ לך|אני אשבור לך/g, word: 'ארביץ/אשבור', score: 18, category: 'direct_threat' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // E) Doxxing/Sextortion/Blackmail (High severity)
+  // E) Doxxing/Sextortion/Blackmail - Updated to match scoring system v2.0
+  // Section 2.1: Blackmail/Leak Threat = +14, Doxxing = +18 points
   detectPrivacyThreats(text) {
     const patterns = [
-      { pattern: /יש לי צילום מסך|יש לי סקרינשוט/g, word: 'יש לי צילום מסך', score: 5 },
-      { pattern: /אני מפרסם|אני שולח לכולם/g, word: 'אני מפרסם', score: 5 },
-      { pattern: /אני שולח להורים|אני שולח למחנכת|אני שולח למנהל/g, word: 'שולח להורים', score: 5 },
-      { pattern: /אם לא.*אז|אם לא תעשה/g, word: 'אם לא...אז (סחיטה)', score: 5 },
-      { pattern: /תשלח לי בפרטי|שלח לי בפרטי/g, word: 'שלח לי בפרטי', score: 3 },
-      { pattern: /תשלח תמונה ואז אמחק/g, word: 'תשלח תמונה ואמחק', score: 5 },
-      { pattern: /כולם שלחו כבר/g, word: 'כולם שלחו כבר', score: 4 },
-      { pattern: /אל תהיה ילד|אל תהיי ילדה/g, word: 'אל תהיה ילד', score: 3 },
-      { pattern: /זה סוד בינינו/g, word: 'סוד בינינו', score: 4 },
+      { pattern: /יש לי צילום מסך|יש לי סקרינשוט/g, word: 'יש לי צילום מסך', score: 14, category: 'privacy_threat' },
+      { pattern: /אני מפרסם|אני שולח לכולם/g, word: 'אני מפרסם', score: 14, category: 'privacy_threat' },
+      { pattern: /אני שולח להורים|אני שולח למחנכת|אני שולח למנהל/g, word: 'שולח להורים', score: 14, category: 'privacy_threat' },
+      { pattern: /אם לא.*אז|אם לא תעשה/g, word: 'אם לא...אז (סחיטה)', score: 14, category: 'privacy_threat' },
+      { pattern: /תשלח לי בפרטי|שלח לי בפרטי/g, word: 'שלח לי בפרטי', score: 14, category: 'privacy_threat' },
+      { pattern: /תשלח תמונה ואז אמחק/g, word: 'תשלח תמונה ואמחק', score: 20, category: 'sexual_harassment' },
+      { pattern: /כולם שלחו כבר/g, word: 'כולם שלחו כבר', score: 14, category: 'privacy_threat' },
+      { pattern: /אל תהיה ילד|אל תהיי ילדה/g, word: 'אל תהיה ילד', score: 14, category: 'privacy_threat' },
+      { pattern: /זה סוד בינינו/g, word: 'סוד בינינו', score: 14, category: 'privacy_threat' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // F) Privacy Invasion (High severity)
+  // F) Privacy Invasion - Updated to match scoring system v2.0
+  // Section 2.1: Doxxing/Privacy Threat = +18 points (Critical)
   detectPrivacyInvasion(text) {
     const patterns = [
-      { pattern: /מה הכתובת שלך|תן כתובת/g, word: 'מה הכתובת', score: 5 },
-      { pattern: /שלח מיקום|תשלח מיקום/g, word: 'שלח מיקום', score: 5 },
-      { pattern: /יש לי את המספר של|יש לי ת'מספר/g, word: 'יש לי המספר', score: 5 },
-      { pattern: /אני יודע איפה אתה גר|אני יודעת איפה את גרה/g, word: 'יודע איפה גר', score: 5 },
-      { pattern: /יש לי תמונות|יש לי צילומים/g, word: 'יש לי תמונות', score: 5 },
+      { pattern: /מה הכתובת שלך|תן כתובת/g, word: 'מה הכתובת', score: 18, category: 'privacy_invasion' },
+      { pattern: /שלח מיקום|תשלח מיקום/g, word: 'שלח מיקום', score: 18, category: 'privacy_invasion' },
+      { pattern: /יש לי את המספר של|יש לי ת'מספר/g, word: 'יש לי המספר', score: 18, category: 'privacy_invasion' },
+      { pattern: /אני יודע איפה אתה גר|אני יודעת איפה את גרה/g, word: 'יודע איפה גר', score: 18, category: 'privacy_invasion' },
+      { pattern: /יש לי תמונות|יש לי צילומים/g, word: 'יש לי תמונות', score: 18, category: 'privacy_invasion' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // G) Public Humiliation (Medium-High severity)
+  // G) Public Humiliation - Updated to match scoring system v2.0
+  // Section 2.1: Targeted Humiliation = +12 points
   detectPublicHumiliation(text) {
     const patterns = [
-      { pattern: /תעלה צילום|תעלו צילום/g, word: 'תעלה צילום', score: 4 },
-      { pattern: /שלחו לכולם/g, word: 'שלחו לכולם', score: 4 },
-      { pattern: /בואו נעשה עליו סטיקר|בואו נעשה עליה סטיקר/g, word: 'נעשה סטיקר', score: 4 },
-      { pattern: /שימו אותו בסטטוס|שימו אותה בסטטוס/g, word: 'בסטטוס', score: 4 },
-      { pattern: /תייגו את ההורים/g, word: 'תייגו ההורים', score: 5 },
-      { pattern: /פתחתי עליו חשבון|פתחתי עליה חשבון/g, word: 'פתחתי חשבון', score: 5 },
-      { pattern: /עשיתי פרופיל בשמו|עשיתי פרופיל בשמה/g, word: 'פרופיל בשמו', score: 5 },
-      { pattern: /אני אשלח בשמך/g, word: 'אשלח בשמך', score: 5 },
-      { pattern: /תראה מה כתבו בשם שלך/g, word: 'כתבו בשם שלך', score: 4 },
+      { pattern: /תעלה צילום|תעלו צילום/g, word: 'תעלה צילום', score: 12, category: 'public_humiliation' },
+      { pattern: /שלחו לכולם/g, word: 'שלחו לכולם', score: 12, category: 'public_humiliation' },
+      { pattern: /בואו נעשה עליו סטיקר|בואו נעשה עליה סטיקר/g, word: 'נעשה סטיקר', score: 12, category: 'public_humiliation' },
+      { pattern: /שימו אותו בסטטוס|שימו אותה בסטטוס/g, word: 'בסטטוס', score: 12, category: 'public_humiliation' },
+      { pattern: /תייגו את ההורים/g, word: 'תייגו ההורים', score: 12, category: 'public_humiliation' },
+      { pattern: /פתחתי עליו חשבון|פתחתי עליה חשבון/g, word: 'פתחתי חשבון', score: 12, category: 'public_humiliation' },
+      { pattern: /עשיתי פרופיל בשמו|עשיתי פרופיל בשמה/g, word: 'פרופיל בשמו', score: 12, category: 'public_humiliation' },
+      { pattern: /אני אשלח בשמך/g, word: 'אשלח בשמך', score: 12, category: 'public_humiliation' },
+      { pattern: /תראה מה כתבו בשם שלך/g, word: 'כתבו בשם שלך', score: 12, category: 'public_humiliation' },
     ];
 
     return this.matchPatterns(text, patterns);
   }
 
-  // H) Emoji Analysis
+  // H) Emoji Analysis - Updated to match scoring system v2.0
+  // Section 2.1: Mocking Emojis = +3 points
+  // Note: Emoji intensity (+2) is handled separately in scoringService
   analyzeEmojis(messageText) {
     const hits = [];
     let score = 0;
 
-    // Mocking/Humiliation emojis
+    // Mocking/Humiliation emojis - Score +3 per emoji (Section 2.1)
     const mockingEmojis = {
-      '🤡': { name: 'clown', score: 2 },
-      '💀': { name: 'skull (mocking)', score: 1 },
-      '🙄': { name: 'eye roll', score: 1 },
-      '😭': { name: 'crying (mocking)', score: 1 },
-      '🤏': { name: 'small/pathetic', score: 2 },
-      '🧠': { name: 'brain (sarcastic)', score: 1 },
+      '🤡': { name: 'clown', score: 3, category: 'emoji_harassment' },
+      '💀': { name: 'skull (mocking)', score: 3, category: 'emoji_harassment' },
+      '🙄': { name: 'eye roll', score: 3, category: 'emoji_harassment' },
+      '😂': { name: 'laughing (mocking)', score: 3, category: 'emoji_harassment' },
+      '🤏': { name: 'small/pathetic', score: 3, category: 'emoji_harassment' },
     };
 
-    // Disgust emojis
+    // Degrading comparison - Score +6 (Section 2.1)
     const disgustEmojis = {
-      '🗑️': { name: 'trash', score: 2 },
-      '💩': { name: 'poop', score: 2 },
-      '🤢': { name: 'nauseated', score: 2 },
-      '🤮': { name: 'vomiting', score: 2 },
-      '🐷': { name: 'pig', score: 2 },
-      '🐀': { name: 'rat', score: 2 },
-      '🪳': { name: 'cockroach', score: 2 },
+      '🗑️': { name: 'trash', score: 6, category: 'emoji_harassment' },
+      '💩': { name: 'poop', score: 6, category: 'emoji_harassment' },
+      '🤢': { name: 'nauseated', score: 6, category: 'emoji_harassment' },
+      '🤮': { name: 'vomiting', score: 6, category: 'emoji_harassment' },
+      '🐷': { name: 'pig', score: 6, category: 'emoji_harassment' },
+      '🐀': { name: 'rat', score: 6, category: 'emoji_harassment' },
+      '🪳': { name: 'cockroach', score: 6, category: 'emoji_harassment' },
     };
 
-    // Threat emojis
+    // Threat emojis - Critical category (would trigger floor rule)
     const threatEmojis = {
-      '🔪': { name: 'knife', score: 5 },
-      '🩸': { name: 'blood', score: 5 },
-      '☠️': { name: 'skull and crossbones', score: 5 },
-      '💣': { name: 'bomb', score: 5 },
-      '🔫': { name: 'gun', score: 5 },
+      '🔪': { name: 'knife', score: 18, category: 'direct_threat' },
+      '🩸': { name: 'blood', score: 18, category: 'direct_threat' },
+      '☠️': { name: 'skull and crossbones', score: 18, category: 'direct_threat' },
+      '💣': { name: 'bomb', score: 18, category: 'direct_threat' },
+      '🔫': { name: 'gun', score: 18, category: 'direct_threat' },
     };
 
-    // Count emoji repetitions (🤡🤡🤡 = pile-on)
+    // Count emojis (but no multiplier for repetition - handled by hard cap)
     const allEmojis = { ...mockingEmojis, ...disgustEmojis, ...threatEmojis };
-    const emojiCounts = new Map();
 
     for (const [emoji, info] of Object.entries(allEmojis)) {
-      const regex = new RegExp(emoji, 'g');
+      const regex = new RegExp(emoji.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
       const matches = messageText.match(regex);
       if (matches) {
         const count = matches.length;
-        emojiCounts.set(emoji, count);
 
-        // Triple emoji = pile-on behavior
-        const multiplier = count >= 3 ? 2 : 1;
-        const emojiScore = info.score * count * multiplier;
-
-        hits.push({
-          type: 'emoji',
-          emoji: emoji,
-          name: info.name,
-          count: count,
-          score: emojiScore
-        });
-
-        score += emojiScore;
+        // Each emoji match gets its base score (no multiplier)
+        // Hard cap (max 2 per category) will be applied by scoringService
+        for (let i = 0; i < count; i++) {
+          hits.push({
+            type: 'emoji',
+            emoji: emoji,
+            name: info.name,
+            count: 1,
+            score: info.score,
+            category: info.category
+          });
+          score += info.score;
+        }
       }
     }
 
-    // Detect clapping hands pattern (👏...👏 = passive aggressive)
+    // Detect clapping hands pattern (👏...👏 = passive aggressive) - Score +3
     const clappingPattern = /👏[^👏]{1,20}👏/g;
     if (clappingPattern.test(messageText)) {
       hits.push({
         type: 'emoji_pattern',
         pattern: 'clapping_emphasis',
-        score: 3
+        score: 3,
+        category: 'emoji_harassment'
       });
       score += 3;
     }
@@ -304,32 +314,92 @@ class LexiconService {
 
   /**
    * Hebrew text normalization to catch evasion tactics
-   * Handles: letter swaps, spacing, punctuation, transliteration
+   * Handles: letter swaps, spacing, punctuation
+   * Section 1.1 and 1.2 from scoring system doc
    */
   normalizeHebrew(text) {
-    let normalized = text;
+    if (!text || typeof text !== 'string') return '';
 
-    // Remove spaces between letters (מ פ ג ר → מפגר)
+    let normalized = text.toLowerCase();
+
+    // 1.2 Spacing Evasion Removal (מ פ ג ר → מפגר)
     normalized = normalized.replace(/([א-ת])\s+([א-ת])/g, '$1$2');
 
     // Remove punctuation between letters (מ.פ.ג.ר → מפגר)
     normalized = normalized.replace(/([א-ת])[.,\-_]+([א-ת])/g, '$1$2');
 
-    // Common letter swaps in Hebrew
-    const letterSwaps = [
-      [/ע/g, 'א'], // ע ↔ א
-      [/ת/g, 'ט'], // ת ↔ ט
-      [/ק/g, 'כ'], // ק ↔ כ
-      [/ש/g, 'ס'], // ש ↔ ס
-      [/ף/g, 'פ'], // ף ↔ פ (final form)
-      [/ץ/g, 'צ'], // ץ ↔ צ (final form)
+    // 1.1 Letter Swap Normalization - normalize to single canonical form
+    // This prevents kids from writing "עתה טיפש" instead of "אתה טיפש"
+    const letterNormalization = [
+      [/ע/g, 'א'], // ע → א (alef/ayin confusion)
+      [/ת/g, 'ט'], // ת → ט (tet/tav confusion)
+      [/ק/g, 'כ'], // ק → כ (kaf/qof confusion)
+      [/ף/g, 'פ'], // ף → פ (final form)
+      [/ץ/g, 'צ'], // ץ → צ (final form)
+      [/ם/g, 'מ'], // ם → מ (final form)
+      [/ן/g, 'נ'], // ן → נ (final form)
+      [/ך/g, 'כ'], // ך → כ (final form)
     ];
 
-    // Apply letter swaps
-    // Note: This creates multiple variations, not a single normalized form
-    // In production, you'd generate all permutations and check against lexicon
+    for (const [pattern, replacement] of letterNormalization) {
+      normalized = normalized.replace(pattern, replacement);
+    }
+
+    // 1.4 Emoji Standardization
+    normalized = normalized.replace(/[\u200d\u200c]/g, ''); // Remove zero-width joiners
 
     return normalized;
+  }
+
+  /**
+   * Transliteration Detection
+   * Maps English transliteration to Hebrew equivalents
+   * Section 1.3 from scoring system doc
+   */
+  detectTransliteration(text) {
+    if (!text || typeof text !== 'string') return text;
+
+    let processed = text;
+
+    // Transliteration map: English → Hebrew
+    const transliterationMap = {
+      // Insults
+      'lozer': 'לוזר',
+      'loozer': 'לוזר',
+      'loser': 'לוזר',
+      'metumtam': 'מטומטם',
+      'metomtam': 'מטומטם',
+      'sahi': 'סאחי',
+      'sa7i': 'סאחי',
+      'tipesh': 'טיפש',
+      'tipsh': 'טיפש',
+      'cringe': 'קרינג',
+      'krinj': 'קרינג',
+
+      // Sexual harassment (keeping minimal)
+      'zona': 'זונה',
+      'sharmuta': 'שרמוטה',
+      'ben zona': 'בן זונה',
+      'kusemek': 'כוסאמק',
+
+      // Threats
+      'chake li': 'חכה לי',
+      'chake': 'חכה',
+      'ashbor': 'אשבור',
+      'aharog': 'אהרוג',
+
+      // Exclusion
+      'al tatzrfu': 'אל תצרפו',
+      'ta\'ifu': 'תעיפו'
+    };
+
+    // Replace transliterations with Hebrew
+    for (const [english, hebrew] of Object.entries(transliterationMap)) {
+      const regex = new RegExp(english, 'gi');
+      processed = processed.replace(regex, hebrew);
+    }
+
+    return processed;
   }
 
   /**
@@ -339,7 +409,7 @@ class LexiconService {
     const hits = [];
     let score = 0;
 
-    for (const { pattern, word, score: patternScore } of patterns) {
+    for (const { pattern, word, score: patternScore, category } of patterns) {
       const matches = text.match(pattern);
       if (matches) {
         const weight = this.weights.get(word) || 1.0;
@@ -349,7 +419,8 @@ class LexiconService {
           word,
           matches: matches.length,
           baseScore: patternScore,
-          weightedScore
+          weightedScore,
+          category: category || 'unknown'
         });
 
         score += weightedScore;
