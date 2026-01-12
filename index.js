@@ -12,6 +12,7 @@ const SingleInstance = require('./single-instance');
 const { handleSessionError, shouldSkipUser, clearProblematicUsers, STARTUP_TIMEOUT, checkStickerCommand } = require('./utils/sessionManager');
 const stealthUtils = require('./utils/stealthUtils');
 const restartLimiter = require('./utils/restartLimiter');
+const crashLoopGuard = require('./utils/crashLoopGuard'); // NEW: Crash loop detection (5-min window)
 const { trackRestart } = require('./utils/restartTracker');
 const memoryMonitor = require('./utils/memoryMonitor');
 const memoryLeakDetector = require('./utils/memoryLeakDetector');
@@ -694,6 +695,23 @@ async function startBot() {
             console.log(`\n🛡️ CommGuard Bot (Baileys Edition) is now protecting your groups!`);
             console.log(`🔧 Enhanced session error recovery active`);
             console.log(`⚡ Fast startup mode enabled (${STARTUP_TIMEOUT / 1000}s)`);
+
+            // 🚨 CRASH LOOP GUARD: Send alert if crash loop was detected
+            const crashLoopStatus = crashLoopGuard.checkForCrashLoop();
+            if (crashLoopStatus.shouldAlert) {
+                console.log(`⚠️ Sending crash loop alert to admin...`);
+                setTimeout(async () => {
+                    try {
+                        await crashLoopGuard.sendAlertToAdmin(
+                            sock,
+                            config.ALERT_PHONE + '@s.whatsapp.net',
+                            crashLoopStatus
+                        );
+                    } catch (error) {
+                        console.error('Failed to send crash loop alert:', error.message);
+                    }
+                }, 5000); // Wait 5 seconds after connection to avoid startup hang
+            }
             
             // NUCLEAR: Clear ALL sessions to force completely fresh start
             try {
@@ -1321,9 +1339,14 @@ async function handleMessage(sock, msg, commandHandler) {
                 const result = await bullywatch.analyzeMessage(messageObj, chatId, metadata);
 
                 if (result.analyzed && result.action.alertAdmin) {
+                    // Get class name for alert
+                    const groupService = require('./database/groupService');
+                    const className = await groupService.getGroupClassName(chatId);
+
                     // Log detection with v2.0 details
                     console.log(`\n[${getTimestamp()}] 🚨 BULLYWATCH v2.0 ALERT:`);
                     console.log(`   Group: ${groupSubject} (${chatId})`);
+                    console.log(`   Class: ${className || 'Not set'}`);
                     console.log(`   Sender: ${senderPhone} (${msg.pushName})`);
                     console.log(`   Score: ${result.score} (${result.severity})`);
                     console.log(`   Categories: ${result.details.categories?.join(', ') || 'None'}`);
@@ -1332,6 +1355,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     // Prepare alert message for admin
                     const alertText = `🚨 *BULLYWATCH v2.0 DETECTION* 🚨\n\n` +
                         `*Group:* ${groupSubject}\n` +
+                        `📚 *Class:* ${className || 'Not set'}\n` +
                         `*Sender:* ${senderPhone} (${msg.pushName})\n` +
                         `*Score:* ${result.score} - *${result.severity}*\n` +
                         `*Categories:* ${result.details.categories?.join(', ') || 'None'}\n` +
@@ -2648,17 +2672,34 @@ process.on('SIGTERM', async () => {
 // Start the application with restart limiting
 async function startWithRestartLimit() {
     try {
-        // Record restart attempt
+        // 🚨 CRASH LOOP GUARD: Check for emergency stop flag first
+        crashLoopGuard.checkEmergencyStopFlag();
+
+        // 🚨 CRASH LOOP GUARD: Record restart and check for rapid restart pattern (5-min window)
+        crashLoopGuard.recordRestart('Bot startup');
+        const crashLoopStatus = crashLoopGuard.checkForCrashLoop();
+
+        if (crashLoopStatus.shouldEmergencyStop) {
+            console.error(`[${getTimestamp()}] 🚨 CRASH LOOP DETECTED: ${crashLoopStatus.restartCount} restarts in ${crashLoopStatus.timeWindowMinutes} minutes`);
+            crashLoopGuard.emergencyStop('Too many rapid restarts - likely crash loop');
+        }
+
+        if (crashLoopStatus.shouldAlert) {
+            console.error(`[${getTimestamp()}] ⚠️ CRASH LOOP WARNING: ${crashLoopStatus.restartCount} restarts in ${crashLoopStatus.timeWindowMinutes} minutes`);
+            // Alert will be sent once bot connects to WhatsApp
+        }
+
+        // Record restart attempt (24-hour window for daily tracking)
         const restartCount = await restartLimiter.recordRestart('Bot startup');
 
-        // Check if emergency stop needed
+        // Check if emergency stop needed (24-hour limit)
         if (restartLimiter.shouldEmergencyStop()) {
             console.error(`[${getTimestamp()}] 🚨 EMERGENCY STOP: Too many restarts (${restartCount})`);
             console.error('Manual intervention required. Check logs and fix underlying issues.');
             process.exit(1);
         }
 
-        // Check if restart limit exceeded
+        // Check if restart limit exceeded (24-hour limit)
         if (restartLimiter.isRestartLimitExceeded()) {
             console.error(`[${getTimestamp()}] ⚠️ RESTART LIMIT EXCEEDED: ${restartCount}/10 today`);
             console.error('Continuing but monitoring closely...');

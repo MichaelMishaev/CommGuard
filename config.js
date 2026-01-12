@@ -20,7 +20,7 @@ module.exports = {
   FEATURES: {
     INVITE_LINK_DETECTION: true,
     AUTO_KICK_BLACKLISTED: true, // Re-enabled with minimal Firebase usage
-    FIREBASE_INTEGRATION: true, // Re-enabled with optimizations
+    FIREBASE_INTEGRATION: false, // Disabled - not using Firebase
     RESTRICT_COUNTRY_CODES: true, // Auto-kick +1 and +6 numbers
     BYPASS_BOT_ADMIN_CHECK: true, // Workaround for LID format bot detection issues
     AUTO_TRANSLATION: false, // Auto-translate non-Hebrew replies to Hebrew
