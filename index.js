@@ -448,6 +448,16 @@ async function startBot() {
         console.warn('⚠️ Failed to initialize sentiment analysis service:', error.message);
     }
 
+    // Initialize Bullywatch v2.0 Anti-Bullying System
+    try {
+        const bullywatch = require('./services/bullywatch');
+        await bullywatch.initialize();
+        const status = bullywatch.getStatus();
+        console.log(`✅ Bullywatch v2.0 initialized (Monitor Mode: ${status.monitorMode ? 'ON' : 'OFF'}, GPT: ${status.gptEnabled ? 'ON' : 'OFF'})`);
+    } catch (error) {
+        console.warn('⚠️ Failed to initialize Bullywatch:', error.message);
+    }
+
 
     console.log(`[${getTimestamp()}] 🔄 Starting bot connection (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
     
@@ -1270,52 +1280,89 @@ async function handleMessage(sock, msg, commandHandler) {
         }
     }
 
-    // Check for bullying monitoring (ONLY for groups with monitoring enabled)
+    // Bullywatch v2.0 Anti-Bullying System (ONLY for groups with monitoring enabled OR #bullywatch tag)
     if (isGroup && messageText && messageText.trim().length > 0) {
         try {
+            // Get group metadata for bullywatch
+            const groupMetadata = await sock.groupMetadata(chatId).catch(() => null);
+            const groupSubject = groupMetadata?.subject || '';
+
+            // Check if monitoring is enabled via database OR #bullywatch tag
             const groupService = require('./database/groupService');
-            const isBullyingEnabled = await groupService.isBullyingMonitoringEnabled(chatId);
+            const isDatabaseEnabled = await groupService.isBullyingMonitoringEnabled(chatId);
+            const bullywatch = require('./services/bullywatch');
+            const hasHashtagEnabled = bullywatch.isGroupEnabled(chatId, groupSubject);
 
-            if (isBullyingEnabled) {
-                const bullyingService = require('./services/bullyingMonitoringService');
-                const analysis = bullyingService.checkMessage(messageText);
+            if (isDatabaseEnabled || hasHashtagEnabled) {
+                // Use new Bullywatch v2.0 system
+                const sender = msg.key.participant || msg.key.remoteJid;
+                const senderPhone = sender.split('@')[0];
+                const messageId = msg.key.id;
 
-                if (analysis.isOffensive) {
-                    // Get group metadata
-                    const groupMetadata = await sock.groupMetadata(chatId).catch(() => null);
-                    const sender = msg.key.participant || msg.key.remoteJid;
-                    const senderPhone = sender.split('@')[0];
-                    const messageId = msg.key.id;
+                // Prepare message object for bullywatch
+                const messageObj = {
+                    text: messageText,
+                    senderId: sender,
+                    senderPhone,
+                    senderName: msg.pushName || senderPhone,
+                    timestamp: msg.messageTimestamp * 1000,
+                    messageId,
+                    originalMessage: msg
+                };
 
-                    // Log detection
-                    bullyingService.logDetection({
-                        groupName: groupMetadata?.subject || 'Unknown',
-                        senderPhone,
-                        matchedWords: analysis.matchedWords,
-                        severity: analysis.severity
-                    });
+                // Prepare metadata
+                const metadata = {
+                    groupSubject,
+                    groupSize: groupMetadata?.participants?.length || 0,
+                    groupId: chatId
+                };
+
+                // Analyze with Bullywatch v2.0 (multi-layer analysis)
+                const result = await bullywatch.analyzeMessage(messageObj, chatId, metadata);
+
+                if (result.analyzed && result.action.alertAdmin) {
+                    // Log detection with v2.0 details
+                    console.log(`\n[${getTimestamp()}] 🚨 BULLYWATCH v2.0 ALERT:`);
+                    console.log(`   Group: ${groupSubject} (${chatId})`);
+                    console.log(`   Sender: ${senderPhone} (${msg.pushName})`);
+                    console.log(`   Score: ${result.score} (${result.severity})`);
+                    console.log(`   Categories: ${result.details.categories?.join(', ') || 'None'}`);
+                    console.log(`   Action: ${result.action.description}`);
+
+                    // Prepare alert message for admin
+                    const alertText = `🚨 *BULLYWATCH v2.0 DETECTION* 🚨\n\n` +
+                        `*Group:* ${groupSubject}\n` +
+                        `*Sender:* ${senderPhone} (${msg.pushName})\n` +
+                        `*Score:* ${result.score} - *${result.severity}*\n` +
+                        `*Categories:* ${result.details.categories?.join(', ') || 'None'}\n` +
+                        `*Lexicon Hits:* ${result.details.lexiconHits?.length || 0}\n` +
+                        `*Message:* "${messageText}"\n\n` +
+                        `*Action:* ${result.action.description}\n` +
+                        `*Monitor Mode:* ${bullywatch.getStatus().monitorMode ? 'ON (no auto-action)' : 'OFF'}\n\n` +
+                        `${result.details.gptAnalysis ? `*GPT Analysis:* ${result.details.gptAnalysis.reasoning || 'N/A'}\n` : ''}` +
+                        `---\n` +
+                        `Reply with feedback: #bullywatch feedback ${messageId} [true_positive|false_positive|low|medium|high]`;
 
                     // Send alert to admin
-                    await bullyingService.sendAlert(sock, {
-                        groupName: groupMetadata?.subject || 'Unknown',
-                        groupId: chatId,
-                        senderPhone,
-                        senderName: msg.pushName,
-                        senderJid: sender, // Full JID for LID decoding
-                        messageText,
-                        matchedWords: analysis.matchedWords,
-                        timestamp: msg.messageTimestamp * 1000,
-                        severity: analysis.severity,
-                        messageId, // For database tracking and deletion
-                        originalMessage: msg // For quoting in alert
+                    const adminJid = config.ADMIN_PHONE + '@s.whatsapp.net';
+                    await sock.sendMessage(adminJid, {
+                        text: alertText,
+                        mentions: [sender]
                     });
 
-                    // Continue processing - don't return here
-                    // Message stays in group, admin decides what to do
+                    // If NOT in monitor mode and action requires deletion, delete message
+                    if (!bullywatch.getStatus().monitorMode && result.action.deleteMessage) {
+                        try {
+                            await sock.sendMessage(chatId, { delete: msg.key });
+                            console.log(`   ✅ Message deleted (auto-action enabled)`);
+                        } catch (deleteError) {
+                            console.error(`   ❌ Failed to delete message:`, deleteError.message);
+                        }
+                    }
                 }
             }
         } catch (error) {
-            console.error(`[${getTimestamp()}] ❌ Bullying monitoring error:`, error.message);
+            console.error(`[${getTimestamp()}] ❌ Bullywatch v2.0 error:`, error.message);
             // Continue processing even if monitoring fails
         }
     }

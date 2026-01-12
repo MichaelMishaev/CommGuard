@@ -106,6 +106,14 @@ class LexiconService {
       baseScore += emojiAnalysis.score;
     }
 
+    // I) Self-Harm Detection (CRITICAL - highest priority)
+    const selfHarm = this.detectSelfHarm(text);
+    if (selfHarm.hits.length > 0) {
+      hits.push(...selfHarm.hits);
+      categories.add('self_harm');
+      baseScore += selfHarm.score;
+    }
+
     return {
       hits,
       categories: Array.from(categories),
@@ -142,11 +150,13 @@ class LexiconService {
   detectSexualHarassment(text) {
     const patterns = [
       // Note: These are critical threats - score 20 for sexual coercion
+      // Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
+      { pattern: /לאנוס|אנס|לאנוס\s*אוטכ|אני\s*אנס\s*אוטכ|צריכ\s*לאנוס/g, word: 'לאנוס/אנס', score: 20, category: 'sexual_harassment' },
       { pattern: /זונה|whore|slut|zona/g, word: 'זונה', score: 20, category: 'sexual_harassment' },
-      { pattern: /בן זונה|בת זונה|ben zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
+      { pattern: /בנ\s*זונה|בט\s*זונה|ben\s*zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
       { pattern: /שרמוטה|sharmuta/g, word: 'שרמוטה', score: 20, category: 'sexual_harassment' },
       { pattern: /כלבה|bitch/g, word: 'כלבה', score: 16, category: 'sexual_harassment' },
-      { pattern: /תשלח תמונה|send pic/g, word: 'תשלח תמונה', score: 20, category: 'sexual_harassment' },
+      { pattern: /טשלח\s*טמונה|send\s*pic/g, word: 'תשלח תמונה', score: 20, category: 'sexual_harassment' },
     ];
 
     return this.matchPatterns(text, patterns);
@@ -170,17 +180,18 @@ class LexiconService {
 
   // D) Direct Threats - Updated to match scoring system v2.0
   // Section 2.1: Violence Threat = +18 points (Critical)
+  // Note: Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
   detectDirectThreats(text) {
     const patterns = [
-      { pattern: /חכה לי|חכה חכה|chake li/g, word: 'חכה לי', score: 18, category: 'direct_threat' },
-      { pattern: /אני אשבור אותך|אני מפרק אותך|ashbor/g, word: 'אשבור אותך', score: 18, category: 'direct_threat' },
-      { pattern: /אני אבוא אליך/g, word: 'אבוא אליך', score: 18, category: 'direct_threat' },
-      { pattern: /אני אתפוס אותך/g, word: 'אתפוס אותך', score: 18, category: 'direct_threat' },
-      { pattern: /ניפגש אחרי בית ספר|ניפגש בחוץ|אחרי ביס/g, word: 'ניפגש אחרי ביס', score: 18, category: 'direct_threat' },
-      { pattern: /אני אדאג לך/g, word: 'אדאג לך', score: 18, category: 'direct_threat' },
-      { pattern: /תזהר ממני|תזהרי ממני/g, word: 'תזהר ממני', score: 18, category: 'direct_threat' },
-      { pattern: /אני אהרוג אותך|אני אמחק אותך|aharog/g, word: 'אהרוג/אמחק', score: 20, category: 'direct_threat' },
-      { pattern: /אני ארביץ לך|אני אשבור לך/g, word: 'ארביץ/אשבור', score: 18, category: 'direct_threat' },
+      { pattern: /חכה\s*לי|חכה\s*חכה|chake\s*li/g, word: 'חכה לי', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אשבור\s*אוטכ|אני\s*מפרכ\s*אוטכ|ashbor/g, word: 'אשבור אותך', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אבוא\s*אליכ/g, word: 'אבוא אליך', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אטפוס\s*אוטכ/g, word: 'אתפוס אותך', score: 18, category: 'direct_threat' },
+      { pattern: /ניפגש\s*אחרי\s*ביט\s*ספר|ניפגש\s*בחוצ|אחרי\s*ביס/g, word: 'ניפגש אחרי ביס', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אדאג\s*לכ/g, word: 'אדאג לך', score: 18, category: 'direct_threat' },
+      { pattern: /טזהר\s*ממני|טזהרי\s*ממני/g, word: 'תזהר ממני', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אהרוג\s*אוטכ|אני\s*אמחכ\s*אוטכ|להרוג\s*אוטכ|צריכ\s*להרוג|aharog/g, word: 'להרוג/אהרוג/אמחק', score: 20, category: 'direct_threat' },
+      { pattern: /אני\s*ארביצ\s*לכ|אני\s*אשבור\s*לכ/g, word: 'ארביץ/אשבור', score: 18, category: 'direct_threat' },
     ];
 
     return this.matchPatterns(text, patterns);
@@ -231,6 +242,22 @@ class LexiconService {
       { pattern: /עשיתי פרופיל בשמו|עשיתי פרופיל בשמה/g, word: 'פרופיל בשמו', score: 12, category: 'public_humiliation' },
       { pattern: /אני אשלח בשמך/g, word: 'אשלח בשמך', score: 12, category: 'public_humiliation' },
       { pattern: /תראה מה כתבו בשם שלך/g, word: 'כתבו בשם שלך', score: 12, category: 'public_humiliation' },
+    ];
+
+    return this.matchPatterns(text, patterns);
+  }
+
+  // I) Self-Harm Detection - CRITICAL
+  // Section 2.1: Self-Harm/Suicide = +20 points (CRITICAL - requires immediate intervention)
+  // Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
+  detectSelfHarm(text) {
+    const patterns = [
+      { pattern: /להטאבד|אטאבד|אני\s*אטאבד|רוצה\s*להטאבד/g, word: 'להתאבד/אתאבד', score: 20, category: 'self_harm' },
+      { pattern: /רוצה\s*למוט|אני\s*רוצה\s*למוט|מוטב\s*למוט/g, word: 'רוצה למות', score: 20, category: 'self_harm' },
+      { pattern: /אני\s*הולכ\s*למוט|אני\s*אמוט/g, word: 'אני אמות', score: 20, category: 'self_harm' },
+      { pattern: /לחטוכ\s*אט\s*אצמי|אחטוכ\s*אט\s*אצמי/g, word: 'לחתוך עצמי', score: 20, category: 'self_harm' },
+      { pattern: /איןלי\s*סיבה\s*לחיוט|אין\s*טאמ\s*לחיוט/g, word: 'אין טעם לחיות', score: 20, category: 'self_harm' },
+      { pattern: /מוטב\s*שלא\s*הייטי\s*נולד|מוטב\s*שלא\s*הייטי\s*כיימ/g, word: 'מוטב שלא הייתי', score: 20, category: 'self_harm' },
     ];
 
     return this.matchPatterns(text, patterns);
