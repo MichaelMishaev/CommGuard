@@ -531,21 +531,24 @@ async function getCategoryStats() {
  * Enable or disable bullying monitoring for a group
  * @param {string} whatsappGroupId - WhatsApp group ID
  * @param {boolean} enabled - Enable (true) or disable (false) monitoring
+ * @param {string|null} className - Class identifier (e.g., ג3, א7) - required when enabling
  * @returns {Promise<boolean>} Success status
  */
-async function setBullyingMonitoring(whatsappGroupId, enabled) {
+async function setBullyingMonitoring(whatsappGroupId, enabled, className = null) {
     try {
         const result = await query(`
             UPDATE groups
-            SET bullying_monitoring = $2
+            SET bullying_monitoring = $2,
+                class_name = $3
             WHERE whatsapp_group_id = $1
-            RETURNING name, bullying_monitoring
-        `, [whatsappGroupId, enabled]);
+            RETURNING name, bullying_monitoring, class_name
+        `, [whatsappGroupId, enabled, className]);
 
         if (result.rows.length > 0) {
             const group = result.rows[0];
             const status = enabled ? 'enabled' : 'disabled';
-            console.log(`[${getTimestamp()}] ✅ Bullying monitoring ${status} for ${group.name}`);
+            const classInfo = group.class_name ? ` (Class: ${group.class_name})` : '';
+            console.log(`[${getTimestamp()}] ✅ Bullying monitoring ${status} for ${group.name}${classInfo}`);
             return true;
         } else {
             console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
@@ -574,6 +577,75 @@ async function isBullyingMonitoringEnabled(whatsappGroupId) {
     } catch (error) {
         console.error(`[${getTimestamp()}] ❌ Failed to check bullying monitoring:`, error.message);
         return false;
+    }
+}
+
+/**
+ * Get class name for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @returns {Promise<string|null>} Class name or null if not set
+ */
+async function getGroupClassName(whatsappGroupId) {
+    try {
+        const result = await query(`
+            SELECT class_name
+            FROM groups
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId]);
+
+        return result.rows[0]?.class_name || null;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to get class name:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Update class name for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {string} className - New class name (e.g., ג3, א7)
+ * @returns {Promise<boolean>} Success status
+ */
+async function setGroupClassName(whatsappGroupId, className) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET class_name = $2
+            WHERE whatsapp_group_id = $1
+            RETURNING name, class_name
+        `, [whatsappGroupId, className]);
+
+        if (result.rows.length > 0) {
+            const group = result.rows[0];
+            console.log(`[${getTimestamp()}] ✅ Class name updated to ${className} for ${group.name}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to set class name:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Get all groups with bullying monitoring enabled
+ * @returns {Promise<Array>} Array of groups with {whatsapp_group_id, name, class_name}
+ */
+async function getBullywatchGroups() {
+    try {
+        const result = await query(`
+            SELECT whatsapp_group_id, name, class_name
+            FROM groups
+            WHERE bullying_monitoring = true
+            ORDER BY class_name NULLS LAST, name
+        `);
+
+        return result.rows;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to get bullywatch groups:`, error.message);
+        return [];
     }
 }
 
@@ -686,5 +758,8 @@ module.exports = {
     removeAlertRecipient,
     getAlertRecipients,
     setBullyingMonitoring,
-    isBullyingMonitoringEnabled
+    isBullyingMonitoringEnabled,
+    getGroupClassName,
+    setGroupClassName,
+    getBullywatchGroups
 };

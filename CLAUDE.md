@@ -342,12 +342,26 @@ Score 16+:   High Risk (alert + auto-action if monitor mode disabled)
 5. **Sextortion/Blackmail**: "אם לא תעשה X אני מפרסם", "יש לי צילום מסך", "תשלח תמונה ואז אמחק"
 6. **Direct Threats**: "חכה לי", "אני אשבור אותך", "ניפגש אחרי ביס"
 
+### Class Assignment (Mandatory)
+
+Every #bullywatch-enabled group MUST have a class identifier for tracking and reporting.
+
+**Format**: Hebrew letter + number (e.g., ג3 = class ג, grade 3)
+
+**Database Field**: `groups.class_name` (VARCHAR(20), indexed)
+
 ### Commands
 
+#### Admin Commands (Group - Managing #bullywatch)
+- `#bullywatch on [class]` - Enable bullying detection with class name (MANDATORY)
+  - Example: `#bullywatch on ג3`
+  - Example: `#bullywatch on א7`
+- `#bullywatch off` - Disable bullying detection (class name preserved in DB)
+- `#bullywatch class [class]` - Update class name for already-enabled group
+  - Example: `#bullywatch class ב10`
+- `#bullywatch status` - Show monitoring status and current class assignment
+
 #### Admin Commands (Private)
-- `#bullywatch enable <group>` - Enable bullying detection for a group
-- `#bullywatch disable <group>` - Disable bullying detection
-- `#bullywatch status` - Show all monitored groups and statistics
 - `#bullywatch review` - Review pending alerts and provide feedback
 - `#bullywatch whitelist <group>` - Whitelist friend group (reduce sensitivity)
 - `#bullywatch unwhitelist <group>` - Remove from whitelist
