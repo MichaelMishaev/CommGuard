@@ -229,7 +229,7 @@ class SentimentAnalysisService {
                     input: fullPrompt,
                     reasoning: { effort: this.reasoningEffort },
                     text: { verbosity: this.verbosity },
-                    max_completion_tokens: this.maxTokens
+                    max_output_tokens: this.maxTokens // Responses API uses max_output_tokens
                 }),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('OpenAI API timeout after 15 seconds')), 15000)
