@@ -34,7 +34,7 @@ class SentimentAnalysisService {
 
         // Model configuration
         this.model = 'gpt-5-mini'; // Fast, cost-efficient, accurate
-        this.maxTokens = 150; // Limit output to control costs
+        this.maxTokens = 500; // Increased from 150 - was hitting limit before generating output
 
         this.initialized = false;
     }
