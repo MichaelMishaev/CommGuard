@@ -43,28 +43,28 @@ class LexiconService {
         },
         {
           canonical: 'בנזונה',
-          surfaceForms: ['בנזונה', 'בטזונה', 'בנזונהה+'],
+          surfaceForms: ['בנזונה', 'בטזונה', 'בנזונהה+', 'בניזונה', 'בניזונוט'],  // Added plurals
           category: 'sexual_harassment',
           score: 20,
           displayName: 'בן/בת זונה',
-          transliterations: ['ben zona'],
+          transliterations: ['ben zona', 'bnei zonot'],
           notes: 'Son/daughter of whore - high severity'
         },
         {
           canonical: 'זונה',
-          surfaceForms: ['זונה'],
+          surfaceForms: ['זונה', 'זונוט'],  // Added plural: זונות → זונוט
           category: 'sexual_harassment',
           score: 20,
-          displayName: 'זונה',
-          transliterations: ['whore', 'slut', 'zona']
+          displayName: 'זונה/זונות',
+          transliterations: ['whore', 'slut', 'zona', 'whores']
         },
         {
-          canonical: 'שרמוכה',
-          surfaceForms: ['שרמוכה'],
+          canonical: 'שרמוטה',
+          surfaceForms: ['שרמוטה', 'שרמוטוט'],  // שרמוטה singular, שרמוטות → שרמוטוט (plural)
           category: 'sexual_harassment',
           score: 20,
-          displayName: 'שרמוטה',
-          transliterations: ['sharmuta']
+          displayName: 'שרמוטה/שרמוטות',
+          transliterations: ['sharmuta', 'sharmutas']
         },
         {
           canonical: 'להזדיינ',
@@ -76,7 +76,7 @@ class LexiconService {
         },
         {
           canonical: 'בנכלב',
-          surfaceForms: ['בנכלב', 'בטכלב', 'יאבנכלב'],
+          surfaceForms: ['בנכלב', 'בטכלב', 'יאבנכלב', 'בניכלב', 'בניכלבימ'],  // Added plurals
           category: 'sexual_harassment',
           score: 16,
           displayName: 'בן/בת כלב',
@@ -154,11 +154,11 @@ class LexiconService {
       arabic: [
         {
           canonical: 'כלב',
-          surfaceForms: ['כלב', 'כלבה', 'יאכלב'],
+          surfaceForms: ['כלב', 'כלבה', 'יאכלב', 'כלבימ', 'כלבוט'],  // Added plurals: כלבים, כלבות
           category: 'sexual_harassment',
           score: 12,
-          displayName: 'כלב/כלבה',
-          transliterations: ['kalb', 'kalba'],
+          displayName: 'כלב/כלבה/כלבים',
+          transliterations: ['kalb', 'kalba', 'klabim'],
           notes: 'Arabic-derived - dog (insult)'
         }
       ],

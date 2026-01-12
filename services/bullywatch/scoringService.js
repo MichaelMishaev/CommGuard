@@ -376,14 +376,12 @@ class ScoringService {
 
       case 'RED-2':
         return {
-          type: 'delete_alert_parents_mute',
-          description: 'Delete + alert admin (recommend parents) + temp mute 60 min + escalation notice',
+          type: 'delete_alert_parents_escalation',
+          description: 'Delete + alert admin (recommend parents) + escalation notice',
           alertAdmin: true,
           deleteMessage: !monitorMode,
           sendGroupMessage: !monitorMode,
-          tempMute: !monitorMode,
-          muteDuration: 60 * 60 * 1000, // 60 minutes
-          groupMessage: '🔴 משתמש הושתק זמנית (60 דקות) עקב הפרה חמורה.\nהורים יקבלו התראה. המשך הפרות יגרום להסרה מהקבוצה.',
+          groupMessage: '🔴 הודעה הוסרה עקב הפרה חמורה של כללי הקבוצה.\nהורים יקבלו התראה. המשך הפרות יגרום להסרה מהקבוצה.',
           recommendParentContact: true
         };
 
