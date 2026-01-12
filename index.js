@@ -1243,6 +1243,32 @@ async function handleMessage(sock, msg, commandHandler) {
 
     const chatId = msg.key.remoteJid;
 
+    // Store recent messages for context (BEFORE bullying check)
+    // This allows GPT to see conversation history for better accuracy
+    if (isGroup && messageText && messageText.trim().length > 0) {
+        try {
+            const { getRedis } = require('./services/redisService');
+            const redis = getRedis();
+
+            // Store message with metadata
+            const messageData = JSON.stringify({
+                sender: msg.pushName || 'Unknown',
+                senderJid: msg.key.participant || msg.key.remoteJid,
+                text: messageText,
+                timestamp: msg.messageTimestamp * 1000
+            });
+
+            // Store in Redis list (keep last 5 messages per group)
+            const contextKey = `group_context:${chatId}`;
+            await redis.lpush(contextKey, messageData);
+            await redis.ltrim(contextKey, 0, 4); // Keep only last 5 messages
+            await redis.expire(contextKey, 3600); // Expire after 1 hour
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ⚠️  Failed to store message context:`, error.message);
+            // Non-critical - continue processing
+        }
+    }
+
     // Check for bullying monitoring (ONLY for groups with monitoring enabled)
     if (isGroup && messageText && messageText.trim().length > 0) {
         try {

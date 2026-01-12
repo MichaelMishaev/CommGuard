@@ -206,13 +206,41 @@ class BullyingMonitoringService {
         // Store GPT analysis for database saving
         let gptAnalysisData = null;
 
-        // GPT Sentiment Analysis (only if words matched)
+        // Retrieve conversation context (last 5 messages) for better accuracy
+        let conversationContext = [];
+        try {
+            const { getRedis } = require('./redisService');
+            const redis = getRedis();
+            const contextKey = `group_context:${groupId}`;
+
+            // Get last 5 messages (excluding current one)
+            const contextData = await redis.lrange(contextKey, 1, 5);
+
+            // Parse and format context messages
+            conversationContext = contextData.map(data => {
+                try {
+                    return JSON.parse(data);
+                } catch (e) {
+                    return null;
+                }
+            }).filter(Boolean);
+
+            if (conversationContext.length > 0) {
+                console.log(`[${getTimestamp()}] 💬 Retrieved ${conversationContext.length} context messages for GPT analysis`);
+            }
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ⚠️  Failed to retrieve context:`, error.message);
+            // Continue without context (graceful degradation)
+        }
+
+        // GPT Sentiment Analysis (with conversation context)
         try {
             const analysis = await sentimentAnalysisService.analyzeMessage(
                 messageText,
                 matchedWords,
                 senderName,
-                groupName
+                groupName,
+                conversationContext // Pass last 5 messages for context
             );
 
             if (analysis.analyzed) {
