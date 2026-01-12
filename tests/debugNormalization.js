@@ -1,16 +1,18 @@
-// Debug normalization to see what's happening
 const lexiconService = require('../services/bullywatch/lexiconService');
 
-const tests = [
-    'אתה מת',
-    'אונס מהנה',
-    'אני מתאבד'
+// Test normalization
+const testWords = [
+  'זין',
+  'חתיכת זין',
+  'כוסאמק',
+  'שמע ראיתי בסרט חתיכת זין כמוך מטייל שם'
 ];
 
-console.log('Normalization Debug:\n');
-tests.forEach(text => {
-    const normalized = lexiconService.normalizeHebrew(text);
-    console.log(`Original:    "${text}"`);
-    console.log(`Normalized:  "${normalized}"`);
-    console.log('');
-});
+console.log('Testing Hebrew normalization:\n');
+
+for (const word of testWords) {
+  const normalized = lexiconService.normalizeHebrew(word);
+  console.log(`Original:    "${word}"`);
+  console.log(`Normalized:  "${normalized}"`);
+  console.log('');
+}

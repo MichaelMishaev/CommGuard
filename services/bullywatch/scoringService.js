@@ -85,17 +85,17 @@ class ScoringService {
     let targetingMultiplier = 1.0;
     let publicShamingMultiplier = 1.0;
 
-    // 3.1 Targeting Multiplier (×1.5)
-    if (this.hasTargeting(messageText)) {
+    // 3.1 Targeting Multiplier (×1.5) - use NORMALIZED text for pattern matching
+    if (this.hasTargeting(normalizedText)) {
       targetingMultiplier = 1.5;
     }
 
-    // 3.2 Public-Shaming Multiplier (×1.3)
-    if (this.hasPublicShaming(messageText)) {
+    // 3.2 Public-Shaming Multiplier (×1.3) - use NORMALIZED text
+    if (this.hasPublicShaming(normalizedText)) {
       publicShamingMultiplier = 1.3;
     }
 
-    // 3.3 Emoji Intensity Add-On (+2)
+    // 3.3 Emoji Intensity Add-On (+2) - use ORIGINAL text for emojis
     if (this.hasEmojiIntensity(messageText)) {
       addOns += 2;
     }
@@ -223,16 +223,19 @@ class ScoringService {
 
   /**
    * Check for targeting (×1.5 multiplier) - Section 3.1
+   * FIXED: Added כמוך (like you), שלך (yours), and other targeting forms
    */
   hasTargeting(text) {
-    return /אתה|את|הוא|היא|אתם|אתן|@/.test(text);
+    // Normalized forms: כמוך→כמוכ, שלך→שלכ, אתה→אטה, etc.
+    return /אטה|אט|הוא|היא|אטמ|אטנ|כמוכ|שלכ|יא@/.test(text);
   }
 
   /**
    * Check for public shaming (×1.3 multiplier) - Section 3.2
+   * Uses NORMALIZED forms (ת→ט, ם→מ)
    */
   hasPublicShaming(text) {
-    return /כולם|לכולם|תראו|שלחו/.test(text);
+    return /כולמ|לכולמ|טראו|שלחו/.test(text);
   }
 
   /**

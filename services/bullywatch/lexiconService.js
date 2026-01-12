@@ -8,6 +8,241 @@ class LexiconService {
   constructor() {
     this.initialized = false;
     this.weights = new Map(); // Dynamic weights updated by feedback loop
+
+    // Structured Lexicon Database (v2.0)
+    // Format: { canonical, surfaceForms, category, score, displayName }
+    this.lexiconDB = this.buildLexiconDatabase();
+  }
+
+  /**
+   * Build structured lexicon database with surface forms
+   * This makes it easy to add variants and maintain consistency
+   */
+  buildLexiconDatabase() {
+    return {
+      // SEXUAL/PROFANE TERMS (score: 16-20)
+      sexual: [
+        {
+          canonical: 'זין',
+          surfaceForms: ['זינ', 'זי.נ', 'זי נ'],
+          compounds: ['חטיכטזינ', 'זינבאינ', 'יאזינ'],
+          category: 'sexual_harassment',
+          score: 16,
+          displayName: 'זין/חתיכת זין/זין בעין',
+          transliterations: ['dick', 'cock']
+        },
+        {
+          canonical: 'כוס',
+          surfaceForms: ['כוס', 'כו.ס', 'כו ס'],
+          compounds: ['כוסאמא', 'כוסאמכ', 'כוסטמכ', 'כוסאמאמכ', 'כוסומו', 'כוסמכ'],
+          category: 'sexual_harassment',
+          score: 16,
+          displayName: 'כוס/כוסאמא/כוסמק',
+          transliterations: ['kusemek', 'kusemo', 'kusmak', 'cunt'],
+          notes: 'Very common, includes Arabic-derived forms'
+        },
+        {
+          canonical: 'בנזונה',
+          surfaceForms: ['בנזונה', 'בטזונה', 'בנזונהה+'],
+          category: 'sexual_harassment',
+          score: 20,
+          displayName: 'בן/בת זונה',
+          transliterations: ['ben zona'],
+          notes: 'Son/daughter of whore - high severity'
+        },
+        {
+          canonical: 'זונה',
+          surfaceForms: ['זונה'],
+          category: 'sexual_harassment',
+          score: 20,
+          displayName: 'זונה',
+          transliterations: ['whore', 'slut', 'zona']
+        },
+        {
+          canonical: 'שרמוכה',
+          surfaceForms: ['שרמוכה'],
+          category: 'sexual_harassment',
+          score: 20,
+          displayName: 'שרמוטה',
+          transliterations: ['sharmuta']
+        },
+        {
+          canonical: 'להזדיינ',
+          surfaceForms: ['לכלהזדיינ', 'להזדיינ'],
+          category: 'sexual_harassment',
+          score: 18,
+          displayName: 'לך להזדיין',
+          transliterations: ['go fuck yourself']
+        },
+        {
+          canonical: 'בנכלב',
+          surfaceForms: ['בנכלב', 'בטכלב', 'יאבנכלב'],
+          category: 'sexual_harassment',
+          score: 16,
+          displayName: 'בן/בת כלב',
+          notes: 'Son/daughter of dog'
+        },
+        {
+          canonical: 'זובי',
+          surfaceForms: ['זובי'],
+          category: 'sexual_harassment',
+          score: 4,
+          displayName: 'זובי',
+          notes: 'Mild sexual insult'
+        }
+      ],
+
+      // GENERAL INSULTS (score: 4-6)
+      insults: [
+        {
+          canonical: 'מפגר',
+          surfaceForms: ['מפגר', 'מפגרט', 'מפוגר', 'מפגרימ'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'מפגר',
+          prefix: 'יא',  // Can combine with יא prefix
+          notes: 'Very common insult - retard'
+        },
+        {
+          canonical: 'חרא',
+          surfaceForms: ['חרא', 'חטיכטחרא'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'חרא/חתיכת חרא',
+          transliterations: ['shit', 'crap'],
+          prefix: 'יא'
+        },
+        {
+          canonical: 'חלאט',
+          surfaceForms: ['חלאט', 'חלאטהמינהאנושי'],
+          category: 'general_insult',
+          score: 6,
+          displayName: 'חלאת המין האנושי',
+          notes: 'Scum of humanity - higher severity'
+        },
+        {
+          canonical: 'מניאכ',
+          surfaceForms: ['מניאכ', 'יאמניאכ'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'מניאק',
+          transliterations: ['maniac'],
+          prefix: 'יא'
+        },
+        {
+          canonical: 'ארס',
+          surfaceForms: ['ארס', 'ארסיט'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'ערס/ערסית',
+          transliterations: ['aars'],
+          notes: 'Social slang - thug/brash behavior'
+        },
+        {
+          canonical: 'פרחה',
+          surfaceForms: ['פרחה'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'פרחה',
+          transliterations: ['parcha'],
+          notes: 'Gendered insult - shallow woman'
+        }
+      ],
+
+      // ARABIC-DERIVED TERMS (very common in Israeli slang)
+      // Note: כוסמק, שרמוטה, מניאק already in other sections
+      arabic: [
+        {
+          canonical: 'כלב',
+          surfaceForms: ['כלב', 'כלבה', 'יאכלב'],
+          category: 'sexual_harassment',
+          score: 12,
+          displayName: 'כלב/כלבה',
+          transliterations: ['kalb', 'kalba'],
+          notes: 'Arabic-derived - dog (insult)'
+        }
+      ],
+
+      // RUSSIAN/IMMIGRANT SLANG (score: 4-6)
+      immigrant: [
+        {
+          canonical: 'כיבינימט',
+          surfaceForms: ['כיבינימט', 'כיבינימאט', 'כיבינמאט'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'קיבינימט',
+          transliterations: ['kibinemat', 'yob tvoyu mat'],
+          notes: 'Russian curse - "damn it" / "fuck your mother"'
+        },
+        {
+          canonical: 'בליאט',
+          surfaceForms: ['בליאט', 'בליט'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'בליאט',
+          transliterations: ['blyat'],
+          notes: 'Russian curse - very common in immigrant communities'
+        },
+        {
+          canonical: 'חוי',
+          surfaceForms: ['חוי', 'חויה'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'חוי',
+          transliterations: ['khui'],
+          notes: 'Russian - dick'
+        }
+      ],
+
+      // ENGLISH PROFANITY (score: 4)
+      english: [
+        {
+          canonical: 'fuck',
+          surfaceForms: ['fuck', 'fucking', 'fuckin', 'fucker'],
+          hebrewSpelling: ['פאכ', 'פאקינג'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'fuck/shit (English)',
+          notes: 'Mixed in Hebrew chats'
+        },
+        {
+          canonical: 'shit',
+          surfaceForms: ['shit', 'shitty'],
+          category: 'general_insult',
+          score: 4,
+          displayName: 'shit (English)'
+        }
+      ],
+
+      // RELIGIOUS CURSES (score: 4-8)
+      religious: [
+        {
+          canonical: 'ימחשמו',
+          surfaceForms: ['ימחשמו', 'ימש'],
+          category: 'religious_curse',
+          score: 4,
+          displayName: 'ימח שמו',
+          transliterations: ['yimach shmo'],
+          notes: 'May his name be erased'
+        },
+        {
+          canonical: 'לאזאזל',
+          surfaceForms: ['לכלאזאזל', 'לאזאזל'],
+          category: 'religious_curse',
+          score: 4,
+          displayName: 'לך לעזאזל',
+          transliterations: ['go to hell']
+        },
+        {
+          canonical: 'שטמוט',
+          surfaceForms: ['שטמוט', 'שיטוט', 'שימוט'],
+          category: 'religious_curse',
+          score: 8,
+          displayName: 'שתמות',
+          notes: 'That you die - higher severity'
+        }
+      ]
+    };
   }
 
   async initialize() {
@@ -16,14 +251,155 @@ class LexiconService {
     // Load dynamic weights from feedback service if available
     await this.loadWeights();
 
+    // Build comprehensive pattern cache from structured lexicon
+    this.buildPatternCache();
+
     this.initialized = true;
-    console.log('✅ LexiconService initialized');
+    console.log('✅ LexiconService v2.1 initialized (Structured Lexicon with Morphology)');
+  }
+
+  /**
+   * Build comprehensive pattern cache from structured lexicon
+   * Handles prefix/suffix morphology automatically
+   */
+  buildPatternCache() {
+    this.patternCache = {
+      sexual: [],
+      insults: [],
+      arabic: [],
+      immigrant: [],
+      english: [],
+      religious: []
+    };
+
+    // For each category in lexiconDB
+    for (const [category, entries] of Object.entries(this.lexiconDB)) {
+      for (const entry of entries) {
+        const patterns = this.buildPatternsFromEntry(entry);
+        this.patternCache[category].push(...patterns);
+      }
+    }
+  }
+
+  /**
+   * Build all pattern variations from a lexicon entry
+   * Handles: יא prefix, possessive suffixes, plurals, transliterations
+   */
+  buildPatternsFromEntry(entry) {
+    const patterns = [];
+    const allForms = new Set();
+
+    // Add surface forms
+    if (entry.surfaceForms) {
+      entry.surfaceForms.forEach(form => allForms.add(form));
+    }
+
+    // Add compounds
+    if (entry.compounds) {
+      entry.compounds.forEach(form => allForms.add(form));
+    }
+
+    // Add transliterations
+    if (entry.transliterations) {
+      entry.transliterations.forEach(form => allForms.add(form));
+    }
+
+    // Add Hebrew spelling (for English words)
+    if (entry.hebrewSpelling) {
+      entry.hebrewSpelling.forEach(form => allForms.add(form));
+    }
+
+    // Generate יא prefix variants (very common pattern)
+    if (entry.prefix === 'יא') {
+      const prefixForms = new Set();
+      allForms.forEach(form => {
+        prefixForms.add('יא' + form);
+      });
+      prefixForms.forEach(form => allForms.add(form));
+    }
+
+    // Generate possessive suffix variants (שלך, שלו, שלי, שלה)
+    if (entry.possessiveSuffixes !== false) {
+      const possessiveForms = new Set();
+      allForms.forEach(form => {
+        // Only add possessives for Hebrew words (not transliterations)
+        if (!/[a-z]/i.test(form)) {
+          possessiveForms.add(form + 'שלכ');  // שלך → שלכ (normalized)
+          possessiveForms.add(form + 'שלו');
+          possessiveForms.add(form + 'שלי');
+          possessiveForms.add(form + 'שלה');
+        }
+      });
+      possessiveForms.forEach(form => allForms.add(form));
+    }
+
+    // Generate plural variants (ים, ות) for insults
+    if (entry.pluralSuffixes !== false && entry.category === 'general_insult') {
+      const pluralForms = new Set();
+      allForms.forEach(form => {
+        if (!/[a-z]/i.test(form)) {
+          pluralForms.add(form + 'ימ');  // ים → ימ (normalized)
+          pluralForms.add(form + 'וט');  // ות → וט (normalized)
+        }
+      });
+      pluralForms.forEach(form => allForms.add(form));
+    }
+
+    // Build regex pattern from all forms
+    const patternString = Array.from(allForms).join('|');
+
+    return [{
+      pattern: new RegExp(patternString, 'g'),
+      word: entry.displayName,
+      score: entry.score,
+      category: entry.category,
+      canonical: entry.canonical,
+      notes: entry.notes
+    }];
   }
 
   async loadWeights() {
     // Placeholder for feedback-based weight loading
     // Will be implemented by feedbackService.js
     this.weights.set('default', 1.0);
+  }
+
+  /**
+   * Detect from structured lexicon (NEW v2.1)
+   * Uses pattern cache with automatic morphology handling
+   */
+  detectFromStructuredLexicon(text) {
+    const hits = [];
+    const categories = new Set();
+    let score = 0;
+
+    if (!this.patternCache) return { hits, categories: [], score };
+
+    // Check all categories
+    for (const [categoryName, patterns] of Object.entries(this.patternCache)) {
+      for (const patternObj of patterns) {
+        const matches = text.match(patternObj.pattern);
+        if (matches) {
+          const weight = this.weights.get(patternObj.canonical) || 1.0;
+          const weightedScore = patternObj.score * weight;
+
+          hits.push({
+            word: patternObj.word,
+            canonical: patternObj.canonical,
+            matches: matches.length,
+            baseScore: patternObj.score,
+            weightedScore,
+            category: patternObj.category,
+            source: 'structured_lexicon'
+          });
+
+          categories.add(patternObj.category);
+          score += weightedScore;
+        }
+      }
+    }
+
+    return { hits, categories: Array.from(categories), score };
   }
 
   /**
@@ -43,7 +419,17 @@ class LexiconService {
     const categories = new Set();
     let baseScore = 0;
 
-    // A) General Insults (Low-Medium)
+    // NEW: Check structured lexicon patterns (with morphology support)
+    if (this.patternCache) {
+      const structuredResults = this.detectFromStructuredLexicon(text);
+      if (structuredResults.hits.length > 0) {
+        hits.push(...structuredResults.hits);
+        structuredResults.categories.forEach(cat => categories.add(cat));
+        baseScore += structuredResults.score;
+      }
+    }
+
+    // A) General Insults (Low-Medium) - LEGACY patterns
     const generalInsults = this.detectGeneralInsults(text);
     if (generalInsults.hits.length > 0) {
       hits.push(...generalInsults.hits);
@@ -51,7 +437,7 @@ class LexiconService {
       baseScore += generalInsults.score;
     }
 
-    // B) Sexual/Harassment (High)
+    // B) Sexual/Harassment (High) - LEGACY patterns
     const sexualHarassment = this.detectSexualHarassment(text);
     if (sexualHarassment.hits.length > 0) {
       hits.push(...sexualHarassment.hits);
@@ -115,12 +501,49 @@ class LexiconService {
       baseScore += selfHarm.score;
     }
 
+    // J) Religious Curses (Medium severity)
+    const religiousCurses = this.detectReligiousCurses(text);
+    if (religiousCurses.hits.length > 0) {
+      hits.push(...religiousCurses.hits);
+      categories.add('religious_curse');
+      baseScore += religiousCurses.score;
+    }
+
+    // DEDUPLICATION: Remove duplicate hits from structured + legacy patterns
+    // Keep the hit with the highest score for each canonical form
+    const deduplicatedHits = this.deduplicateHits(hits);
+    const deduplicatedScore = deduplicatedHits.reduce((sum, hit) => sum + (hit.weightedScore || hit.score || 0), 0);
+
     return {
-      hits,
+      hits: deduplicatedHits,
       categories: Array.from(categories),
-      baseScore,
+      baseScore: deduplicatedScore,
       normalized: text // Already normalized at the top of detect()
     };
+  }
+
+  /**
+   * Deduplicate hits to avoid double-counting from structured + legacy patterns
+   * Keeps the highest-scoring hit for each unique word
+   */
+  deduplicateHits(hits) {
+    const hitMap = new Map();
+
+    for (const hit of hits) {
+      // Normalize the word field for deduplication
+      // "זין/חתיכת זין/זין בעין" → "זין" (first part before slash)
+      // This ensures variants map to same canonical key
+      let word = hit.word || hit.canonical || 'unknown';
+      const normalizedKey = word.split('/')[0].trim();  // Take first word before slash
+
+      const score = hit.weightedScore || hit.score || 0;
+
+      if (!hitMap.has(normalizedKey) || score > (hitMap.get(normalizedKey).weightedScore || hitMap.get(normalizedKey).score || 0)) {
+        hitMap.set(normalizedKey, hit);
+      }
+    }
+
+    return Array.from(hitMap.values());
   }
 
   // A) General Insults - Updated to match scoring system v2.0
@@ -128,19 +551,29 @@ class LexiconService {
   detectGeneralInsults(text) {
     const patterns = [
       // Classic insults - ALL score 4 points (Direct Insult category)
-      { pattern: /מפגר|מפגרת|מפוגר|מ פ ג ר|מ\.פ\.ג\.ר/g, word: 'מפגר', score: 4, category: 'general_insult' },
-      { pattern: /טיפש|טיפשה|tipesh|tipsh/g, word: 'טיפש', score: 4, category: 'general_insult' },
+      { pattern: /מפגר|מפגרט|מפוגר|מפגרימ/g, word: 'מפגר', score: 4, category: 'general_insult' },
+      { pattern: /טיפש|טיפשה|טיפשימ|tipesh|tipsh/g, word: 'טיפש', score: 4, category: 'general_insult' },
       { pattern: /לוזר|lozer|loozer|loser/g, word: 'לוזר', score: 4, category: 'general_insult' },
-      { pattern: /דפוק|דפוקה|מטורף/g, word: 'דפוק', score: 4, category: 'general_insult' },
+      { pattern: /דפוכ|דפוכה|מטורפ|מטורפימ/g, word: 'דפוק', score: 4, category: 'general_insult' },
       { pattern: /אידיוט|idiot/g, word: 'אידיוט', score: 4, category: 'general_insult' },
       { pattern: /טמבל|טמבלה/g, word: 'טמבל', score: 4, category: 'general_insult' },
       { pattern: /מסריח|מסריחה/g, word: 'מסריח', score: 4, category: 'general_insult' },
-      { pattern: /זבל|garbage|trash/g, word: 'זבל', score: 4, category: 'general_insult' },
-      { pattern: /דוחה|מגעיל/g, word: 'דוחה', score: 4, category: 'general_insult' },
-      { pattern: /פתטי|pathetic|cringe|קרינג/g, word: 'פתטי', score: 4, category: 'general_insult' },
-      { pattern: /מביך|embarrassing/g, word: 'מביך', score: 4, category: 'general_insult' },
-      { pattern: /שקרן|שקרנית|liar/g, word: 'שקרן', score: 4, category: 'general_insult' },
-      { pattern: /גנב|גנבת|thief/g, word: 'גנב', score: 4, category: 'general_insult' },
+      { pattern: /זבל|חטיכטחרא|garbage|trash/g, word: 'זבל/חתיכת חרא', score: 4, category: 'general_insult' },
+      { pattern: /דוחה|מגאיל/g, word: 'דוחה', score: 4, category: 'general_insult' },
+      { pattern: /פטטי|pathetic|cringe|כרינג/g, word: 'פתטי', score: 4, category: 'general_insult' },
+      { pattern: /מביכ|embarrassing/g, word: 'מביך', score: 4, category: 'general_insult' },
+      { pattern: /שכרנ|שכרניט|liar/g, word: 'שקרן', score: 4, category: 'general_insult' },
+      { pattern: /גנב|גנבט|thief/g, word: 'גנב', score: 4, category: 'general_insult' },
+      // NEW: Scum/filth variations (normalized forms)
+      { pattern: /חרא|shit|crap/g, word: 'חרא', score: 4, category: 'general_insult' },
+      { pattern: /חלאט|חלאטהמינהאנושי/g, word: 'חלאת המין האנושי', score: 6, category: 'general_insult' },
+      { pattern: /מניאכ|יאמניאכ|maniac/g, word: 'מניאק', score: 4, category: 'general_insult' },
+      { pattern: /כיבינימט|כיבינימאט|kibinemת/g, word: 'קיבינימט (Russian)', score: 4, category: 'general_insult' },
+      { pattern: /fuck|fucking|shit|fuckin|fucker/g, word: 'fuck/shit (English)', score: 4, category: 'general_insult' },
+      { pattern: /פאכ|פאקינג/g, word: 'פאק (Hebrew spelling)', score: 4, category: 'general_insult' },
+      // NEW: Social slang & derogatory labels (class/gender-based insults)
+      { pattern: /ארס|ארסיט|aars/g, word: 'ערס/ערסית (thug/brash)', score: 4, category: 'general_insult' },
+      { pattern: /פרחה|parcha/g, word: 'פרחה (shallow woman)', score: 4, category: 'general_insult' },
     ];
 
     return this.matchPatterns(text, patterns);
@@ -151,14 +584,19 @@ class LexiconService {
   detectSexualHarassment(text) {
     const patterns = [
       // Note: These are critical threats - score 20 for sexual coercion
-      // Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
       // EXPANDED: Added ALL conjugations - נאנוס (we will rape), אנוס (rape!), תאנס (you will rape)
-      { pattern: /לאנוס|אונס|אנס|נאנוס|אנוס|טאנס|אני\s*אנס|נאנוס\s*אוטכ|צריכ\s*לאנוס/g, word: 'לאנוס/אנס/אונס/נאנוס', score: 20, category: 'sexual_harassment' },
+      { pattern: /לאנוס|אונס|אנס|נאנוס|אנוס|טאנס|אניאנס|נאנוסאוטכ|צריכלאנוס/g, word: 'לאנוס/אנס/אונס/נאנוס', score: 20, category: 'sexual_harassment' },
       { pattern: /זונה|whore|slut|zona/g, word: 'זונה', score: 20, category: 'sexual_harassment' },
-      { pattern: /בנ\s*זונה|בט\s*זונה|ben\s*zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
-      { pattern: /שרמוטה|sharmuta/g, word: 'שרמוטה', score: 20, category: 'sexual_harassment' },
+      { pattern: /בנזונה|בטזונה|בנזונהה+|ben\s*zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
+      { pattern: /שרמוכה|sharmuta/g, word: 'שרמוטה', score: 20, category: 'sexual_harassment' },
       { pattern: /כלבה|bitch/g, word: 'כלבה', score: 16, category: 'sexual_harassment' },
-      { pattern: /טשלח\s*טמונה|send\s*pic/g, word: 'תשלח תמונה', score: 20, category: 'sexual_harassment' },
+      { pattern: /זינ|חטיכטזינ|יאזינ|זינבאינ|dick|cock/g, word: 'זין/חתיכת זין/זין בעין', score: 16, category: 'sexual_harassment' },
+      // NEW: כוס variations (VERY common, many spellings) - includes Arabic-derived forms
+      { pattern: /כוס|כוסאמא|כוסאמכ|כוסטמכ|כוסאמאמכ|כוסומו|כוסמכ|kusemek|kusemo|kusmak|cunt/g, word: 'כוס/כוסאמא/כוסמק', score: 16, category: 'sexual_harassment' },
+      { pattern: /בנכלב|בטכלב|יאבנכלב/g, word: 'בן/בת כלב/יא בן כלב', score: 16, category: 'sexual_harassment' },
+      { pattern: /לכלהזדיינ|להזדיינ|go\s*fuck\s*yourself/g, word: 'לך להזדיין (go fuck yourself)', score: 18, category: 'sexual_harassment' },
+      { pattern: /זובי/g, word: 'זובי (mild insult)', score: 4, category: 'sexual_harassment' },
+      { pattern: /טשלחטמונה|send\s*pic/g, word: 'תשלח תמונה', score: 20, category: 'sexual_harassment' },
     ];
 
     return this.matchPatterns(text, patterns);
@@ -269,6 +707,18 @@ class LexiconService {
     return this.matchPatterns(text, patterns);
   }
 
+  // J) Religious Curses - Medium severity
+  // Common in Israeli culture, score 4 points (same as general insults)
+  detectReligiousCurses(text) {
+    const patterns = [
+      { pattern: /ימחשמו|ימש|yimach\s*shmo/g, word: 'ימח שמו (may his name be erased)', score: 4, category: 'religious_curse' },
+      { pattern: /לכלאזאזל|לאזאזל|go\s*to\s*hell/g, word: 'לך לעזאזל', score: 4, category: 'religious_curse' },
+      { pattern: /שטמוט|שיטוט|שימוט/g, word: 'שתמות (that you die)', score: 8, category: 'religious_curse' },
+    ];
+
+    return this.matchPatterns(text, patterns);
+  }
+
   // H) Emoji Analysis - Updated to match scoring system v2.0
   // Section 2.1: Mocking Emojis = +3 points
   // Note: Emoji intensity (+2) is handled separately in scoringService
@@ -347,7 +797,7 @@ class LexiconService {
 
   /**
    * Hebrew text normalization to catch evasion tactics
-   * Handles: letter swaps, spacing, punctuation
+   * Handles: letter swaps, spacing, punctuation, repeated letters
    * Section 1.1 and 1.2 from scoring system doc
    */
   normalizeHebrew(text) {
@@ -355,18 +805,9 @@ class LexiconService {
 
     let normalized = text.toLowerCase();
 
-    // 1.2 Spacing Evasion Removal (מ פ ג ר → מפגר)
-    normalized = normalized.replace(/([א-ת])\s+([א-ת])/g, '$1$2');
-
-    // Remove punctuation between letters (מ.פ.ג.ר → מפגר)
-    normalized = normalized.replace(/([א-ת])[.,\-_]+([א-ת])/g, '$1$2');
-
-    // 1.1 Letter Swap Normalization - normalize to single canonical form
-    // This prevents kids from writing "עתה טיפש" instead of "אתה טיפש"
-    const letterNormalization = [
-      [/ע/g, 'א'], // ע → א (alef/ayin confusion)
-      [/ת/g, 'ט'], // ת → ט (tet/tav confusion)
-      [/ק/g, 'כ'], // ק → כ (kaf/qof confusion)
+    // STEP 1: Normalize final forms FIRST (before spacing/punctuation removal)
+    // This ensures ן, ם, ך, ף, ץ are converted to regular forms for consistent matching
+    const finalFormNormalization = [
       [/ף/g, 'פ'], // ף → פ (final form)
       [/ץ/g, 'צ'], // ץ → צ (final form)
       [/ם/g, 'מ'], // ם → מ (final form)
@@ -374,7 +815,28 @@ class LexiconService {
       [/ך/g, 'כ'], // ך → כ (final form)
     ];
 
-    for (const [pattern, replacement] of letterNormalization) {
+    for (const [pattern, replacement] of finalFormNormalization) {
+      normalized = normalized.replace(pattern, replacement);
+    }
+
+    // STEP 2: Remove ALL spacing/punctuation evasion (ז.י.נ → זין, ז י נ → זין)
+    // Simplified approach: keep only Hebrew letters, remove everything else between them
+    // This handles multi-character evasion like "ז...י...נ" or "ז  י  נ"
+    while (/([א-ת])[\s.,\-_]+([א-ת])/.test(normalized)) {
+      normalized = normalized.replace(/([א-ת])[\s.,\-_]+([א-ת])/g, '$1$2');
+    }
+
+    // STEP 3: Collapse repeated letters (חראאאא → חרא)
+    normalized = normalized.replace(/([א-ת])\1{2,}/g, '$1');
+
+    // STEP 4: Letter Swap Normalization (prevent עתה → אתה confusion)
+    const letterSwapNormalization = [
+      [/ע/g, 'א'], // ע → א (alef/ayin confusion)
+      [/ת/g, 'ט'], // ת → ט (tet/tav confusion)
+      [/ק/g, 'כ'], // ק → כ (kaf/qof confusion)
+    ];
+
+    for (const [pattern, replacement] of letterSwapNormalization) {
       normalized = normalized.replace(pattern, replacement);
     }
 
