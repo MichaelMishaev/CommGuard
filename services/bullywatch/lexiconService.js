@@ -152,7 +152,8 @@ class LexiconService {
     const patterns = [
       // Note: These are critical threats - score 20 for sexual coercion
       // Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
-      { pattern: /לאנוס|אונס|אנס|לאנוס\s*אוטכ|אני\s*אנס\s*אוטכ|צריכ\s*לאנוס/g, word: 'לאנוס/אנס/אונס', score: 20, category: 'sexual_harassment' },
+      // EXPANDED: Added ALL conjugations - נאנוס (we will rape), אנוס (rape!), תאנס (you will rape)
+      { pattern: /לאנוס|אונס|אנס|נאנוס|אנוס|טאנס|אני\s*אנס|נאנוס\s*אוטכ|צריכ\s*לאנוס/g, word: 'לאנוס/אנס/אונס/נאנוס', score: 20, category: 'sexual_harassment' },
       { pattern: /זונה|whore|slut|zona/g, word: 'זונה', score: 20, category: 'sexual_harassment' },
       { pattern: /בנ\s*זונה|בט\s*זונה|ben\s*zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
       { pattern: /שרמוטה|sharmuta/g, word: 'שרמוטה', score: 20, category: 'sexual_harassment' },
@@ -185,15 +186,18 @@ class LexiconService {
   detectDirectThreats(text) {
     const patterns = [
       { pattern: /חכה\s*לי|חכה\s*חכה|chake\s*li/g, word: 'חכה לי', score: 18, category: 'direct_threat' },
-      { pattern: /אני\s*אשבור\s*אוטכ|אני\s*מפרכ\s*אוטכ|ashbor/g, word: 'אשבור אותך', score: 18, category: 'direct_threat' },
-      { pattern: /אני\s*אבוא\s*אליכ/g, word: 'אבוא אליך', score: 18, category: 'direct_threat' },
-      { pattern: /אני\s*אטפוס\s*אוטכ/g, word: 'אתפוס אותך', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אשבור\s*אוטכ|נשבור\s*אוטכ|אשבור|נשבור|ashbor/g, word: 'אשבור/נשבור אותך', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אבוא\s*אליכ|נבוא\s*אליכ/g, word: 'אבוא/נבוא אליך', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אטפוס\s*אוטכ|נטפוס\s*אוטכ/g, word: 'אתפוס/נתפוס אותך', score: 18, category: 'direct_threat' },
       { pattern: /ניפגש\s*אחרי\s*ביט\s*ספר|ניפגש\s*בחוצ|אחרי\s*ביס/g, word: 'ניפגש אחרי ביס', score: 18, category: 'direct_threat' },
-      { pattern: /אני\s*אדאג\s*לכ/g, word: 'אדאג לך', score: 18, category: 'direct_threat' },
+      { pattern: /אני\s*אדאג\s*לכ|נדאג\s*לכ/g, word: 'אדאג/נדאג לך', score: 18, category: 'direct_threat' },
       { pattern: /טזהר\s*ממני|טזהרי\s*ממני/g, word: 'תזהר ממני', score: 18, category: 'direct_threat' },
-      { pattern: /אני\s*אהרוג\s*אוטכ|אני\s*אמחכ\s*אוטכ|להרוג\s*אוטכ|צריכ\s*להרוג|aharog/g, word: 'להרוג/אהרוג/אמחק', score: 20, category: 'direct_threat' },
-      { pattern: /אני\s*ארביצ\s*לכ|אני\s*אשבור\s*לכ/g, word: 'ארביץ/אשבור', score: 18, category: 'direct_threat' },
-      { pattern: /אטה\s*מט|אט\s*מט|you.*dead/g, word: 'אתה מת (you\'re dead)', score: 18, category: 'direct_threat' },
+      // EXPANDED: ALL murder/kill conjugations - נרצח, נהרוג, רוצח, הורג
+      { pattern: /להרוג|אהרוג|נהרוג|הורג|רוצח|נרצח|רצח|אני\s*אהרוג|נרצח\s*אוטכ|צריכ\s*להרוג|aharog/g, word: 'להרוג/אהרוג/נהרוג/נרצח/רצח', score: 20, category: 'direct_threat' },
+      { pattern: /ארביצ|נרביצ|להרביצ|אשבור\s*לכ|נשבור\s*לכ/g, word: 'ארביץ/נרביץ/אשבור', score: 18, category: 'direct_threat' },
+      { pattern: /אטה\s*מט|אט\s*מט|טמוט|you.*dead/g, word: 'אתה מת/תמות (you\'re dead)', score: 18, category: 'direct_threat' },
+      // NEW: לקרוע/נקרע במכות (tear apart with beatings)
+      { pattern: /לכרוע|נכרע|אכרע|כרוע\s*אוטכ|במכוט|מכוט|לכרוע\s*במכוט/g, word: 'לקרוע/נקרע במכות', score: 20, category: 'direct_threat' },
     ];
 
     return this.matchPatterns(text, patterns);
