@@ -93,10 +93,9 @@ class BullywatchOrchestrator {
       return this.createEmptyResult();
     }
 
-    // Check if group has bullywatch enabled
-    if (!this.isGroupEnabled(groupId, metadata.groupSubject || '')) {
-      return this.createEmptyResult();
-    }
+    // NOTE: We trust the caller (index.js) already checked if monitoring is enabled
+    // via database OR hashtag. No need for redundant check here.
+    // This fixes the bug where database-enabled groups weren't in the in-memory Set.
 
     try {
       // Layer 1-3: Lexicon + Temporal + Scoring
