@@ -14,7 +14,13 @@ async function applyMigration() {
     console.log('🔧 Adding alert_recipients column to groups table...\n');
 
     // Initialize database connection
-    await initDatabase();
+    const DATABASE_URL = process.env.DATABASE_URL;
+    if (!DATABASE_URL) {
+        console.error('❌ DATABASE_URL environment variable not found!');
+        process.exit(1);
+    }
+
+    await initDatabase(DATABASE_URL);
 
     try {
         // Read SQL file
