@@ -36,8 +36,9 @@ class LexiconService {
       return { hits: [], categories: [], baseScore: 0 };
     }
 
-    // IMPORTANT: Use original text for detection (patterns already handle Hebrew)
-    const text = messageText;
+    // CRITICAL FIX: Normalize Hebrew BEFORE pattern matching (convert final letters ן→נ, ם→מ, etc.)
+    const normalizedText = this.normalizeHebrew(messageText);
+    const text = normalizedText;
     const hits = [];
     const categories = new Set();
     let baseScore = 0;
@@ -118,7 +119,7 @@ class LexiconService {
       hits,
       categories: Array.from(categories),
       baseScore,
-      normalized: this.normalizeHebrew(text)
+      normalized: text // Already normalized at the top of detect()
     };
   }
 
@@ -151,7 +152,7 @@ class LexiconService {
     const patterns = [
       // Note: These are critical threats - score 20 for sexual coercion
       // Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
-      { pattern: /לאנוס|אנס|לאנוס\s*אוטכ|אני\s*אנס\s*אוטכ|צריכ\s*לאנוס/g, word: 'לאנוס/אנס', score: 20, category: 'sexual_harassment' },
+      { pattern: /לאנוס|אונס|אנס|לאנוס\s*אוטכ|אני\s*אנס\s*אוטכ|צריכ\s*לאנוס/g, word: 'לאנוס/אנס/אונס', score: 20, category: 'sexual_harassment' },
       { pattern: /זונה|whore|slut|zona/g, word: 'זונה', score: 20, category: 'sexual_harassment' },
       { pattern: /בנ\s*זונה|בט\s*זונה|ben\s*zona/g, word: 'בן/בת זונה', score: 20, category: 'sexual_harassment' },
       { pattern: /שרמוטה|sharmuta/g, word: 'שרמוטה', score: 20, category: 'sexual_harassment' },
@@ -192,6 +193,7 @@ class LexiconService {
       { pattern: /טזהר\s*ממני|טזהרי\s*ממני/g, word: 'תזהר ממני', score: 18, category: 'direct_threat' },
       { pattern: /אני\s*אהרוג\s*אוטכ|אני\s*אמחכ\s*אוטכ|להרוג\s*אוטכ|צריכ\s*להרוג|aharog/g, word: 'להרוג/אהרוג/אמחק', score: 20, category: 'direct_threat' },
       { pattern: /אני\s*ארביצ\s*לכ|אני\s*אשבור\s*לכ/g, word: 'ארביץ/אשבור', score: 18, category: 'direct_threat' },
+      { pattern: /אטה\s*מט|אט\s*מט|you.*dead/g, word: 'אתה מת (you\'re dead)', score: 18, category: 'direct_threat' },
     ];
 
     return this.matchPatterns(text, patterns);
@@ -252,7 +254,7 @@ class LexiconService {
   // Using \s* for optional spaces AND regular letter forms (not final forms) since normalizeHebrew converts finals
   detectSelfHarm(text) {
     const patterns = [
-      { pattern: /להטאבד|אטאבד|אני\s*אטאבד|רוצה\s*להטאבד/g, word: 'להתאבד/אתאבד', score: 20, category: 'self_harm' },
+      { pattern: /להטאבד|מטאבד|אטאבד|אני\s*אטאבד|אני\s*מטאבד|רוצה\s*להטאבד/g, word: 'להתאבד/מתאבד/אתאבד', score: 20, category: 'self_harm' },
       { pattern: /רוצה\s*למוט|אני\s*רוצה\s*למוט|מוטב\s*למוט/g, word: 'רוצה למות', score: 20, category: 'self_harm' },
       { pattern: /אני\s*הולכ\s*למוט|אני\s*אמוט/g, word: 'אני אמות', score: 20, category: 'self_harm' },
       { pattern: /לחטוכ\s*אט\s*אצמי|אחטוכ\s*אט\s*אצמי/g, word: 'לחתוך עצמי', score: 20, category: 'self_harm' },
