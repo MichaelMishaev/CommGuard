@@ -15,6 +15,63 @@ class BullyingMonitoringService {
     }
 
     /**
+     * Check if message is discussing fictional content (movies, books, games, etc.)
+     * These contexts should be excluded from bullying detection
+     * @param {string} messageText - Message to check
+     * @returns {boolean} True if discussing fictional content
+     */
+    isFictionalContext(messageText) {
+        if (!messageText || typeof messageText !== 'string') {
+            return false;
+        }
+
+        const lowerText = messageText.toLowerCase();
+
+        // Hebrew keywords for fictional content
+        const hebrewKeywords = [
+            'סרט', 'הסרט', 'סרטים',           // movie, the movie, movies
+            'ספר', 'הספר', 'ספרים',           // book, the book, books
+            'משחק', 'המשחק', 'משחקים',        // game, the game, games
+            'סדרה', 'הסדרה', 'סדרות',         // series, the series
+            'תוכנית', 'התוכנית',              // program, the program
+            'דמות', 'הדמות', 'דמויות',        // character, the character, characters
+            'גיבור', 'הגיבור', 'גיבורים',     // hero, the hero, heroes
+            'נבל', 'הנבל',                    // villain, the villain
+            'שחקן', 'השחקן', 'שחקנים',        // actor, the actor, actors
+            'במאי', 'הבמאי',                  // director, the director
+            'עלילה', 'העלילה',                // plot, the plot
+            'פרק', 'הפרק', 'פרקים',           // episode, the episode, episodes
+            'עונה', 'העונה',                  // season, the season
+            'אנימה', 'האנימה',                // anime, the anime
+            'קומיקס', 'הקומיקס'               // comics, the comics
+        ];
+
+        // English keywords for fictional content
+        const englishKeywords = [
+            'movie', 'film', 'the movie', 'the film',
+            'book', 'the book', 'novel', 'the novel',
+            'game', 'the game', 'video game',
+            'series', 'tv series', 'tv show', 'show',
+            'character', 'the character', 'main character',
+            'protagonist', 'antagonist', 'villain',
+            'actor', 'actress', 'director',
+            'plot', 'storyline', 'episode', 'season',
+            'anime', 'manga', 'comic', 'comics'
+        ];
+
+        // Check for any fictional content keywords
+        const allKeywords = [...hebrewKeywords, ...englishKeywords];
+
+        for (const keyword of allKeywords) {
+            if (lowerText.includes(keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Check if message contains offensive content
      * @param {string} messageText - Message to analyze
      * @returns {object} { isOffensive: boolean, matchedWords: string[], severity: string }
@@ -24,7 +81,20 @@ class BullyingMonitoringService {
             return {
                 isOffensive: false,
                 matchedWords: [],
-                severity: 'none'
+                severity: 'none',
+                skippedReason: null
+            };
+        }
+
+        // Check if message is discussing fictional content (movies, books, games)
+        // These contexts should be excluded from bullying detection
+        if (this.isFictionalContext(messageText)) {
+            console.log(`[${getTimestamp()}] 🎬 Skipping message - fictional content context detected`);
+            return {
+                isOffensive: false,
+                matchedWords: [],
+                severity: 'none',
+                skippedReason: 'fictional_content'
             };
         }
 

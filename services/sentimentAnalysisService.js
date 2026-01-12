@@ -361,19 +361,40 @@ Provide a JSON response with the following fields:
 }
 
 **Detection Criteria:**
-- Direct insults or name-calling
-- Body shaming or appearance-based attacks
-- Threats (physical, social, or emotional)
-- Social exclusion or isolation tactics
-- Emotional manipulation or gaslighting
-- Sexual harassment or inappropriate content
-- Sarcasm or passive-aggressive behavior
-- Cyberbullying patterns (spreading rumors, public shaming)
+- Direct insults or name-calling **directed at real people in the group**
+- Body shaming or appearance-based attacks **against group members**
+- Threats (physical, social, or emotional) **toward real individuals**
+- Social exclusion or isolation tactics **affecting group participants**
+- Emotional manipulation or gaslighting **of group members**
+- Sexual harassment or inappropriate content **targeting real people**
+- Sarcasm or passive-aggressive behavior **aimed at individuals**
+- Cyberbullying patterns (spreading rumors, public shaming) **about real people**
+
+**CRITICAL - Fictional Content Exclusion:**
+**DO NOT flag as bullying if the message discusses:**
+- Movie characters, plot, or actors (סרט, הסרט, movie, film)
+- Book characters or storylines (ספר, הספר, book, novel)
+- Video game characters or gameplay (משחק, המשחק, game)
+- TV series characters or episodes (סדרה, הסדרה, series, show)
+- Anime, manga, or comic characters (אנימה, קומיקס, anime, manga)
+- Fictional villains, heroes, or protagonists (גיבור, נבל, character, protagonist)
+
+**If the message contains words like "סרט" (movie), "הסרט" (the movie), "גיבור" (hero), "דמות" (character), "ספר" (book), "משחק" (game), "סדרה" (series), etc., it is discussing FICTIONAL CONTENT and should return:**
+{
+  "isBullying": false,
+  "severity": "none",
+  "confidence": 0,
+  "category": "none",
+  "explanation": "Discussion about fictional content (movie/book/game character), not targeting real people",
+  "emotionalImpact": "None - discussing fictional media",
+  "recommendation": "keep_monitoring"
+}
 
 **Language Notes:**
 - Understand Hebrew slang and cultural context
 - Consider teen communication patterns
-- Detect both explicit and subtle bullying`;
+- Detect both explicit and subtle bullying **directed at real group members**
+- **ALWAYS check if discussing movies/books/games before flagging as bullying**`;
     }
 
     /**
