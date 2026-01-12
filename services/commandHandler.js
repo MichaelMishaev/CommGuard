@@ -1538,7 +1538,7 @@ class CommandHandler {
         // Must be in a group
         if (this.isPrivateChat(msg)) {
             await this.sock.sendMessage(msg.key.remoteJid, {
-                text: '❌ This command can only be used in groups.\n\nUsage: Send #bullywatch on/off in a group chat',
+                text: '❌ This command can only be used in groups.\n\nUsage: Send #bullywatch on [class] in a group chat',
                 quoted: msg
             });
             return true;
@@ -1547,52 +1547,73 @@ class CommandHandler {
         const groupId = msg.key.remoteJid;
         const action = args && args[0] ? args[0].toLowerCase() : null;
 
-        if (!action || !['on', 'off'].includes(action)) {
-            await this.sock.sendMessage(groupId, {
-                text: '❌ Usage: #bullywatch on|off\n\n' +
-                      'Examples:\n' +
-                      '  • #bullywatch on - Enable bullying monitoring\n' +
-                      '  • #bullywatch off - Disable bullying monitoring',
-                quoted: msg
-            });
-            return true;
-        }
-
-        const enabled = action === 'on';
+        // Get group name for messages
+        const groupMetadata = await this.getCachedGroupMetadata(groupId);
+        const groupName = groupMetadata.subject || 'Unknown Group';
 
         try {
-            // Update database
             const groupService = require('../database/groupService');
-            const success = await groupService.setBullyingMonitoring(groupId, enabled);
 
-            if (!success) {
+            // Handle different sub-commands
+            if (action === 'on') {
+                // Enable monitoring - class name is MANDATORY
+                const className = args && args[1] ? args[1] : null;
+
+                if (!className) {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ *Class name is required*\n\n' +
+                              'Usage: #bullywatch on [class_name]\n\n' +
+                              'Examples:\n' +
+                              '  • #bullywatch on ג3\n' +
+                              '  • #bullywatch on א7\n' +
+                              '  • #bullywatch on ב10',
+                        quoted: msg
+                    });
+                    return true;
+                }
+
+                const success = await groupService.setBullyingMonitoring(groupId, true, className);
+
+                if (!success) {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Failed to enable bullying monitoring. Group may not be in database.',
+                        quoted: msg
+                    });
+                    return true;
+                }
+
                 await this.sock.sendMessage(groupId, {
-                    text: '❌ Failed to update bullying monitoring. Group may not be in database.',
-                    quoted: msg
-                });
-                return true;
-            }
-
-            // Get group name for confirmation
-            const groupMetadata = await this.getCachedGroupMetadata(groupId);
-            const groupName = groupMetadata.subject || 'Unknown Group';
-
-            if (enabled) {
-                await this.sock.sendMessage(groupId, {
-                    text: `✅ *Bullying Monitoring ENABLED*\n\n` +
-                          `🛡️ Group: ${groupName}\n\n` +
+                    text: `✅ *ניטור בריונות מופעל*\n` +
+                          `✅ *Bullying Monitoring ENABLED*\n\n` +
+                          `🛡️ קבוצה / Group: ${groupName}\n` +
+                          `📚 כיתה / Class: ${className}\n\n` +
+                          `הודעות פוגעניות יזוהו אוטומטית וידווחו למנהל (+${config.ALERT_PHONE}).\n` +
                           `Offensive messages will be automatically detected and reported to the administrator (+${config.ALERT_PHONE}).\n\n` +
+                          `הבוט יפקח על:\n` +
                           `The bot will monitor for:\n` +
-                          `• Bullying and harassment\n` +
-                          `• Body shaming\n` +
-                          `• Threats and violence\n` +
-                          `• Discrimination\n\n` +
+                          `• בריונות והטרדה / Bullying and harassment\n` +
+                          `• השפלת גוף / Body shaming\n` +
+                          `• איומים ואלימות / Threats and violence\n` +
+                          `• אפליה / Discrimination\n\n` +
+                          `הודעות לא נמחקות אוטומטית - המנהל יבדוק ויחליט.\n` +
                           `Messages are NOT deleted automatically - admin will review and decide.`,
                     quoted: msg
                 });
 
-                console.log(`[${getTimestamp()}] ✅ Bullying monitoring ENABLED for ${groupName}`);
-            } else {
+                console.log(`[${getTimestamp()}] ✅ Bullying monitoring ENABLED for ${groupName} (Class: ${className})`);
+            }
+            else if (action === 'off') {
+                // Disable monitoring
+                const success = await groupService.setBullyingMonitoring(groupId, false, null);
+
+                if (!success) {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Failed to disable bullying monitoring. Group may not be in database.',
+                        quoted: msg
+                    });
+                    return true;
+                }
+
                 await this.sock.sendMessage(groupId, {
                     text: `⏸️ *Bullying Monitoring DISABLED*\n\n` +
                           `Group: ${groupName}\n\n` +
@@ -1602,9 +1623,73 @@ class CommandHandler {
 
                 console.log(`[${getTimestamp()}] ⏸️ Bullying monitoring DISABLED for ${groupName}`);
             }
+            else if (action === 'class') {
+                // Update class name for already-enabled group
+                const className = args && args[1] ? args[1] : null;
+
+                if (!className) {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Please specify class name.\n\n' +
+                              'Usage: #bullywatch class [class_name]\n\n' +
+                              'Example: #bullywatch class ג3',
+                        quoted: msg
+                    });
+                    return true;
+                }
+
+                // Check if monitoring is enabled
+                const isEnabled = await groupService.isBullyingMonitoringEnabled(groupId);
+                if (!isEnabled) {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Bullying monitoring is not enabled for this group.\n\n' +
+                              'First enable with: #bullywatch on [class_name]',
+                        quoted: msg
+                    });
+                    return true;
+                }
+
+                // Update class name
+                const success = await groupService.setGroupClassName(groupId, className);
+                if (success) {
+                    await this.sock.sendMessage(groupId, {
+                        text: `✅ Class updated to: ${className}`,
+                        quoted: msg
+                    });
+                } else {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Failed to update class name.',
+                        quoted: msg
+                    });
+                }
+            }
+            else if (action === 'status') {
+                // Show monitoring status + class name
+                const isEnabled = await groupService.isBullyingMonitoringEnabled(groupId);
+                const className = await groupService.getGroupClassName(groupId);
+
+                await this.sock.sendMessage(groupId, {
+                    text: `🛡️ *Bullying Monitoring Status*\n\n` +
+                          `Group: ${groupName}\n` +
+                          `Status: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}\n` +
+                          `Class: ${className || 'Not set'}`,
+                    quoted: msg
+                });
+            }
+            else {
+                // Show usage
+                await this.sock.sendMessage(groupId, {
+                    text: '❌ *Usage:*\n\n' +
+                          '#bullywatch on [class] - Enable monitoring\n' +
+                          '#bullywatch off - Disable monitoring\n' +
+                          '#bullywatch class [class] - Update class name\n' +
+                          '#bullywatch status - Show status\n\n' +
+                          'Example: #bullywatch on ג3',
+                    quoted: msg
+                });
+            }
 
         } catch (error) {
-            console.error(`[${getTimestamp()}] ❌ Failed to set bullying monitoring:`, error);
+            console.error(`[${getTimestamp()}] ❌ Failed to handle bullywatch command:`, error);
             await this.sock.sendMessage(groupId, {
                 text: '❌ Failed to update bullying monitoring. Check logs for details.',
                 quoted: msg
