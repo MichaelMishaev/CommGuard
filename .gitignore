@@ -250,6 +250,11 @@ secrets.json
 credentials.json
 service-account.json
 
+# OpenAI API keys (NEVER COMMIT!)
+docs/openAi.md
+openai-key.md
+**/openai*.md
+
 # ===================
 # PROJECT SPECIFIC
 # ===================

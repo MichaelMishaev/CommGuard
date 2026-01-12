@@ -152,7 +152,7 @@ initRedis({
 const { isBlacklistedCached, cacheBlacklistedUser } = require('./services/redisService');
 
 // Fast blacklist check (from Redis cache)
-const isBlacklisted = await isBlacklistedCached('972555020829');
+const isBlacklisted = await isBlacklistedCached('972555030766');
 
 if (isBlacklisted) {
     console.log('User is blacklisted!');
@@ -160,7 +160,7 @@ if (isBlacklisted) {
 }
 
 // Cache blacklisted user (24 hour TTL)
-await cacheBlacklistedUser('972555020829', 86400);
+await cacheBlacklistedUser('972555030766', 86400);
 ```
 
 ### Example 2: Rate Limiting
@@ -299,7 +299,7 @@ redis-cli DBSIZE
 redis-cli MONITOR
 
 # Output:
-# 1701234567.123456 [0 127.0.0.1:50123] "GET" "blacklist:972555020829"
+# 1701234567.123456 [0 127.0.0.1:50123] "GET" "blacklist:972555030766"
 # 1701234567.234567 [0 127.0.0.1:50123] "SETEX" "mute:123456@s.whatsapp.net" "1800" "1701236367234"
 ```
 
@@ -345,7 +345,7 @@ await pipeline.exec();
 
 ```javascript
 // Store user data as hash
-await redisClient.hmset('user:972555020829', {
+await redisClient.hmset('user:972555030766', {
     name: 'John',
     blacklisted: '0',
     groups: '5',
@@ -353,7 +353,7 @@ await redisClient.hmset('user:972555020829', {
 });
 
 // Get all user data at once
-const userData = await redisClient.hgetall('user:972555020829');
+const userData = await redisClient.hgetall('user:972555030766');
 ```
 
 ---

@@ -265,7 +265,7 @@ SELECT g.name, gm.is_admin, gm.joined_at
 FROM groups g
 JOIN group_members gm ON g.id = gm.group_id
 JOIN users u ON gm.user_id = u.id
-WHERE u.phone_number = '972555020829'
+WHERE u.phone_number = '972555030766'
 AND gm.is_active = true;
 ```
 

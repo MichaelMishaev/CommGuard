@@ -133,7 +133,10 @@ class CommandHandler {
                     
                 case '#clear':
                     return await this.handleClear(msg, isAdmin);
-                    
+
+                case '#bullywatch':
+                    return await this.handleBullyWatch(msg, args, isAdmin);
+
                 case '#kick':
                     return await this.handleKick(msg, isAdmin);
 
@@ -337,6 +340,8 @@ class CommandHandler {
 • *#kickglobal* - Reply to message → Shows group list → Select specific groups (max 10 recommended)
 • *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
 • *#clear* - Remove all blacklisted users from current group
+• *#bullywatch on/off* - Enable/disable bullying monitoring (admin only)
+  Monitors for offensive content and sends alerts
 
 *🔇 Mute Commands:*
 • *#mute 30* - Mutes entire group for 30 minutes (only admins can speak)
@@ -1489,6 +1494,114 @@ class CommandHandler {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to clean group:`, error);
             await this.sock.sendMessage(groupId, {
                 text: '❌ Failed to clean group. Check logs for details.'
+            });
+        }
+
+        return true;
+    }
+
+    async handleBullyWatch(msg, args, isAdmin) {
+        const { getTimestamp } = require('../utils/logger');
+        const config = require('../config');
+
+        console.log(`[${getTimestamp()}] 🛡️ #bullywatch command received`);
+
+        // ADMIN ONLY - check using same pattern as rest of bot
+        const senderId = msg.key.participant || msg.key.remoteJid;
+        const senderPhone = senderId.split('@')[0];
+
+        // Check if it's the authorized admin (handles multiple formats)
+        const isAuthorizedAdmin =
+            senderPhone === config.ALERT_PHONE ||
+            senderPhone === config.ADMIN_PHONE ||
+            senderPhone === config.ADMIN_LID ||
+            senderId.includes(config.ALERT_PHONE) ||
+            senderId.includes(config.ADMIN_PHONE) ||
+            senderId.includes(config.ADMIN_LID);
+
+        console.log(`[${getTimestamp()}] 🔍 Admin check: sender=${senderPhone}, authorized=${isAuthorizedAdmin}`);
+
+        if (!isAuthorizedAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Only the bot administrator can use this command.',
+                quoted: msg
+            });
+            return true;
+        }
+
+        // Must be in a group
+        if (this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ This command can only be used in groups.\n\nUsage: Send #bullywatch on/off in a group chat',
+                quoted: msg
+            });
+            return true;
+        }
+
+        const groupId = msg.key.remoteJid;
+        const action = args && args[0] ? args[0].toLowerCase() : null;
+
+        if (!action || !['on', 'off'].includes(action)) {
+            await this.sock.sendMessage(groupId, {
+                text: '❌ Usage: #bullywatch on|off\n\n' +
+                      'Examples:\n' +
+                      '  • #bullywatch on - Enable bullying monitoring\n' +
+                      '  • #bullywatch off - Disable bullying monitoring',
+                quoted: msg
+            });
+            return true;
+        }
+
+        const enabled = action === 'on';
+
+        try {
+            // Update database
+            const groupService = require('../database/groupService');
+            const success = await groupService.setBullyingMonitoring(groupId, enabled);
+
+            if (!success) {
+                await this.sock.sendMessage(groupId, {
+                    text: '❌ Failed to update bullying monitoring. Group may not be in database.',
+                    quoted: msg
+                });
+                return true;
+            }
+
+            // Get group name for confirmation
+            const groupMetadata = await this.getCachedGroupMetadata(groupId);
+            const groupName = groupMetadata.subject || 'Unknown Group';
+
+            if (enabled) {
+                await this.sock.sendMessage(groupId, {
+                    text: `✅ *Bullying Monitoring ENABLED*\n\n` +
+                          `🛡️ Group: ${groupName}\n\n` +
+                          `Offensive messages will be automatically detected and reported to the administrator (+${config.ALERT_PHONE}).\n\n` +
+                          `The bot will monitor for:\n` +
+                          `• Bullying and harassment\n` +
+                          `• Body shaming\n` +
+                          `• Threats and violence\n` +
+                          `• Discrimination\n\n` +
+                          `Messages are NOT deleted automatically - admin will review and decide.`,
+                    quoted: msg
+                });
+
+                console.log(`[${getTimestamp()}] ✅ Bullying monitoring ENABLED for ${groupName}`);
+            } else {
+                await this.sock.sendMessage(groupId, {
+                    text: `⏸️ *Bullying Monitoring DISABLED*\n\n` +
+                          `Group: ${groupName}\n\n` +
+                          `Offensive content monitoring has been turned off for this group.`,
+                    quoted: msg
+                });
+
+                console.log(`[${getTimestamp()}] ⏸️ Bullying monitoring DISABLED for ${groupName}`);
+            }
+
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Failed to set bullying monitoring:`, error);
+            await this.sock.sendMessage(groupId, {
+                text: '❌ Failed to update bullying monitoring. Check logs for details.',
+                quoted: msg
             });
         }
 

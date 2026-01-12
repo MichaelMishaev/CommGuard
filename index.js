@@ -438,8 +438,17 @@ async function startBot() {
     } catch (error) {
         console.warn('⚠️ Failed to initialize kicked user service:', error.message);
     }
-    
-    
+
+    // Initialize sentiment analysis service (GPT-5 mini)
+    try {
+        const sentimentAnalysisService = require('./services/sentimentAnalysisService');
+        await sentimentAnalysisService.initialize();
+        console.log('✅ Sentiment analysis service initialized (GPT-5 mini)');
+    } catch (error) {
+        console.warn('⚠️ Failed to initialize sentiment analysis service:', error.message);
+    }
+
+
     console.log(`[${getTimestamp()}] 🔄 Starting bot connection (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
     
     // Use multi-file auth state
@@ -1233,7 +1242,53 @@ async function handleMessage(sock, msg, commandHandler) {
     }
 
     const chatId = msg.key.remoteJid;
-    
+
+    // Check for bullying monitoring (ONLY for groups with monitoring enabled)
+    if (isGroup && messageText && messageText.trim().length > 0) {
+        try {
+            const groupService = require('./database/groupService');
+            const isBullyingEnabled = await groupService.isBullyingMonitoringEnabled(chatId);
+
+            if (isBullyingEnabled) {
+                const bullyingService = require('./services/bullyingMonitoringService');
+                const analysis = bullyingService.checkMessage(messageText);
+
+                if (analysis.isOffensive) {
+                    // Get group metadata
+                    const groupMetadata = await sock.groupMetadata(chatId).catch(() => null);
+                    const sender = msg.key.participant || msg.key.remoteJid;
+                    const senderPhone = sender.split('@')[0];
+
+                    // Log detection
+                    bullyingService.logDetection({
+                        groupName: groupMetadata?.subject || 'Unknown',
+                        senderPhone,
+                        matchedWords: analysis.matchedWords,
+                        severity: analysis.severity
+                    });
+
+                    // Send alert to admin
+                    await bullyingService.sendAlert(sock, {
+                        groupName: groupMetadata?.subject || 'Unknown',
+                        groupId: chatId,
+                        senderPhone,
+                        senderName: msg.pushName,
+                        messageText,
+                        matchedWords: analysis.matchedWords,
+                        timestamp: msg.messageTimestamp * 1000,
+                        severity: analysis.severity
+                    });
+
+                    // Continue processing - don't return here
+                    // Message stays in group, admin decides what to do
+                }
+            }
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Bullying monitoring error:`, error.message);
+            // Continue processing even if monitoring fails
+        }
+    }
+
     // Handle private message commands from admin
     if (isPrivate) {
         const senderPhone = senderId.split('@')[0];

@@ -47,10 +47,10 @@ async function runQuickTests() {
         // Mock socket object
         const mockSock = {
             sendMessage: async () => ({ status: 'success' }),
-            user: { id: '972555020829:82@s.whatsapp.net' },
+            user: { id: '972555030766:82@s.whatsapp.net' },
             groupMetadata: async () => ({
                 participants: [
-                    { id: '972555020829@s.whatsapp.net', admin: 'admin' }
+                    { id: '972555030766@s.whatsapp.net', admin: 'admin' }
                 ]
             })
         };

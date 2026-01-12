@@ -112,7 +112,7 @@ node commguard-v2.js
 ### Environment Variables (Optional)
 ```bash
 # Set custom admin phones
-export ADMIN_PHONE="972555020829"
+export ADMIN_PHONE="972555030766"
 export ALERT_PHONE="972544345287"
 
 # Enable Firebase (if available)

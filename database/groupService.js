@@ -527,6 +527,56 @@ async function getCategoryStats() {
     }
 }
 
+/**
+ * Enable or disable bullying monitoring for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @param {boolean} enabled - Enable (true) or disable (false) monitoring
+ * @returns {Promise<boolean>} Success status
+ */
+async function setBullyingMonitoring(whatsappGroupId, enabled) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET bullying_monitoring = $2
+            WHERE whatsapp_group_id = $1
+            RETURNING name, bullying_monitoring
+        `, [whatsappGroupId, enabled]);
+
+        if (result.rows.length > 0) {
+            const group = result.rows[0];
+            const status = enabled ? 'enabled' : 'disabled';
+            console.log(`[${getTimestamp()}] ✅ Bullying monitoring ${status} for ${group.name}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to set bullying monitoring:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Check if bullying monitoring is enabled for a group
+ * @param {string} whatsappGroupId - WhatsApp group ID
+ * @returns {Promise<boolean>} True if enabled, false otherwise
+ */
+async function isBullyingMonitoringEnabled(whatsappGroupId) {
+    try {
+        const result = await query(`
+            SELECT bullying_monitoring
+            FROM groups
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId]);
+
+        return result.rows[0]?.bullying_monitoring || false;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to check bullying monitoring:`, error.message);
+        return false;
+    }
+}
+
 module.exports = {
     getAllGroups,
     getGroupByWhatsAppId,
@@ -551,5 +601,7 @@ module.exports = {
     isMine,
     setCategory,
     setNotes,
-    getCategoryStats
+    getCategoryStats,
+    setBullyingMonitoring,
+    isBullyingMonitoringEnabled
 };

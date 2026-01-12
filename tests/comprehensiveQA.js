@@ -58,10 +58,10 @@ async function validateAllAPIs() {
         console.log('\n4. TESTING ADMIN RESPONSE API');
         console.log('-----------------------------');
         
-        const approveResult = await service.processAdminResponse('972555888888', 'yes', '972555020829');
+        const approveResult = await service.processAdminResponse('972555888888', 'yes', '972555030766');
         console.log(`${approveResult ? '✅' : '❌'} Admin approval processing: ${approveResult}`);
-        
-        const denyResult = await service.processAdminResponse('972555777777', 'no', '972555020829');
+
+        const denyResult = await service.processAdminResponse('972555777777', 'no', '972555030766');
         console.log(`${!denyResult ? '✅' : '❌'} Admin denial (no existing request): ${denyResult}`);
         
         console.log('\n5. TESTING PENDING REQUESTS API');
