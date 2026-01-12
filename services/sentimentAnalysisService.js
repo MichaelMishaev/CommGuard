@@ -33,8 +33,8 @@ class SentimentAnalysisService {
         this.budgetReachedAlertSent = false;
 
         // Model configuration
-        this.model = 'gpt-5-mini'; // Fast, cost-efficient, accurate
-        this.maxTokens = 500; // Increased from 150 - was hitting limit before generating output
+        this.model = 'gpt-4o-mini'; // Stable, cost-efficient, reliable (gpt-5-mini had intermittent failures)
+        this.maxTokens = 500; // Sufficient for JSON response generation
 
         this.initialized = false;
     }
@@ -62,7 +62,7 @@ class SentimentAnalysisService {
 
             this.initialized = true;
             console.log(`${formatTimestamp()} 🧠 Sentiment Analysis Service initialized`);
-            console.log(`${formatTimestamp()} 📊 Model: ${this.model}`);
+            console.log(`${formatTimestamp()} 📊 Model: ${this.model} (GPT-4o mini)`);
             console.log(`${formatTimestamp()} 💰 Daily budget: $${this.dailyBudget.toFixed(2)}`);
             console.log(`${formatTimestamp()} 💵 Today spent: $${this.todaySpent.toFixed(4)} (${this.messageCount} messages)`);
 
