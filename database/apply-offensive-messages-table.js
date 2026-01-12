@@ -6,10 +6,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const { pool, query } = require('./connection');
+const { pool, query, initDatabase } = require('./connection');
 
 async function applyMigration() {
     console.log('🔧 Creating offensive_messages table...\n');
+
+    // Initialize database connection
+    await initDatabase();
 
     try {
         // Read SQL file
