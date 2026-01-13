@@ -193,7 +193,7 @@ Is the flagged message harassment or banter?`;
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3, // Lower temperature for more consistent analysis
-      max_tokens: 500,
+      max_completion_tokens: 500, // GPT-5 uses max_completion_tokens instead of max_tokens
       reasoning_effort: 'medium', // GPT-5 parameter: minimal, low, medium, high
       verbosity: 'low' // GPT-5 parameter: low, medium, high (keep analysis concise)
     };
@@ -221,7 +221,7 @@ Is the flagged message harassment or banter?`;
           systemPrompt: systemPrompt,
           userPrompt: userPrompt,
           temperature: requestPayload.temperature,
-          maxTokens: requestPayload.max_tokens,
+          maxCompletionTokens: requestPayload.max_completion_tokens,
           reasoningEffort: requestPayload.reasoning_effort,
           verbosity: requestPayload.verbosity,
           contextWindowSize: conversationContext.length,

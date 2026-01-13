@@ -189,7 +189,7 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
       ],
       response_format: { type: 'json_object' },
       temperature: 0.2, // Very low for consistent classification
-      max_tokens: 150, // Short responses only
+      max_completion_tokens: 150, // Short responses only (GPT-5 uses max_completion_tokens)
       reasoning_effort: 'low', // Fast responses (GPT-5 parameter)
       verbosity: 'low' // Concise (GPT-5 parameter)
     };
@@ -210,7 +210,7 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
         systemPrompt: systemPrompt,
         userPrompt: userPrompt,
         temperature: requestPayload.temperature,
-        maxTokens: requestPayload.max_tokens,
+        maxCompletionTokens: requestPayload.max_completion_tokens,
         timestamp: Date.now()
       },
       aiResponse: {
