@@ -9,6 +9,7 @@
  */
 
 const config = require('../../config');
+const criticalWordFilter = require('./criticalWordFilter'); // Layer -1: Local critical word filter
 const nanoPreFilterService = require('./nanoPreFilterService');
 const scoringService = require('./scoringService');
 const gptAnalysisService = require('./gptAnalysisService');
@@ -104,6 +105,30 @@ class BullywatchOrchestrator {
     // This fixes the bug where database-enabled groups weren't in the in-memory Set.
 
     try {
+      // Layer -1: Local Critical Word Filter (FIRST - no AI needed)
+      // User requirement: "save the word זונה as local filter. make it first filter"
+      const criticalCheck = criticalWordFilter.checkMessage(message);
+
+      if (criticalCheck.isCritical) {
+        // INSTANT ALERT - no need for any AI analysis
+        return {
+          analyzed: true,
+          score: criticalCheck.score, // 100 (max)
+          severity: criticalCheck.severity, // 'CRITICAL'
+          action: criticalCheck.action,
+          details: {
+            criticalWordFilter: criticalCheck,
+            word: criticalCheck.word,
+            skippedLayers: ['nano', 'lexicon', 'temporal', 'scoring', 'gpt']
+          },
+          metadata: {
+            fastPath: true,
+            localFilterOnly: true,
+            processingTimeMs: 0
+          }
+        };
+      }
+
       // Layer 0: GPT-5-nano Pre-Filter (Fast safety check)
       let nanoResult = null;
       if (this.nanoPreFilterEnabled) {
