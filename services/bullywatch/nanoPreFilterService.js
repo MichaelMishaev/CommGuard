@@ -219,9 +219,8 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
       ],
       response_format: { type: 'json_object' },
       // Note: GPT-5-nano only supports default temperature (1), cannot customize
-      max_completion_tokens: 150, // Short responses only (GPT-5 uses max_completion_tokens)
-      reasoning_effort: 'low', // Fast responses (GPT-5 parameter)
-      verbosity: 'low' // Concise (GPT-5 parameter)
+      max_completion_tokens: 300 // FIX: Doubled from 150 to prevent JSON truncation
+      // REMOVED: reasoning_effort, verbosity - may not be supported by gpt-5-nano
     };
 
     const completion = await this.openai.chat.completions.create(requestPayload);

@@ -598,7 +598,9 @@ class LexiconService {
       hits: deduplicatedHits,
       categories: Array.from(categories),
       baseScore: deduplicatedScore,
-      normalized: text // Already normalized at the top of detect()
+      normalized: text, // Already normalized at the top of detect()
+      narrativeDampened: narrativeContext.isNarrative, // FIX: Add flag for scoring service
+      narrativePattern: narrativeContext.pattern // FIX: Include pattern name for debugging
     };
   }
 

@@ -278,21 +278,27 @@ class SentimentAnalysisService {
             console.log(`${formatTimestamp()} 🧠 Analyzing message with GPT-5 mini...`);
             console.log(`${formatTimestamp()} 🔍 Prompt length: ${prompt.length} chars`);
 
-            // GPT-5 mini uses Responses API with new parameters
-            const fullPrompt = `You are an expert in detecting bullying, harassment, and emotional harm in teenage group chats. You understand both Hebrew and English, including slang, sarcasm, and cultural context.\n\n${prompt}`;
+            // GPT-5 mini uses Chat Completions API (NOT Responses API)
+            // FIX: Changed from openai.responses.create to openai.chat.completions.create
+            // Reason: Responses API requires different text.format schema, Chat Completions is simpler
+
+            const systemPrompt = `You are an expert in detecting bullying, harassment, and emotional harm in teenage group chats. You understand both Hebrew and English, including slang, sarcasm, and cultural context.`;
 
             // SECURITY: Structured output enforces JSON schema (prevents prompt injection)
             // Timeout reduced from 15s to 5s for better UX
             const response = await Promise.race([
-                this.openai.responses.create({
+                this.openai.chat.completions.create({
                     model: this.model,
-                    input: fullPrompt,
-                    reasoning: { effort: this.reasoningEffort },
-                    text: {
-                        verbosity: this.verbosity,
-                        format: CONFIG.RESPONSE_SCHEMA // FIX: Moved response_format to text.format
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: prompt }
+                    ],
+                    response_format: {
+                        type: "json_schema",
+                        json_schema: CONFIG.RESPONSE_SCHEMA
                     },
-                    max_output_tokens: this.maxTokens
+                    max_completion_tokens: this.maxTokens
+                    // NOTE: Removed reasoning/verbosity - not supported in Chat Completions API
                 }),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error(`OpenAI API timeout after ${CONFIG.API_TIMEOUT_MS}ms`)), CONFIG.API_TIMEOUT_MS)
@@ -311,13 +317,13 @@ class SentimentAnalysisService {
             // Debug: Log full response structure
             console.log(`${formatTimestamp()} 📊 Response metadata:`, {
                 model: response.model,
-                content_length: response.output_text?.length || 0
+                content_length: response.choices[0].message.content?.length || 0
             });
 
             // Parse and validate JSON response
             let result;
             try {
-                const rawContent = response.output_text;
+                const rawContent = response.choices[0].message.content; // FIX: Chat Completions API format
 
                 // Try to extract JSON from response (in case there's surrounding text)
                 let jsonContent = rawContent;

@@ -118,10 +118,24 @@ class ScoringService {
     const behaviorPoints = await this.calculateBehaviorPoints(message, groupId);
     let finalScore = scoreWithContext + behaviorPoints;
 
-    // PHASE 5: Critical Floor Rule
+    // PHASE 5: Critical Floor Rule (EXCEPT for narrative contexts)
+    // FIX: Skip critical floor if narrative dampening applied (movie/news references)
     const hasCriticalCategory = this.hasCriticalCategory(lexiconResult.categories);
-    if (hasCriticalCategory) {
-      finalScore = Math.max(finalScore, 20); // Force minimum RED-1
+    const isNarrativeDampened = lexiconResult.narrativeDampened;
+
+    if (hasCriticalCategory && !isNarrativeDampened) {
+      finalScore = Math.max(finalScore, 20); // Force minimum RED-1 (only if NOT narrative)
+      console.log(`[SCORING DEBUG] Applied critical floor rule: ${finalScore} (was ${scoreWithContext + behaviorPoints})`);
+    } else if (hasCriticalCategory && isNarrativeDampened) {
+      console.log(`[SCORING DEBUG] Skipped critical floor (narrative context: ${lexiconResult.narrativePattern})`);
+    }
+
+    // PHASE 6: Narrative Context Final Cap (prevent false positives)
+    // If narrative-dampened and still high score, cap it to YELLOW maximum
+    if (isNarrativeDampened && finalScore >= 10) {
+      const originalScore = finalScore;
+      finalScore = Math.min(finalScore, 8); // Cap at YELLOW max (safe/low severity)
+      console.log(`[SCORING DEBUG] Applied narrative cap: ${finalScore} (was ${originalScore})`);
     }
 
     // Round to nearest integer
