@@ -1395,12 +1395,62 @@ async function handleMessage(sock, msg, commandHandler) {
                         `• Send #bullywatch off to disable monitoring\n` +
                         `• Or ignore this message`;
 
+                    // Save to database BEFORE sending alert (for delete functionality)
+                    try {
+                        const offensiveMessageService = require('./database/offensiveMessageService');
+                        await offensiveMessageService.saveOffensiveMessage({
+                            messageId: msg.key.id,
+                            whatsappGroupId: chatId,
+                            groupName: groupSubject,
+                            senderPhone: senderPhone,
+                            senderName: msg.pushName || 'Unknown',
+                            senderJid: sender,
+                            messageText: messageText,
+                            matchedWords: result.details.lexiconHits || [],
+                            gptAnalysis: result.details.gptAnalysis ? {
+                                analyzed: true,
+                                severity: result.severity,
+                                confidence: result.details.gptAnalysis.confidence || null,
+                                category: result.details.categories?.join(', ') || null,
+                                explanation: result.details.gptAnalysis.reasoning || null,
+                                emotionalImpact: result.details.gptAnalysis.emotionalImpact || null,
+                                recommendation: result.details.gptAnalysis.recommendation || null,
+                                cost: result.details.gptAnalysis.cost || null
+                            } : null
+                        });
+                        console.log(`   💾 Saved to database (ID: ${msg.key.id})`);
+                    } catch (dbError) {
+                        console.error(`   ⚠️  Failed to save to database:`, dbError.message);
+                        // Continue with alert even if DB save fails
+                    }
+
                     // Send alert to admin
                     const adminJid = config.ADMIN_PHONE + '@s.whatsapp.net';
-                    await sock.sendMessage(adminJid, {
+                    const sentMessage = await sock.sendMessage(adminJid, {
                         text: alertText,
                         mentions: [sender]
                     });
+
+                    // Store Redis mapping of alert message ID → original message ID (for delete functionality)
+                    if (sentMessage && sentMessage.key && sentMessage.key.id && msg.key.id) {
+                        try {
+                            const { getRedis } = require('./services/redisService');
+                            const SENTIMENT_CONFIG = require('./services/sentimentAnalysisConfig');
+                            const redis = getRedis();
+
+                            // Store mapping for 24 hours (messages older than this can't be deleted)
+                            await redis.setex(
+                                `${SENTIMENT_CONFIG.REDIS_KEY_ALERT_MAP}:${sentMessage.key.id}`,
+                                SENTIMENT_CONFIG.ALERT_MAPPING_TTL_SECONDS,
+                                msg.key.id
+                            );
+
+                            console.log(`   🔗 Stored alert mapping: ${sentMessage.key.id} → ${msg.key.id}`);
+                        } catch (redisError) {
+                            console.error(`   ⚠️  Failed to store alert mapping:`, redisError.message);
+                            // Non-critical error - delete will still work if message is recent
+                        }
+                    }
 
                     // If NOT in monitor mode and action requires deletion, delete message
                     if (!bullywatch.getStatus().monitorMode && result.action.deleteMessage) {
