@@ -88,6 +88,30 @@ class NanoPreFilterService {
         };
       }
 
+      // CRITICAL SAFETY CHECK: Never skip scoring for known high-severity words
+      // GPT-5-nano sometimes incorrectly classifies these as "safe"
+      const criticalWords = [
+        'זונה', 'זונוט', 'בנזונה', 'בטזונה',  // Prostitute/whore insults
+        'מפגר', 'מפגרת', 'מפגרים',  // Retard
+        'תמות', 'תמותי', 'למות',  // Death threats
+        'להתאבד', 'אתאבד', 'התאבדות',  // Suicide
+        'לאנוס', 'אנוס', 'אונס',  // Rape
+        'להרוג', 'ארצח', 'לרצוח'  // Murder/kill
+      ];
+
+      const normalizedText = messageText.replace(/\s+/g, '').toLowerCase();
+      const containsCriticalWord = criticalWords.some(word => normalizedText.includes(word));
+
+      if (containsCriticalWord) {
+        return {
+          verdict: 'harmful',
+          confidence: 1.0,
+          shouldSkipScoring: false,  // NEVER skip scoring for critical words
+          reason: 'Contains critical high-severity word - must be scored by lexicon',
+          categories: ['critical_word_override']
+        };
+      }
+
       // Call GPT-5-nano for quick classification (with full logging)
       const nanoResponse = await this.callNano(messageText, {
         sender: message.sender,
