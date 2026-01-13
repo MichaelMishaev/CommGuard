@@ -15,11 +15,10 @@ module.exports = {
     MAX_TIMESTAMPS_STORED: 1000,               // Memory safety limit
 
     // GPT API Configuration
-    MODEL: 'gpt-5-mini',                       // GPT-5 mini model
+    MODEL: 'gpt-4.1-nano',                     // GPT-4.1-nano: Fast, cheap, non-reasoning
     MAX_OUTPUT_TOKENS: 500,                    // Sufficient for JSON response
     API_TIMEOUT_MS: 5000,                      // 5 seconds (was 15s)
-    VERBOSITY: 'low',                          // Keep responses concise
-    REASONING_EFFORT: 'low',                   // Fast responses for real-time detection
+    TEMPERATURE: 0.3,                          // Low temperature for consistent structured output
 
     // GPT Pricing (as of 2026)
     // Source: https://openai.com/index/introducing-gpt-5-for-developers/

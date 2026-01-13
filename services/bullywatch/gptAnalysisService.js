@@ -36,7 +36,7 @@ class GPTAnalysisService {
   }
 
   /**
-   * Analyze message with GPT-5-mini using context window
+   * Analyze message with GPT-4.1-nano using context window
    * Only called for ambiguous cases (score 11-15)
    */
   async analyzeWithContext(message, groupId, scoreData) {
@@ -144,7 +144,7 @@ class GPTAnalysisService {
   }
 
   /**
-   * Call GPT-5-mini for deep analysis (with full logging)
+   * Call GPT-4.1-nano for deep analysis (with full logging)
    */
   async callGPT(conversationContext, scoreData) {
     const systemPrompt = `You are an expert in detecting online harassment and bullying in Hebrew WhatsApp groups, particularly among teenagers.
@@ -186,31 +186,29 @@ Detected categories: ${scoreData.details.categories.join(', ')}
 Is the flagged message harassment or banter?`;
 
     const requestPayload = {
-      model: 'gpt-5-mini',
+      model: 'gpt-4.1-nano',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
-      // Note: GPT-5 may have temperature restrictions, using default for now
-      max_completion_tokens: 500, // GPT-5 uses max_completion_tokens instead of max_tokens
-      reasoning_effort: 'medium', // GPT-5 parameter: minimal, low, medium, high
-      verbosity: 'low' // GPT-5 parameter: low, medium, high (keep analysis concise)
+      temperature: 0.3, // Low temperature for consistent structured output
+      max_completion_tokens: 500
     };
 
     const completion = await this.openai.chat.completions.create(requestPayload);
 
     const response = JSON.parse(completion.choices[0].message.content);
 
-    // Log GPT-5-mini AI call (async, non-blocking)
+    // Log GPT-4.1-nano AI call (async, non-blocking)
     setImmediate(() => {
       nanoLoggingService.logDecision({
         messageText: conversationContext.find(m => m.flagged)?.text || '',
-        sender: 'gpt-mini-analysis',
+        sender: 'gpt-4.1-nano-analysis',
         groupId: scoreData.groupId || 'unknown',
         nanoVerdict: null, // Not from nano
         nanoConfidence: null,
-        nanoReason: 'GPT-5-mini deep analysis (Layer 4)',
+        nanoReason: 'GPT-4.1-nano deep analysis (Layer 4)',
         nanoCategories: [],
         finalScore: response.adjustedScore,
         finalSeverity: scoreData.severity,

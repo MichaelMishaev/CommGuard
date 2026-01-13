@@ -445,7 +445,7 @@ async function startBot() {
     try {
         const sentimentAnalysisService = require('./services/sentimentAnalysisService');
         await sentimentAnalysisService.initialize();
-        console.log('✅ Sentiment analysis service initialized (GPT-5 mini)');
+        console.log('✅ Sentiment analysis service initialized (GPT-4.1-nano)');
     } catch (error) {
         console.warn('⚠️ Failed to initialize sentiment analysis service:', error.message);
     }

@@ -6,7 +6,7 @@ const CONFIG = require('./sentimentAnalysisConfig');
 const formatTimestamp = () => `[${getTimestamp()}]`;
 
 /**
- * Sentiment Analysis Service using OpenAI GPT-5 Mini
+ * Sentiment Analysis Service using OpenAI GPT-4.1-nano
  * Analyzes messages for bullying, harassment, and emotional harm
  *
  * Features:
@@ -44,8 +44,7 @@ class SentimentAnalysisService {
         // Model configuration
         this.model = CONFIG.MODEL;
         this.maxTokens = CONFIG.MAX_OUTPUT_TOKENS;
-        this.verbosity = CONFIG.VERBOSITY;
-        this.reasoningEffort = CONFIG.REASONING_EFFORT;
+        this.temperature = CONFIG.TEMPERATURE;
 
         // Rate limiting (anti-abuse protection)
         this.apiCallTimestamps = []; // Track recent calls
@@ -275,12 +274,11 @@ class SentimentAnalysisService {
         try {
             const prompt = this.buildPrompt(messageText, matchedWords, senderName, groupName, conversationContext);
 
-            console.log(`${formatTimestamp()} 🧠 Analyzing message with GPT-5 mini...`);
+            console.log(`${formatTimestamp()} 🧠 Analyzing message with GPT-4.1-nano...`);
             console.log(`${formatTimestamp()} 🔍 Prompt length: ${prompt.length} chars`);
 
-            // GPT-5 mini uses Chat Completions API (NOT Responses API)
-            // FIX: Changed from openai.responses.create to openai.chat.completions.create
-            // Reason: Responses API requires different text.format schema, Chat Completions is simpler
+            // GPT-4.1-nano uses Chat Completions API
+            // Non-reasoning model: faster and more reliable than GPT-5-mini
 
             const systemPrompt = `You are an expert in detecting bullying, harassment, and emotional harm in teenage group chats. You understand both Hebrew and English, including slang, sarcasm, and cultural context.`;
 
@@ -293,9 +291,9 @@ class SentimentAnalysisService {
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: prompt }
                     ],
-                    response_format: CONFIG.RESPONSE_SCHEMA, // FIX: Use schema directly, not nested
+                    response_format: CONFIG.RESPONSE_SCHEMA,
+                    temperature: this.temperature,
                     max_completion_tokens: this.maxTokens
-                    // NOTE: Removed reasoning/verbosity - not supported in Chat Completions API
                 }),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error(`OpenAI API timeout after ${CONFIG.API_TIMEOUT_MS}ms`)), CONFIG.API_TIMEOUT_MS)
