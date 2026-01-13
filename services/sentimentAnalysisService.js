@@ -78,7 +78,7 @@ class SentimentAnalysisService {
 
             this.initialized = true;
             console.log(`${formatTimestamp()} 🧠 Sentiment Analysis Service initialized`);
-            console.log(`${formatTimestamp()} 📊 Model: ${this.model} (GPT-5 mini with Responses API)`);
+            console.log(`${formatTimestamp()} 📊 Model: ${this.model} (Chat Completions API)`);
             console.log(`${formatTimestamp()} 💰 Daily budget: $${this.dailyBudget.toFixed(2)}`);
             console.log(`${formatTimestamp()} 💵 Today spent: $${this.todaySpent.toFixed(4)} (${this.messageCount} messages)`);
 
