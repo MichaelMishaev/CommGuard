@@ -226,7 +226,44 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
 
     const completion = await this.openai.chat.completions.create(requestPayload);
 
-    const response = JSON.parse(completion.choices[0].message.content);
+    // FIX: Add error handling for invalid JSON responses
+    let response;
+    try {
+      const rawContent = completion.choices[0].message.content;
+
+      // Try to parse JSON, handle cases where GPT returns text before/after JSON
+      let jsonContent = rawContent.trim();
+
+      // Extract JSON if it's wrapped in markdown code blocks
+      const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        jsonContent = codeBlockMatch[1].trim();
+      }
+
+      // Extract JSON object if there's surrounding text
+      const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonContent = jsonMatch[0];
+      }
+
+      response = JSON.parse(jsonContent);
+
+      // Validate response structure
+      if (!response.verdict || !response.confidence) {
+        throw new Error('Invalid response structure - missing required fields');
+      }
+    } catch (parseError) {
+      console.error('[NANO] JSON parse error:', parseError.message);
+      console.error('[NANO] Raw response:', completion.choices[0].message.content);
+
+      // Return ambiguous verdict on parse error (fail open - continue to scoring)
+      response = {
+        verdict: 'ambiguous',
+        confidence: 0.5,
+        reason: `JSON parse error: ${parseError.message}`,
+        categories: []
+      };
+    }
 
     return {
       verdict: response.verdict || 'ambiguous',

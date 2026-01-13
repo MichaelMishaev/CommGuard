@@ -288,9 +288,11 @@ class SentimentAnalysisService {
                     model: this.model,
                     input: fullPrompt,
                     reasoning: { effort: this.reasoningEffort },
-                    text: { verbosity: this.verbosity },
-                    max_output_tokens: this.maxTokens,
-                    response_format: CONFIG.RESPONSE_SCHEMA // Enforces JSON structure
+                    text: {
+                        verbosity: this.verbosity,
+                        format: CONFIG.RESPONSE_SCHEMA // FIX: Moved response_format to text.format
+                    },
+                    max_output_tokens: this.maxTokens
                 }),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error(`OpenAI API timeout after ${CONFIG.API_TIMEOUT_MS}ms`)), CONFIG.API_TIMEOUT_MS)

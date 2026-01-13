@@ -680,6 +680,8 @@ class LexiconService {
       { pattern: /אטה\s*מט|אט\s*מט|טמוט|you.*dead/g, word: 'אתה מת/תמות (you\'re dead)', score: 18, category: 'direct_threat' },
       // NEW: לקרוע/נקרע במכות (tear apart with beatings)
       { pattern: /לכרוע|נכרע|אכרע|כרוע\s*אוטכ|במכוט|מכוט|לכרוע\s*במכוט/g, word: 'לקרוע/נקרע במכות', score: 20, category: 'direct_threat' },
+      // NEW: לכסח (Israeli slang - to beat up) - ALL morphological forms
+      { pattern: /לכסח|כסח|מכסח|אכסח|טכסח|נכסח|יכסח|יכסחו|כסחטי|kusach/g, word: 'לכסח/כסח/מכסח (to beat up)', score: 18, category: 'direct_threat' },
     ];
 
     return this.matchPatterns(text, patterns);
