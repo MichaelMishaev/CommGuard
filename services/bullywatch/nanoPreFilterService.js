@@ -230,6 +230,13 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
     try {
       const rawContent = completion.choices[0].message.content;
 
+      // DEBUG: Log raw response for troubleshooting
+      if (!rawContent || rawContent.trim().length === 0) {
+        console.log('[NANO] Empty response received from API');
+        console.log('[NANO] Completion object:', JSON.stringify(completion, null, 2));
+        throw new Error('Empty response from GPT-5-nano');
+      }
+
       // Try to parse JSON, handle cases where GPT returns text before/after JSON
       let jsonContent = rawContent.trim();
 

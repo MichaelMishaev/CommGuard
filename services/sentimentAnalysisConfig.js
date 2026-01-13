@@ -45,8 +45,9 @@ module.exports = {
     COST_EXPIRY_BUFFER_HOURS: 1,               // Keep costs 1 hour past midnight
 
     // Structured Output Schema (Prompt Injection Prevention)
+    // FIX: Changed "name" to "type" for Chat Completions API compatibility
     RESPONSE_SCHEMA: {
-        name: "json_schema",
+        type: "json_schema",
         json_schema: {
             name: "bullying_analysis",
             strict: true,

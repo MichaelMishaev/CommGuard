@@ -293,10 +293,7 @@ class SentimentAnalysisService {
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: prompt }
                     ],
-                    response_format: {
-                        type: "json_schema",
-                        json_schema: CONFIG.RESPONSE_SCHEMA
-                    },
+                    response_format: CONFIG.RESPONSE_SCHEMA, // FIX: Use schema directly, not nested
                     max_completion_tokens: this.maxTokens
                     // NOTE: Removed reasoning/verbosity - not supported in Chat Completions API
                 }),
