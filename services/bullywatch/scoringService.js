@@ -59,7 +59,7 @@ class ScoringService {
    * Main scoring method - implements EXACT 5-phase formula
    * @param {Object} message - WhatsApp message object
    * @param {string} groupId - Group ID
-   * @param {Object} metadata - Additional context (groupSize, etc.)
+   * @param {Object} metadata - Additional context (groupSize, lexiconResult, etc.)
    * @returns {Object} - Complete scoring results
    */
   async scoreMessage(message, groupId, metadata = {}) {
@@ -76,7 +76,11 @@ class ScoringService {
     console.log(`[SCORING DEBUG] Normalized: "${normalizedText.substring(0, 50)}"`);
 
     // PHASE 2: Base Scoring
-    const lexiconResult = lexiconService.detect(transliteratedText);
+    // NEW: Use pre-computed lexicon result if provided (allows narrative dampening to persist)
+    const lexiconResult = metadata.lexiconResult || lexiconService.detect(transliteratedText);
+    if (metadata.lexiconResult && lexiconResult.narrativeDampened) {
+      console.log(`[SCORING DEBUG] Using dampened lexicon result: ${lexiconResult.originalScore} → ${lexiconResult.baseScore}`);
+    }
     const baseScore = this.applyHardCap(lexiconResult);
     console.log(`[SCORING DEBUG] Lexicon hits: ${lexiconResult.hits.length}, baseScore: ${baseScore}`);
 

@@ -402,6 +402,118 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
     };
     console.log('📊 Nano pre-filter stats reset');
   }
+
+  /**
+   * AI-based narrative context detection (more reliable than regex)
+   * Used when lexicon detects high-scoring words but message might be narrative
+   * @param {string} messageText - Message text to check
+   * @returns {Object} - { isNarrative: boolean, confidence: number, reason: string }
+   */
+  async checkNarrativeContext(messageText) {
+    if (!this.initialized || !this.openai) {
+      return {
+        isNarrative: false,
+        confidence: 0,
+        reason: 'Nano service not available'
+      };
+    }
+
+    try {
+      const systemPrompt = `You are a narrative context detector for Hebrew messages.
+
+Your ONLY job is to determine if a message is describing:
+1. NARRATIVE - Talking ABOUT something (movie, TV show, news, story, book, game)
+2. DIRECT - Actual threat, insult, or harmful action
+
+NARRATIVE indicators (Hebrew):
+- "ראיתי סרט/בסרט" (I saw a movie)
+- "בחדשות" (in the news)
+- "שמעתי ש..." (I heard that...)
+- "קראתי על" (I read about)
+- "היה משחק/סרט" (there was a game/movie)
+- "במקום אחר" (in another place)
+
+DIRECT threat indicators:
+- "אני הולך ל..." (I'm going to...)
+- "אתה/את..." (you...)
+- "מחר/אחרי ביס" (tomorrow/after school)
+- Personal address (names, second person)
+
+Respond in JSON ONLY:
+{
+  "isNarrative": true/false,
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation in English"
+}`;
+
+      const userPrompt = `Hebrew message to analyze:\n"${messageText}"\n\nIs this NARRATIVE (describing a movie/story/news) or DIRECT (actual threat)?`;
+
+      const requestPayload = {
+        model: 'gpt-5-nano',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 100,
+        reasoning_effort: 'low',
+        verbosity: 'low'
+      };
+
+      const completion = await this.openai.chat.completions.create(requestPayload);
+
+      // Parse response with error handling
+      let response;
+      try {
+        const rawContent = completion.choices[0].message.content;
+        let jsonContent = rawContent.trim();
+
+        // Extract JSON if wrapped in markdown
+        const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) {
+          jsonContent = codeBlockMatch[1].trim();
+        }
+
+        // Extract JSON object if there's surrounding text
+        const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonContent = jsonMatch[0];
+        }
+
+        response = JSON.parse(jsonContent);
+
+        // Validate response structure
+        if (typeof response.isNarrative !== 'boolean') {
+          throw new Error('Invalid response structure - missing isNarrative boolean');
+        }
+      } catch (parseError) {
+        console.error('[NANO-NARRATIVE] JSON parse error:', parseError.message);
+        console.error('[NANO-NARRATIVE] Raw response:', completion.choices[0].message.content);
+
+        // Fail safe - assume NOT narrative (keep high score)
+        response = {
+          isNarrative: false,
+          confidence: 0.5,
+          reason: `Parse error: ${parseError.message}`
+        };
+      }
+
+      return {
+        isNarrative: response.isNarrative || false,
+        confidence: response.confidence || 0.5,
+        reason: response.reason || 'No reason provided'
+      };
+    } catch (error) {
+      console.error('[NANO-NARRATIVE] Error checking narrative context:', error);
+
+      // Fail safe - assume NOT narrative
+      return {
+        isNarrative: false,
+        confidence: 0,
+        reason: `Error: ${error.message}`
+      };
+    }
+  }
 }
 
 // Singleton instance

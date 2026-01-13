@@ -172,6 +172,25 @@ class BullywatchOrchestrator {
       const lexiconService = require('./lexiconService');
       const lexiconResult = lexiconService.detect(message.text || message.body || '');
 
+      // NEW: AI-based narrative context detection (more reliable than regex)
+      // If lexicon scores high (15+), check if it's narrative context (movie/news/story)
+      let narrativeCheck = null;
+      if (lexiconResult.baseScore >= 15 && this.nanoPreFilterEnabled) {
+        const nanoPreFilterService = require('./nanoPreFilterService');
+        narrativeCheck = await nanoPreFilterService.checkNarrativeContext(
+          message.text || message.body || ''
+        );
+
+        // If GPT-5-nano confirms narrative context, apply 80% dampening
+        if (narrativeCheck.isNarrative && narrativeCheck.confidence > 0.7) {
+          const originalScore = lexiconResult.baseScore;
+          lexiconResult.baseScore = Math.round(originalScore * 0.2); // 80% dampening
+          lexiconResult.narrativeDampened = true;
+          lexiconResult.originalScore = originalScore;
+          console.log(`[BULLYWATCH] 🎬 AI detected narrative context (${narrativeCheck.reason}): ${originalScore} → ${lexiconResult.baseScore}`);
+        }
+      }
+
       // If ensemble said "safe" BUT lexicon found critical words, override ensemble
       if (ensembleResult && ensembleResult.shouldSkipScoring && lexiconResult.baseScore === 0) {
         // Both ensemble AND lexicon say safe - only then can we skip heavy scoring
@@ -188,6 +207,7 @@ class BullywatchOrchestrator {
           details: {
             ensembleVoting: ensembleResult,
             lexiconCheck: lexiconResult,
+            narrativeCheck: narrativeCheck,
             skippedLayers: ['temporal', 'scoring', 'gpt'] // Skipped temporal/scoring, NOT lexicon
           },
           metadata: {
@@ -200,7 +220,12 @@ class BullywatchOrchestrator {
 
       // Continue to full scoring (nano flagged OR lexicon flagged)
       // Layer 1-3: Lexicon + Temporal + Scoring
-      const scoreResult = await scoringService.scoreMessage(message, groupId, metadata);
+      // Pass dampened lexicon result to scoring service to preserve narrative dampening
+      const scoringMetadata = {
+        ...metadata,
+        lexiconResult: lexiconResult // Includes narrative dampening if applied
+      };
+      const scoreResult = await scoringService.scoreMessage(message, groupId, scoringMetadata);
 
       // Layer 4: GPT Analysis (only for ambiguous cases)
       let gptResult = null;

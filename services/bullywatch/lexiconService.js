@@ -445,9 +445,12 @@ class LexiconService {
     if (this.patternCache) {
       const structuredResults = this.detectFromStructuredLexicon(text);
       if (structuredResults.hits.length > 0) {
-        // Apply narrative dampening to context-sensitive words (like כלב)
+        // Apply narrative dampening to ALL context-sensitive categories when storytelling detected
         const dampenedHits = structuredResults.hits.map(hit => {
-          if (narrativeContext.isNarrative && hit.canonical === 'כלב') {
+          // Categories that should be dampened in narrative/movie context
+          const narrativeSensitiveCategories = ['general_insult', 'direct_threat', 'privacy_threat'];
+
+          if (narrativeContext.isNarrative && narrativeSensitiveCategories.includes(hit.category)) {
             return {
               ...hit,
               weightedScore: (hit.weightedScore || hit.baseScore) * narrativeDampener,
@@ -464,12 +467,23 @@ class LexiconService {
       }
     }
 
-    // A) General Insults (Low-Medium) - LEGACY patterns
+    // A) General Insults (Low-Medium) - Apply narrative dampening
     const generalInsults = this.detectGeneralInsults(text);
     if (generalInsults.hits.length > 0) {
-      hits.push(...generalInsults.hits);
+      // Dampen insult scores if in narrative/movie context
+      const dampenedInsults = narrativeContext.isNarrative
+        ? generalInsults.hits.map(hit => ({
+            ...hit,
+            weightedScore: (hit.weightedScore || hit.baseScore) * narrativeDampener,
+            dampenedBy: 'narrative_context'
+          }))
+        : generalInsults.hits;
+
+      hits.push(...dampenedInsults);
       categories.add('general_insult');
-      baseScore += generalInsults.score;
+      baseScore += narrativeContext.isNarrative
+        ? generalInsults.score * narrativeDampener
+        : generalInsults.score;
     }
 
     // B) Sexual/Harassment (High) - LEGACY patterns
@@ -488,20 +502,42 @@ class LexiconService {
       baseScore += socialExclusion.score;
     }
 
-    // D) Direct Threats (High)
+    // D) Direct Threats (High) - Apply narrative dampening
     const directThreats = this.detectDirectThreats(text);
     if (directThreats.hits.length > 0) {
-      hits.push(...directThreats.hits);
+      // Dampen threat scores if in narrative/movie context
+      const dampenedDirectThreats = narrativeContext.isNarrative
+        ? directThreats.hits.map(hit => ({
+            ...hit,
+            weightedScore: (hit.weightedScore || hit.baseScore) * narrativeDampener,
+            dampenedBy: 'narrative_context'
+          }))
+        : directThreats.hits;
+
+      hits.push(...dampenedDirectThreats);
       categories.add('direct_threat');
-      baseScore += directThreats.score;
+      baseScore += narrativeContext.isNarrative
+        ? directThreats.score * narrativeDampener
+        : directThreats.score;
     }
 
-    // E) Doxxing/Sextortion/Blackmail (High)
+    // E) Doxxing/Sextortion/Blackmail (High) - Apply narrative dampening
     const privacyThreats = this.detectPrivacyThreats(text);
     if (privacyThreats.hits.length > 0) {
-      hits.push(...privacyThreats.hits);
+      // Dampen privacy threat scores if in narrative/movie context
+      const dampenedPrivacyThreats = narrativeContext.isNarrative
+        ? privacyThreats.hits.map(hit => ({
+            ...hit,
+            weightedScore: (hit.weightedScore || hit.baseScore) * narrativeDampener,
+            dampenedBy: 'narrative_context'
+          }))
+        : privacyThreats.hits;
+
+      hits.push(...dampenedPrivacyThreats);
       categories.add('privacy_threat');
-      baseScore += privacyThreats.score;
+      baseScore += narrativeContext.isNarrative
+        ? privacyThreats.score * narrativeDampener
+        : privacyThreats.score;
     }
 
     // F) Privacy Invasion (High)
@@ -977,15 +1013,21 @@ class LexiconService {
    */
   detectNarrativeContext(text) {
     // Narrative indicators (storytelling, describing events)
+    // NOTE: Text is already normalized (spaces removed), so patterns must not use \s*
     const narrativePatterns = [
-      { pattern: /ראיטי\s*(בסרכ|בחדשוט|בטיקטוכ|ביוטיוב|בפייסבוכ)/g, name: 'ראיתי ב...' },
-      { pattern: /שמאטי\s*(ש|אטאזו|על|על)/g, name: 'שמעתי ש...' },
-      { pattern: /כראטי\s*(ש|על|אטאזו)/g, name: 'קראתי ש...' },
-      { pattern: /ספרו\s*לי\s*(ש|על)/g, name: 'ספרו לי ש...' },
-      { pattern: /סיפרו\s*לי\s*(ש|על)/g, name: 'סיפרו לי ש...' },
-      { pattern: /מסופר\s*(ש|על)/g, name: 'מסופר ש...' },
-      { pattern: /איכ\s*\w+\s*מט/g, name: 'איך X מת (narrative death)' },
-      { pattern: /היה\s*פאמ/g, name: 'היה פעם (once upon a time)' },
+      // Movie/TV/Video contexts - HIGH CONFIDENCE
+      // FIX: "סרט" normalizes to "סרט" (with ט), NOT "סרכ"
+      { pattern: /ראיטיב?סרט|ראיטיב?חדשוט|ראיטיבטיקטוכ|ראיטיביוטיוב|ראיטיבפייסבוכ/g, name: 'ראיתי סרט/חדשות' },
+      { pattern: /היהסרט|בסרטהיה/g, name: 'היה סרט' },
+      { pattern: /בסרט|בחדשוט|בטלוויזיה/g, name: 'בסרט/בחדשות' },
+      // Narrative storytelling
+      { pattern: /שמאטי(ש|אטאזו|על)/g, name: 'שמעתי ש...' },
+      { pattern: /כראטי(ש|על|אטאזו)/g, name: 'קראתי ש...' },
+      { pattern: /ספרולי(ש|על)/g, name: 'ספרו לי ש...' },
+      { pattern: /סיפרולי(ש|על)/g, name: 'סיפרו לי ש...' },
+      { pattern: /מסופר(ש|על)/g, name: 'מסופר ש...' },
+      { pattern: /איכ\w+מט/g, name: 'איך X מת (narrative death)' },
+      { pattern: /היהפאמ/g, name: 'היה פעם (once upon a time)' },
     ];
 
     for (const { pattern, name } of narrativePatterns) {
