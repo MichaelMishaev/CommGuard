@@ -729,6 +729,47 @@ async function getAlertRecipients(whatsappGroupId) {
     }
 }
 
+/**
+ * Insert or update group in database (UPSERT)
+ * Auto-registers groups when bot joins them
+ * @param {Object} groupMetadata - WhatsApp group metadata from sock.groupMetadata()
+ * @returns {Promise<number>} Group database ID
+ */
+async function upsertGroup(groupMetadata) {
+    try {
+        const result = await query(`
+            INSERT INTO groups (
+                whatsapp_group_id,
+                name,
+                description,
+                creation_timestamp,
+                owner_phone,
+                last_sync
+            )
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (whatsapp_group_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                last_sync = NOW()
+            RETURNING id
+        `, [
+            groupMetadata.id,
+            groupMetadata.subject || 'Unknown Group',
+            groupMetadata.desc || null,
+            groupMetadata.creation || null,
+            groupMetadata.owner?.split('@')[0] || null
+        ]);
+
+        const groupId = result.rows[0].id;
+        console.log(`[${getTimestamp()}] ✅ Group auto-registered: ${groupMetadata.subject} (DB ID: ${groupId})`);
+        return groupId;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to upsert group:`, error.message);
+        throw error;
+    }
+}
+
 module.exports = {
     getAllGroups,
     getGroupByWhatsAppId,
@@ -761,5 +802,6 @@ module.exports = {
     isBullyingMonitoringEnabled,
     getGroupClassName,
     setGroupClassName,
-    getBullywatchGroups
+    getBullywatchGroups,
+    upsertGroup  // Auto-register groups on join
 };

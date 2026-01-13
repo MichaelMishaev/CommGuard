@@ -339,7 +339,7 @@ const { storePendingRequest, getPendingRequest, removePendingRequest } = require
 // Initialize Database (PostgreSQL + Redis)
 const { initDatabase } = require('./database/connection');
 const { initRedis } = require('./services/redisService');
-const { incrementViolation, getViolations, blacklistUser, getUserByPhone } = require('./database/groupService');
+const { incrementViolation, getViolations, blacklistUser, getUserByPhone, upsertGroup } = require('./database/groupService');
 const { cacheBlacklistedUser, removeFromBlacklistCache } = require('./services/redisService');
 
 // Initialize databases if URLs are provided
@@ -692,7 +692,29 @@ async function startBot() {
             const botPhone = sock.user.id.split(':')[0].split('@')[0];
             sock.botPhone = botPhone;
             console.log(`Bot Phone: ${botPhone}`);
-            
+
+            // CRITICAL: Auto-register all groups in database on startup
+            // This ensures #bullywatch and other commands work for all groups
+            if (process.env.DATABASE_URL) {
+                console.log(`\n📊 Auto-registering groups in database...`);
+                try {
+                    const allGroups = await sock.groupFetchAllParticipating();
+                    const groupList = Object.values(allGroups);
+                    console.log(`   Found ${groupList.length} groups to register`);
+
+                    for (const group of groupList) {
+                        try {
+                            await upsertGroup(group);
+                        } catch (err) {
+                            console.error(`   ⚠️ Failed to register group ${group.subject}:`, err.message);
+                        }
+                    }
+                    console.log(`✅ Group auto-registration completed\n`);
+                } catch (error) {
+                    console.error(`⚠️ Failed to auto-register groups (non-critical):`, error.message);
+                }
+            }
+
             console.log(`\n🛡️ CommGuard Bot (Baileys Edition) is now protecting your groups!`);
             console.log(`🔧 Enhanced session error recovery active`);
             console.log(`⚡ Fast startup mode enabled (${STARTUP_TIMEOUT / 1000}s)`);
@@ -2447,7 +2469,18 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
     
     try {
         const groupMetadata = await sock.groupMetadata(groupId);
-        
+
+        // CRITICAL: Auto-register group in database (if not already registered)
+        // This ensures #bullywatch and other commands work for ALL groups
+        if (process.env.DATABASE_URL) {
+            try {
+                await upsertGroup(groupMetadata);
+            } catch (error) {
+                console.error(`[${getTimestamp()}] ⚠️ Failed to auto-register group (non-critical):`, error.message);
+                // Non-critical error - continue with participant processing
+            }
+        }
+
         // Check if the person who added them is an admin
         let addedByAdmin = false;
         if (addedBy) {
