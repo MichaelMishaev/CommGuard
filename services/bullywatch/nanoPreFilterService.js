@@ -45,7 +45,7 @@ class NanoPreFilterService {
     await nanoLoggingService.initialize();
 
     this.initialized = true;
-    console.log('✅ NanoPreFilterService initialized (GPT-4o-mini)');
+    console.log('✅ NanoPreFilterService initialized (GPT-4.1-nano)');
   }
 
   /**
@@ -212,14 +212,14 @@ Respond in JSON ONLY:
 Is this SAFE, HARMFUL, or AMBIGUOUS?`;
 
     const requestPayload = {
-      model: 'gpt-4o-mini', // SWITCHED: GPT-5-nano exhausts all tokens on reasoning, GPT-4o-mini is faster and more reliable
+      model: 'gpt-4.1-nano', // GPT-4.1 nano: Fastest and most cost-effective for structured JSON output
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3, // Low temperature for consistent structured output
-      max_completion_tokens: 500 // Sufficient for JSON response without reasoning overhead
+      max_completion_tokens: 500 // Sufficient for JSON response
     };
 
     const completion = await this.openai.chat.completions.create(requestPayload);
@@ -454,7 +454,7 @@ Respond in JSON ONLY:
       const userPrompt = `Hebrew message to analyze:\n"${messageText}"\n\nIs this NARRATIVE (describing a movie/story/news) or DIRECT (actual threat)?`;
 
       const requestPayload = {
-        model: 'gpt-4o-mini', // SWITCHED: GPT-5-nano exhausts all tokens on reasoning, GPT-4o-mini is faster and more reliable
+        model: 'gpt-4.1-nano', // GPT-4.1 nano: Fastest and most cost-effective for structured JSON output
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
