@@ -192,7 +192,7 @@ Is the flagged message harassment or banter?`;
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.3, // Lower temperature for more consistent analysis
+      // Note: GPT-5 may have temperature restrictions, using default for now
       max_completion_tokens: 500, // GPT-5 uses max_completion_tokens instead of max_tokens
       reasoning_effort: 'medium', // GPT-5 parameter: minimal, low, medium, high
       verbosity: 'low' // GPT-5 parameter: low, medium, high (keep analysis concise)

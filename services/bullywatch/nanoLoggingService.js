@@ -29,6 +29,10 @@ class NanoLoggingService {
     // In-memory fallback (if DB unavailable)
     this.memoryLog = [];
     this.maxMemoryEntries = 10000;
+
+    // AI Error tracking
+    this.aiErrors = [];
+    this.maxAIErrors = 1000;
   }
 
   async initialize() {
@@ -466,6 +470,67 @@ class NanoLoggingService {
       console.error('Error getting potential false negatives:', error);
       return [];
     }
+  }
+
+  /**
+   * Log AI API errors (for monitoring and debugging)
+   * @param {Object} errorData - Error details from AI API call
+   */
+  async logAIError(errorData) {
+    const errorEntry = {
+      timestamp: Date.now(),
+      date: new Date().toISOString(),
+      model: errorData.model || 'unknown',
+      errorType: errorData.errorType || 'unknown',
+      errorMessage: errorData.errorMessage || 'No message',
+      errorCode: errorData.errorCode || null,
+      requestPayload: errorData.requestPayload || null,
+      stackTrace: errorData.stackTrace || null,
+      groupId: errorData.groupId || null,
+      messagePreview: errorData.messagePreview || null
+    };
+
+    // Add to in-memory log
+    this.aiErrors.push(errorEntry);
+    if (this.aiErrors.length > this.maxAIErrors) {
+      this.aiErrors.shift();
+    }
+
+    // Log to console for immediate visibility
+    console.error('🚨 AI API ERROR:', {
+      model: errorEntry.model,
+      error: errorEntry.errorMessage,
+      code: errorEntry.errorCode,
+      timestamp: errorEntry.date
+    });
+
+    // Async write to database
+    setImmediate(async () => {
+      try {
+        if (this.useFirebase) {
+          const collection = this.db.collection('ai_errors');
+          await collection.add(errorEntry);
+        } else if (this.useRedis) {
+          const key = 'ai_errors';
+          const score = errorEntry.timestamp;
+          const value = JSON.stringify(errorEntry);
+          await this.redis.zadd(key, score, value);
+
+          // Keep only last 7 days
+          const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+          await this.redis.zremrangebyscore(key, 0, sevenDaysAgo);
+        }
+      } catch (error) {
+        console.error('Error logging AI error to database:', error);
+      }
+    });
+  }
+
+  /**
+   * Get recent AI errors
+   */
+  getRecentAIErrors(limit = 50) {
+    return this.aiErrors.slice(-limit).reverse();
   }
 }
 

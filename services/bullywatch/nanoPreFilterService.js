@@ -188,7 +188,7 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.2, // Very low for consistent classification
+      // Note: GPT-5-nano only supports default temperature (1), cannot customize
       max_completion_tokens: 150, // Short responses only (GPT-5 uses max_completion_tokens)
       reasoning_effort: 'low', // Fast responses (GPT-5 parameter)
       verbosity: 'low' // Concise (GPT-5 parameter)
