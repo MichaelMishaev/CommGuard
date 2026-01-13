@@ -46,7 +46,7 @@ module.exports = {
 
     // Structured Output Schema (Prompt Injection Prevention)
     RESPONSE_SCHEMA: {
-        type: "json_schema",
+        name: "json_schema",
         json_schema: {
             name: "bullying_analysis",
             strict: true,
