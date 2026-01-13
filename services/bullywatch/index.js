@@ -129,35 +129,76 @@ class BullywatchOrchestrator {
         };
       }
 
-      // Layer 0: GPT-5-nano Pre-Filter (Fast safety check)
-      let nanoResult = null;
+      // Layer 0: Multi-Model Ensemble Voting (Nano + Sentiment in parallel)
+      // Defense in depth: ALWAYS runs lexicon after ensemble check
+      let ensembleResult = null;
       if (this.nanoPreFilterEnabled) {
-        nanoResult = await nanoPreFilterService.quickCheck(message, groupId);
+        const ensembleService = require('./ensembleService');
+        ensembleResult = await ensembleService.parallelClassify(message, groupId);
 
-        // If nano says it's clearly safe, skip heavy scoring
-        if (nanoResult.shouldSkipScoring) {
+        // CRITICAL: If models disagree, escalate to GPT-5-mini immediately
+        if (ensembleResult.shouldEscalateToMini) {
+          const gptResult = await gptAnalysisService.analyzeWithContext(message, groupId, {
+            totalScore: 13, // Ambiguous range triggers GPT
+            reason: ensembleResult.reason,
+            votes: ensembleResult.votes,
+            modelDisagreement: true
+          });
+
           return {
             analyzed: true,
-            score: 0,
-            severity: 'SAFE',
-            action: {
-              type: 'none',
-              description: 'Nano pre-filter: Clearly safe message',
-              alertAdmin: false,
-              deleteMessage: false
-            },
+            score: gptResult.adjustedScore || 13,
+            severity: gptResult.severity || 'ALERT',
+            action: this.determineFinalAction({
+              totalScore: gptResult.adjustedScore,
+              action: gptResult.action
+            }, gptResult),
             details: {
-              nanoPreFilter: nanoResult,
-              skippedLayers: ['lexicon', 'temporal', 'scoring']
+              ensembleVoting: ensembleResult,
+              gptAnalysis: gptResult,
+              escalationReason: 'Model disagreement detected'
             },
             metadata: {
-              fastPath: true,
-              processingTimeMs: 0
+              fastPath: false,
+              ensembleEscalation: true,
+              processingTimeMs: ensembleResult.processingTimeMs
             }
           };
         }
       }
 
+      // Layer 1: ALWAYS run Lexicon check (defense in depth)
+      // CRITICAL FIX: Even if ensemble says "safe", lexicon can catch patterns AI missed
+      const lexiconService = require('./lexiconService');
+      const lexiconResult = lexiconService.detect(message.text || message.body || '');
+
+      // If ensemble said "safe" BUT lexicon found critical words, override ensemble
+      if (ensembleResult && ensembleResult.shouldSkipScoring && lexiconResult.baseScore === 0) {
+        // Both ensemble AND lexicon say safe - only then can we skip heavy scoring
+        return {
+          analyzed: true,
+          score: 0,
+          severity: 'SAFE',
+          action: {
+            type: 'none',
+            description: 'Ensemble (Nano+Sentiment) + Lexicon: All confirmed safe',
+            alertAdmin: false,
+            deleteMessage: false
+          },
+          details: {
+            ensembleVoting: ensembleResult,
+            lexiconCheck: lexiconResult,
+            skippedLayers: ['temporal', 'scoring', 'gpt'] // Skipped temporal/scoring, NOT lexicon
+          },
+          metadata: {
+            fastPath: true,
+            processingTimeMs: ensembleResult?.processingTimeMs || 0,
+            defenseInDepth: 'ensemble + lexicon both verified'
+          }
+        };
+      }
+
+      // Continue to full scoring (nano flagged OR lexicon flagged)
       // Layer 1-3: Lexicon + Temporal + Scoring
       const scoreResult = await scoringService.scoreMessage(message, groupId, metadata);
 
@@ -182,7 +223,7 @@ class BullywatchOrchestrator {
         severity: scoreResult.severity,
         action: finalAction,
         details: {
-          nanoPreFilter: nanoResult,
+          ensembleVoting: ensembleResult, // Multi-model voting results (nano + sentiment)
           breakdown: scoreResult.breakdown,
           categories: scoreResult.details.categories,
           lexiconHits: scoreResult.details.lexiconHits,

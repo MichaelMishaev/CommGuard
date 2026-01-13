@@ -89,6 +89,15 @@ class LexiconService {
           score: 4,
           displayName: 'זובי',
           notes: 'Mild sexual insult'
+        },
+        {
+          canonical: 'חטיכטחרה',
+          surfaceForms: ['חטיכטחרה', 'חטיכהחרה', 'חתיכתחרה'],
+          category: 'sexual_harassment',
+          score: 16,
+          displayName: 'חתיכת חרה (hot piece)',
+          transliterations: ['hatikhat hara', 'hot piece'],
+          notes: 'Sexual objectification - modern slang, user reported 2026-01-13'
         }
       ],
 
@@ -275,6 +284,11 @@ class LexiconService {
 
     // For each category in lexiconDB
     for (const [category, entries] of Object.entries(this.lexiconDB)) {
+      // Dynamically create category in cache if it doesn't exist (for runtime-added words)
+      if (!this.patternCache[category]) {
+        this.patternCache[category] = [];
+      }
+
       for (const entry of entries) {
         const patterns = this.buildPatternsFromEntry(entry);
         this.patternCache[category].push(...patterns);
@@ -528,6 +542,15 @@ class LexiconService {
       hits.push(...religiousCurses.hits);
       categories.add('religious_curse');
       baseScore += religiousCurses.score;
+    }
+
+    // K) Compound Pattern Detection (context-aware)
+    // Distinguishes "חתיכה" (safe) from "חתיכת חרה" (harmful)
+    const compoundPatterns = this.detectCompoundPatterns(text);
+    if (compoundPatterns.length > 0) {
+      hits.push(...compoundPatterns);
+      compoundPatterns.forEach(hit => categories.add(hit.category));
+      baseScore += compoundPatterns.reduce((sum, hit) => sum + hit.score, 0);
     }
 
     // DEDUPLICATION: Remove duplicate hits from structured + legacy patterns
@@ -983,6 +1006,221 @@ class LexiconService {
     }
 
     return { isNarrative: false, pattern: null, confidence: 0 };
+  }
+
+  /**
+   * Detect compound phrases with context-aware scoring
+   * Example: "חתיכה" alone = safe, "חתיכת חרה" = harmful
+   * @param {string} text - Normalized Hebrew text
+   * @returns {Array} - Array of compound pattern hits
+   */
+  detectCompoundPatterns(text) {
+    const compoundRules = [
+      {
+        base: 'חטיכ', // Normalized form (ת→ט)
+        contextRules: [
+          {
+            followedBy: ['חרה', 'סקסיט', 'לוהטט', 'של אישה', 'של בחורה'],
+            score: 16,
+            category: 'sexual_harassment',
+            displayName: 'חתיכת חרה (sexual objectification)'
+          },
+          {
+            followedBy: ['עוגה', 'לחם', 'בשר', 'פיצה', 'שוקולד'],
+            score: 0,
+            category: 'literal_food',
+            displayName: 'חתיכת עוגה (literal food - safe)'
+          }
+        ]
+      },
+      {
+        base: 'כלב',
+        contextRules: [
+          {
+            precededBy: ['אטה', 'את', 'הוא', 'היא', 'יא'],
+            score: 12,
+            category: 'general_insult',
+            displayName: 'אתה כלב (direct insult)'
+          },
+          {
+            followedBy: ['רץ', 'ישן', 'אוכל', 'שוכב', 'משחק', 'נובח'],
+            score: 0,
+            category: 'literal_animal',
+            displayName: 'כלב רץ (literal animal - safe)'
+          },
+          {
+            precededBy: ['ראיטי', 'היה', 'שמעטי', 'בסרט', 'בסיפור'],
+            score: 0,
+            category: 'narrative',
+            displayName: 'ראיתי כלב (narrative - safe)'
+          }
+        ]
+      },
+      {
+        base: 'זונה',
+        contextRules: [
+          {
+            precededBy: ['בן', 'בט'],
+            followedBy: null, // "בן זונה" or "בת זונה"
+            score: 18,
+            category: 'sexual_harassment',
+            displayName: 'בן/בת זונה (strong profanity)'
+          },
+          {
+            followedBy: ['חמודה', 'יפה', 'מתוקה'],
+            score: 20, // HIGHER - profanity + objectification
+            category: 'sexual_harassment',
+            displayName: 'זונה חמודה (profane + objectification)'
+          }
+        ]
+      }
+    ];
+
+    const hits = [];
+
+    for (const rule of compoundRules) {
+      const baseRegex = new RegExp(rule.base, 'gi');
+      const baseMatches = [...text.matchAll(baseRegex)];
+
+      if (baseMatches.length === 0) continue;
+
+      for (const contextRule of rule.contextRules) {
+        // Check if followed by specific words
+        if (contextRule.followedBy) {
+          const followPattern = rule.base + '[\\s\\u200B]*(' + contextRule.followedBy.join('|') + ')';
+          const followRegex = new RegExp(followPattern, 'gi');
+          const followMatches = [...text.matchAll(followRegex)];
+
+          for (const match of followMatches) {
+            if (contextRule.score > 0) { // Only add harmful matches
+              hits.push({
+                word: match[0],
+                score: contextRule.score,
+                category: contextRule.category,
+                context: 'compound_pattern_followed_by',
+                displayName: contextRule.displayName
+              });
+            }
+          }
+        }
+
+        // Check if preceded by specific words
+        if (contextRule.precededBy) {
+          const precedePattern = '(' + contextRule.precededBy.join('|') + ')[\\s\\u200B]*' + rule.base;
+          const precedeRegex = new RegExp(precedePattern, 'gi');
+          const precedeMatches = [...text.matchAll(precedeRegex)];
+
+          for (const match of precedeMatches) {
+            if (contextRule.score > 0) { // Only add harmful matches
+              hits.push({
+                word: match[0],
+                score: contextRule.score,
+                category: contextRule.category,
+                context: 'compound_pattern_preceded_by',
+                displayName: contextRule.displayName
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return hits;
+  }
+
+  /**
+   * Add word to lexicon at runtime (no restart needed)
+   * @param {string} word - Word to add
+   * @param {string} category - Category (sexual_harassment, general_insult, etc.)
+   * @param {Object} metadata - Additional info (source, approvedBy, etc.)
+   * @returns {Object} - Success status and entry details
+   */
+  addWordRuntime(word, category = 'general_insult', metadata = {}) {
+    try {
+      // Normalize the word
+      const normalized = this.normalizeHebrew(word);
+
+      // Determine base score based on category
+      const categoryScores = {
+        'sexual_harassment': 16,
+        'general_insult': 4,
+        'social_exclusion': 10,
+        'direct_threat': 18,
+        'privacy_threat': 14,
+        'self_harm': 22
+      };
+
+      const score = categoryScores[category] || 4;
+
+      // Create new entry in structured lexicon format
+      const newEntry = {
+        canonical: normalized,
+        surfaceForms: [normalized, word], // Include both normalized and original
+        category: category,
+        score: score,
+        displayName: word,
+        notes: `Added at runtime: ${metadata.source || 'manual'} on ${new Date().toISOString()}`,
+        addedBy: metadata.approvedBy || 'system',
+        timestamp: Date.now()
+      };
+
+      // Add to appropriate category in lexiconDB
+      if (!this.lexiconDB[category]) {
+        this.lexiconDB[category] = [];
+      }
+      this.lexiconDB[category].push(newEntry);
+
+      // Rebuild pattern cache to include new word
+      if (this.patternCache) {
+        this.buildPatternCache();
+      }
+
+      console.log(`[LEXICON] ✅ Added "${word}" to lexicon (category: ${category}, score: ${score}, source: ${metadata.source || 'manual'})`);
+
+      return { success: true, entry: newEntry };
+    } catch (error) {
+      console.error('[LEXICON] ❌ Error adding word at runtime:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Remove word from lexicon at runtime
+   * @param {string} word - Word to remove
+   * @returns {Object} - Success status
+   */
+  removeWordRuntime(word) {
+    try {
+      const normalized = this.normalizeHebrew(word);
+      let removed = false;
+
+      // Search all categories
+      for (const category in this.lexiconDB) {
+        const initialLength = this.lexiconDB[category].length;
+        this.lexiconDB[category] = this.lexiconDB[category].filter(entry => {
+          return entry.canonical !== normalized && !entry.surfaceForms.includes(word);
+        });
+
+        if (this.lexiconDB[category].length < initialLength) {
+          removed = true;
+        }
+      }
+
+      if (removed) {
+        // Rebuild pattern cache
+        if (this.patternCache) {
+          this.buildPatternCache();
+        }
+        console.log(`[LEXICON] ✅ Removed "${word}" from lexicon`);
+        return { success: true };
+      } else {
+        console.log(`[LEXICON] ⚠️  Word "${word}" not found in lexicon`);
+        return { success: false, error: 'Word not found' };
+      }
+    } catch (error) {
+      console.error('[LEXICON] ❌ Error removing word:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   /**

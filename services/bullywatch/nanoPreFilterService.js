@@ -171,6 +171,33 @@ Only mark HARMFUL if you see:
 - Social exclusion ("don't invite X")
 - Doxxing/privacy violations
 
+HEBREW SLANG EXAMPLES TO WATCH FOR:
+
+HARMFUL - Sexual Objectification:
+- "חתיכת חרה" (hot piece - sexual objectification of a person)
+- "כוסית" (objectifying slang term)
+- "בת זונה חמודה" (profane + cuteness = mocking/objectification)
+- "מה הציצים שלה" (objectifying body comments)
+
+HARMFUL - Direct Insults with Address:
+- "שמע אתה מפגר" (listen you retard - direct insult)
+- "יא בן זונה" (you son of whore - direct profanity)
+- "אתה כלב" (you dog - direct insult when targeting person)
+- "את שרמוטה" (you slut - direct insult)
+
+SAFE - Similar Words, Different Context:
+- "חתיכת עוגה" (piece of cake - literal food, NOT a person)
+- "חמוד/ה" alone (cute - general compliment without objectification)
+- "ראיתי כלב רץ" (I saw a dog running - literal animal, NOT targeting person)
+- "בסרט היה כלב" (in the movie there was a dog - narrative context)
+- "איזה כלב חמוד" (what a cute dog - literal animal)
+
+KEY DISTINCTION: Context matters!
+- "חתיכה" + food/object = SAFE
+- "חתיכה/חתיכת" + person/body = HARMFUL
+- "כלב" in narrative/literal = SAFE
+- "אתה כלב" (you dog) = HARMFUL (direct address)
+
 Respond in JSON ONLY:
 {
   "verdict": "safe" | "harmful" | "ambiguous",

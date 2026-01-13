@@ -413,6 +413,54 @@ class BullyingMonitoringService {
             console.log(`[${getTimestamp()}] 📊 Severity: ${severity}, Matched: ${matchedWords.length} words`);
             console.log(`[${getTimestamp()}] 📞 Real phone: ${realPhone}`);
 
+            // BULLYWATCH: Store flagged message for admin feedback
+            try {
+                const flaggedMessageData = {
+                    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    timestamp,
+                    groupName,
+                    groupId,
+                    senderName: senderName || 'Unknown',
+                    senderPhone: realPhone,
+                    messageText,
+                    matchedWords,
+                    severity,
+                    verdict: null, // Will be set by admin feedback
+                    feedbackTimestamp: null
+                };
+
+                try {
+                    const { getRedis, isRedisConnected } = require('./redisService');
+
+                    if (isRedisConnected()) {
+                        const redis = getRedis();
+
+                        // Store in Redis list (LPUSH = newest first)
+                        await redis.lpush('bullywatch:flagged', JSON.stringify(flaggedMessageData));
+
+                        // Keep only last 100 flagged messages (prevent memory bloat)
+                        await redis.ltrim('bullywatch:flagged', 0, 99);
+
+                        console.log(`[${getTimestamp()}] 💾 Flagged message stored in Redis for feedback: ${flaggedMessageData.id}`);
+                    }
+                } catch (redisError) {
+                    console.log(`[${getTimestamp()}] ⚠️  Redis unavailable, using in-memory fallback for flagged messages`);
+                    // Fallback to in-memory storage
+                    if (!global.bullywatchFlagged) global.bullywatchFlagged = [];
+                    global.bullywatchFlagged.push(flaggedMessageData);
+
+                    // Keep only last 100 (prevent memory bloat)
+                    if (global.bullywatchFlagged.length > 100) {
+                        global.bullywatchFlagged = global.bullywatchFlagged.slice(-100);
+                    }
+
+                    console.log(`[${getTimestamp()}] 💾 Flagged message stored in memory for feedback: ${flaggedMessageData.id}`);
+                }
+            } catch (storageError) {
+                console.error(`[${getTimestamp()}] ⚠️  Failed to store flagged message:`, storageError.message);
+                // Non-critical error - alert still sent
+            }
+
             return true;
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to send bullying alert:`, error.message);
