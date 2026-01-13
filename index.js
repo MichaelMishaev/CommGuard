@@ -18,6 +18,7 @@ const memoryMonitor = require('./utils/memoryMonitor');
 const memoryLeakDetector = require('./utils/memoryLeakDetector');
 const { queueScan } = require('./services/scanQueueService');
 const { startScanWorker } = require('./services/blacklistScanWorker');
+const { extractPhoneNumber } = require('./utils/lidDecoder');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -1321,7 +1322,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 console.log(`[${getTimestamp()}] ✅ BULLYWATCH: Analysis starting...`);
                 // Use new Bullywatch v2.0 system
                 const sender = msg.key.participant || msg.key.remoteJid;
-                const senderPhone = sender.split('@')[0];
+                const senderPhone = extractPhoneNumber(sender); // Handle both regular and LID format
                 const messageId = msg.key.id;
 
                 // Prepare message object for bullywatch
@@ -1425,14 +1426,14 @@ async function handleMessage(sock, msg, commandHandler) {
 
     // Handle private message commands from admin
     if (isPrivate) {
-        const senderPhone = senderId.split('@')[0];
-        
+        const senderPhone = extractPhoneNumber(senderId); // Handle both regular and LID format
+
         // Log all private messages to console
         console.log(`\n[${getTimestamp()}] 📱 Private Message Received:`);
         console.log(`   From: ${senderPhone} (${senderId})`);
         console.log(`   Text: ${messageText || '[No text content]'}`);
         console.log(`   Message Type: ${Object.keys(msg.message || {}).join(', ')}`);
-        
+
         // Check if it's admin (handle both regular and LID format)
         const isAdmin = senderPhone === config.ALERT_PHONE ||
                        senderPhone === config.ADMIN_PHONE ||
