@@ -219,7 +219,7 @@ Is this SAFE, HARMFUL, or AMBIGUOUS?`;
       ],
       response_format: { type: 'json_object' },
       // Note: GPT-5-nano only supports default temperature (1), cannot customize
-      max_completion_tokens: 300 // FIX: Doubled from 150 to prevent JSON truncation
+      max_completion_tokens: 800 // FIX: Reasoning models need tokens for BOTH reasoning (300-500) AND output (200-300)
       // REMOVED: reasoning_effort, verbosity - may not be supported by gpt-5-nano
     };
 
@@ -461,7 +461,7 @@ Respond in JSON ONLY:
           { role: 'user', content: userPrompt }
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 100,
+        max_completion_tokens: 600, // FIX: Reasoning models need tokens for BOTH reasoning AND output
         reasoning_effort: 'low',
         verbosity: 'low'
       };
