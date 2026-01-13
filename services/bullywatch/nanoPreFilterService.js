@@ -45,7 +45,7 @@ class NanoPreFilterService {
     await nanoLoggingService.initialize();
 
     this.initialized = true;
-    console.log('✅ NanoPreFilterService initialized (GPT-5-nano)');
+    console.log('✅ NanoPreFilterService initialized (GPT-4o-mini)');
   }
 
   /**
