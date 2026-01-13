@@ -212,15 +212,14 @@ Respond in JSON ONLY:
 Is this SAFE, HARMFUL, or AMBIGUOUS?`;
 
     const requestPayload = {
-      model: 'gpt-5-nano',
+      model: 'gpt-4o-mini', // SWITCHED: GPT-5-nano exhausts all tokens on reasoning, GPT-4o-mini is faster and more reliable
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
-      // Note: GPT-5-nano only supports default temperature (1), cannot customize
-      max_completion_tokens: 800 // FIX: Reasoning models need tokens for BOTH reasoning (300-500) AND output (200-300)
-      // REMOVED: reasoning_effort, verbosity - may not be supported by gpt-5-nano
+      temperature: 0.3, // Low temperature for consistent structured output
+      max_completion_tokens: 500 // Sufficient for JSON response without reasoning overhead
     };
 
     const completion = await this.openai.chat.completions.create(requestPayload);
@@ -455,15 +454,14 @@ Respond in JSON ONLY:
       const userPrompt = `Hebrew message to analyze:\n"${messageText}"\n\nIs this NARRATIVE (describing a movie/story/news) or DIRECT (actual threat)?`;
 
       const requestPayload = {
-        model: 'gpt-5-nano',
+        model: 'gpt-4o-mini', // SWITCHED: GPT-5-nano exhausts all tokens on reasoning, GPT-4o-mini is faster and more reliable
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 600, // FIX: Reasoning models need tokens for BOTH reasoning AND output
-        reasoning_effort: 'low',
-        verbosity: 'low'
+        temperature: 0.3, // Low temperature for consistent structured output
+        max_completion_tokens: 300 // Sufficient for simple true/false JSON response
       };
 
       const completion = await this.openai.chat.completions.create(requestPayload);
