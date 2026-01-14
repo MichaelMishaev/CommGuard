@@ -49,6 +49,10 @@ setInterval(() => {
 const archivedChats = new Set();
 let startupTimer = null;
 
+// Track if startup notification was already sent in this process (to avoid duplicate notifications on reconnect)
+let startupNotificationSent = false;
+const PROCESS_START_PID = process.pid; // Store PID at process start
+
 // Track bot startup time to ignore old messages from while bot was down
 const BOT_START_TIME = Date.now();
 const MESSAGE_GRACE_PERIOD = 60000; // 60 seconds grace period for clock differences
@@ -815,35 +819,49 @@ async function startBot() {
                 timeSinceLast = 'Unknown';
             }
 
-            // Send startup notification with error status and restart reason
-            try {
-                const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
-                const memStats = memoryMonitor.getMemoryStats();
-                const memHealth = memoryMonitor.getMemoryHealth(memStats);
-                const statusMessage = `🟢 CommGuard Bot Started\n\n` +
-                                    `✅ Bot is now online and monitoring groups\n` +
-                                    `🔧 Enhanced session error recovery enabled\n` +
-                                    `⚡ Fast startup mode active\n` +
-                                    `📊 Connection stable after ${reconnectAttempts} attempts\n` +
-                                    `🔄 Restart Reason: ${restartReasons}\n` +
-                                    `⏱️ Time since last: ${timeSinceLast}\n\n` +
-                                    `${memHealth.emoji} *Memory Status:*\n` +
-                                    `System: ${memStats.system.usedGB}GB / ${memStats.system.totalGB}GB (${memStats.system.usedPercent}%)\n` +
-                                    `Bot: ${memStats.process.rssMB}MB\n\n` +
-                                    `⏰ Time: ${getTimestamp()}`;
+            // Send startup notification ONLY on actual process restart, not on reconnection
+            // This prevents spam notifications when the bot reconnects after a WhatsApp disconnect
+            const isActualProcessStart = !startupNotificationSent;
 
-                console.log(`[${getTimestamp()}] 📱 Sending startup notification to admin...`);
+            if (isActualProcessStart) {
+                try {
+                    const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
+                    const memStats = memoryMonitor.getMemoryStats();
+                    const memHealth = memoryMonitor.getMemoryHealth(memStats);
+                    const statusMessage = `🟢 CommGuard Bot Started\n\n` +
+                                        `✅ Bot is now online and monitoring groups\n` +
+                                        `🔧 Enhanced session error recovery enabled\n` +
+                                        `⚡ Fast startup mode active\n` +
+                                        `📊 Connection stable after ${reconnectAttempts} attempts\n` +
+                                        `🔄 Restart Reason: ${restartReasons}\n` +
+                                        `⏱️ Time since last: ${timeSinceLast}\n\n` +
+                                        `${memHealth.emoji} *Memory Status:*\n` +
+                                        `System: ${memStats.system.usedGB}GB / ${memStats.system.totalGB}GB (${memStats.system.usedPercent}%)\n` +
+                                        `Bot: ${memStats.process.rssMB}MB\n\n` +
+                                        `⏰ Time: ${getTimestamp()}`;
 
-                // Use stealth mode for startup notification if enabled
-                if (config.FEATURES.STEALTH_MODE) {
-                    await stealthUtils.sendHumanLikeMessage(sock, adminId, { text: statusMessage });
-                } else {
-                    await sock.sendMessage(adminId, { text: statusMessage });
+                    console.log(`[${getTimestamp()}] 📱 Sending startup notification to admin...`);
+
+                    // Use stealth mode for startup notification if enabled
+                    if (config.FEATURES.STEALTH_MODE) {
+                        await stealthUtils.sendHumanLikeMessage(sock, adminId, { text: statusMessage });
+                    } else {
+                        await sock.sendMessage(adminId, { text: statusMessage });
+                    }
+
+                    startupNotificationSent = true; // Mark as sent to prevent duplicates on reconnect
+                    console.log(`[${getTimestamp()}] ✅ Startup notification sent successfully`);
+                } catch (err) {
+                    console.error(`[${getTimestamp()}] ❌ Failed to send startup notification:`, err.message);
+                    console.error(`   Stack: ${err.stack}`);
                 }
+            } else {
+                console.log(`[${getTimestamp()}] 🔄 Reconnected successfully (skipping duplicate startup notification)`);
+            }
 
-                console.log(`[${getTimestamp()}] ✅ Startup notification sent successfully`);
-
-                // Start memory monitoring and leak detection
+            // Start memory monitoring and leak detection (only on first connection in this process)
+            if (isActualProcessStart) {
+                const adminId = config.ADMIN_PHONE + '@s.whatsapp.net';
                 console.log(`[${getTimestamp()}] 🔍 Starting memory monitoring systems...`);
 
                 // Set up admin notifier for memory alerts
@@ -874,9 +892,6 @@ async function startBot() {
                 });
 
                 console.log(`[${getTimestamp()}] ✅ Memory monitoring systems started`);
-            } catch (err) {
-                console.error(`[${getTimestamp()}] ❌ Failed to send startup notification:`, err.message);
-                console.error(`   Stack: ${err.stack}`);
             }
         } else if (connection === 'connecting') {
             console.log(`[${getTimestamp()}] 🔄 Connecting to WhatsApp...`);
