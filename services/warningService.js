@@ -1,9 +1,9 @@
-const db = require('../firebaseConfig.js');
 const { getTimestamp } = require('../utils/logger');
 
 /**
  * Warning Service
  * Manages user warnings for invite links - first warning, second strike kicks
+ * Memory-only storage
  */
 
 class WarningService {
@@ -14,47 +14,21 @@ class WarningService {
     }
 
     /**
-     * Load warning data from Firebase into cache
+     * Load warning data into cache
      */
     async loadWarningCache() {
-        // MEMORY-ONLY MODE - Firebase disabled for warnings (cost reduction)
+        // Memory-only mode
         this.cacheLoaded = true;
-        console.log('💾 Warning system using memory-only cache (Firebase disabled)');
+        console.log('💾 Warning system using memory-only cache');
         return true;
-
-        /* FIREBASE READS DISABLED FOR WARNINGS - Cost reduction
-        if (!db || db.collection === undefined) {
-            console.warn('⚠️ Firebase not available - warning system disabled');
-            return false;
-        }
-
-        try {
-            const snapshot = await db.collection('user_warnings').get();
-            this.warningCache.clear();
-
-            snapshot.forEach(doc => {
-                this.warningCache.set(doc.id, doc.data());
-            });
-
-            this.cacheLoaded = true;
-            console.log(`✅ Loaded ${this.warningCache.size} warning records into cache`);
-            return true;
-        } catch (error) {
-            console.error('❌ Error loading warning cache:', error.message);
-            return false;
-        }
-        */
     }
 
     /**
      * Check if user should be warned or kicked for invite link violation
-     * @param {string} userId - WhatsApp user ID
-     * @param {string} groupId - WhatsApp group ID
-     * @returns {Object} - { action: 'warn'|'kick', warningCount: number, isFirstWarning: boolean }
      */
     async checkInviteLinkViolation(userId, groupId) {
         const normalizedUserId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
-        
+
         if (!this.cacheLoaded) {
             await this.loadWarningCache();
         }
@@ -68,29 +42,29 @@ class WarningService {
 
         if (!existingWarning) {
             // First violation - give warning
-            return { 
-                action: 'warn', 
-                warningCount: 0, 
-                isFirstWarning: true 
+            return {
+                action: 'warn',
+                warningCount: 0,
+                isFirstWarning: true
             };
         } else {
             // Check if warning is still valid (not expired)
             const warningDate = new Date(existingWarning.lastWarned);
             const expiryDate = new Date(warningDate.getTime() + (this.WARNING_EXPIRY_DAYS * 24 * 60 * 60 * 1000));
-            
+
             if (new Date() > expiryDate) {
                 // Warning expired - treat as first violation
-                return { 
-                    action: 'warn', 
-                    warningCount: 0, 
-                    isFirstWarning: true 
+                return {
+                    action: 'warn',
+                    warningCount: 0,
+                    isFirstWarning: true
                 };
             } else {
                 // Second violation within warning period - kick
-                return { 
-                    action: 'kick', 
-                    warningCount: existingWarning.warningCount, 
-                    isFirstWarning: false 
+                return {
+                    action: 'kick',
+                    warningCount: existingWarning.warningCount,
+                    isFirstWarning: false
                 };
             }
         }
@@ -98,10 +72,6 @@ class WarningService {
 
     /**
      * Record a warning for a user
-     * @param {string} userId - WhatsApp user ID
-     * @param {string} groupId - WhatsApp group ID
-     * @param {string} groupName - Group name
-     * @param {string} inviteLink - The invite link that caused the violation
      */
     async recordWarning(userId, groupId, groupName, inviteLink) {
         const normalizedUserId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
@@ -129,50 +99,21 @@ class WarningService {
 
         // Update cache
         this.warningCache.set(warningKey, warningRecord);
-        console.log(`⚠️ Warning recorded: ${normalizedUserId} in ${groupName} (Count: ${warningRecord.warningCount}) [memory-only]`);
+        console.log(`⚠️ Warning recorded: ${normalizedUserId} in ${groupName} (Count: ${warningRecord.warningCount})`);
         return true;
-
-        /* FIREBASE WRITES DISABLED FOR WARNINGS - Cost reduction
-        if (!db || db.collection === undefined) {
-            console.warn('⚠️ Firebase not available - warning saved in memory only');
-            return true;
-        }
-
-        try {
-            await db.collection('user_warnings').doc(warningKey).set(warningRecord);
-            console.log(`⚠️ Warning recorded: ${normalizedUserId} in ${groupName} (Count: ${warningRecord.warningCount})`);
-            return true;
-        } catch (error) {
-            console.error('❌ Error recording warning:', error.message);
-            return false;
-        }
-        */
     }
 
     /**
-     * Clear warnings for a user when they're kicked or leave voluntarily
-     * @param {string} userId - WhatsApp user ID
-     * @param {string} groupId - WhatsApp group ID (optional - if not provided, clears all warnings for user)
+     * Clear warnings for a user
      */
     async clearWarnings(userId, groupId = null) {
         const normalizedUserId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
-        
+
         if (groupId) {
             // Clear warning for specific group
             const warningKey = `${normalizedUserId}:${groupId}`;
             this.warningCache.delete(warningKey);
-            console.log(`✅ Cleared warning for ${normalizedUserId} in group ${groupId} [memory-only]`);
-
-            /* FIREBASE DELETES DISABLED FOR WARNINGS - Cost reduction
-            if (db && db.collection) {
-                try {
-                    await db.collection('user_warnings').doc(warningKey).delete();
-                    console.log(`✅ Cleared warning for ${normalizedUserId} in group ${groupId}`);
-                } catch (error) {
-                    console.error('❌ Error clearing warning:', error.message);
-                }
-            }
-            */
+            console.log(`✅ Cleared warning for ${normalizedUserId} in group ${groupId}`);
         } else {
             // Clear all warnings for user
             const keysToDelete = [];
@@ -182,26 +123,8 @@ class WarningService {
                 }
             }
 
-            // Delete from cache
             keysToDelete.forEach(key => this.warningCache.delete(key));
-            console.log(`✅ Cleared ${keysToDelete.length} warnings for ${normalizedUserId} [memory-only]`);
-
-            /* FIREBASE DELETES DISABLED FOR WARNINGS - Cost reduction
-            if (db && db.collection) {
-                const batch = db.batch();
-                keysToDelete.forEach(key => {
-                    const docRef = db.collection('user_warnings').doc(key);
-                    batch.delete(docRef);
-                });
-
-                try {
-                    await batch.commit();
-                    console.log(`✅ Cleared ${keysToDelete.length} warnings for ${normalizedUserId}`);
-                } catch (error) {
-                    console.error('❌ Error clearing warnings:', error.message);
-                }
-            }
-            */
+            console.log(`✅ Cleared ${keysToDelete.length} warnings for ${normalizedUserId}`);
         }
     }
 
@@ -220,26 +143,8 @@ class WarningService {
         }
 
         if (expiredKeys.length > 0) {
-            // Remove from cache
             expiredKeys.forEach(key => this.warningCache.delete(key));
-            console.log(`🧹 Cleaned up ${expiredKeys.length} expired warnings [memory-only]`);
-
-            /* FIREBASE DELETES DISABLED FOR WARNINGS - Cost reduction
-            if (db && db.collection) {
-                const batch = db.batch();
-                expiredKeys.forEach(key => {
-                    const docRef = db.collection('user_warnings').doc(key);
-                    batch.delete(docRef);
-                });
-
-                try {
-                    await batch.commit();
-                    console.log(`🧹 Cleaned up ${expiredKeys.length} expired warnings`);
-                } catch (error) {
-                    console.error('❌ Error cleaning up warnings:', error.message);
-                }
-            }
-            */
+            console.log(`🧹 Cleaned up ${expiredKeys.length} expired warnings`);
         }
     }
 
@@ -251,7 +156,6 @@ class WarningService {
             await this.loadWarningCache();
         }
 
-        // Clean up expired warnings first
         await this.cleanupExpiredWarnings();
 
         const totalWarnings = this.warningCache.size;
@@ -264,7 +168,6 @@ class WarningService {
             const groupName = record.groupName;
             groupStats.set(groupName, (groupStats.get(groupName) || 0) + 1);
 
-            // Count warnings expiring within 24 hours
             const expiryDate = new Date(record.expiresAt);
             if (expiryDate <= oneDayFromNow) {
                 expiringSoon++;
@@ -276,17 +179,17 @@ class WarningService {
             expiringSoon,
             warningExpiryDays: this.WARNING_EXPIRY_DAYS,
             topGroups: Array.from(groupStats.entries())
-                .sort(([,a], [,b]) => b - a)
+                .sort(([, a], [, b]) => b - a)
                 .slice(0, 5)
         };
     }
 
     /**
-     * Get warnings for a specific user (admin command)
+     * Get warnings for a specific user
      */
     async getUserWarnings(userId) {
         const normalizedUserId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
-        
+
         if (!this.cacheLoaded) {
             await this.loadWarningCache();
         }
@@ -307,7 +210,6 @@ const warningService = new WarningService();
 
 module.exports = {
     warningService,
-    // Initialize on module load
     async initialize() {
         return await warningService.loadWarningCache();
     }

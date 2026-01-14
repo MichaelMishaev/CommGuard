@@ -1,9 +1,9 @@
-const db = require('../firebaseConfig.js');
 const { getTimestamp } = require('../utils/logger');
 
 /**
  * Kicked User Service
  * Manages kicked users with group rejoin links for easy return after unblacklisting
+ * Memory-only storage
  */
 
 class KickedUserService {
@@ -13,36 +13,13 @@ class KickedUserService {
     }
 
     /**
-     * Load kicked user data from Firebase into cache
+     * Load kicked user data into cache
      */
     async loadKickedUserCache() {
-        // MEMORY-ONLY MODE - Firebase disabled for kicked_users (cost reduction)
+        // Memory-only mode
         this.cacheLoaded = true;
-        console.log(`💾 Kicked user service using memory-only cache (Firebase disabled) - ${this.kickedUserCache.size} records`);
+        console.log(`💾 Kicked user service using memory-only cache - ${this.kickedUserCache.size} records`);
         return true;
-
-        /* FIREBASE READS DISABLED FOR KICKED_USERS - Cost reduction
-        if (!db || db.collection === undefined) {
-            console.warn('⚠️ Firebase not available - kicked user tracking disabled');
-            return false;
-        }
-
-        try {
-            const snapshot = await db.collection('kicked_users').get();
-            this.kickedUserCache.clear();
-
-            snapshot.forEach(doc => {
-                this.kickedUserCache.set(doc.id, doc.data());
-            });
-
-            this.cacheLoaded = true;
-            console.log(`✅ Loaded ${this.kickedUserCache.size} kicked user records into cache`);
-            return true;
-        } catch (error) {
-            console.error('❌ Error loading kicked user cache:', error.message);
-            return false;
-        }
-        */
     }
 
     /**
@@ -58,10 +35,10 @@ class KickedUserService {
             groupId: groupId,
             groupName: groupName,
             groupInviteLink: groupInviteLink,
-            adminList: adminList, // Store admin IDs and names
+            adminList: adminList,
             kickedAt: now.toISOString(),
             reason: reason,
-            canRejoin: false, // Will be set to true when unblacklisted
+            canRejoin: false,
             rejoinedAt: null,
             notes: `Kicked from ${groupName} for: ${reason}`
         };
@@ -70,59 +47,39 @@ class KickedUserService {
         const cacheKey = `${normalizedUserId}:${groupId}`;
         this.kickedUserCache.set(cacheKey, kickRecord);
 
-        // Save to Firebase if available
-        if (!db || db.collection === undefined) {
-            console.warn('⚠️ Firebase not available - kick record created in memory only');
-            return true;
-        }
-
-        try {
-            await db.collection('kicked_users').doc(cacheKey).set(kickRecord);
-            console.log(`✅ Recorded kick: ${normalizedUserId} from ${groupName} (${reason})`);
-            return true;
-        } catch (error) {
-            console.error('❌ Error recording kicked user:', error.message);
-            return false;
-        }
+        console.log(`✅ Recorded kick: ${normalizedUserId} from ${groupName} (${reason})`);
+        return true;
     }
 
     /**
      * Get rejoin information for a user
-     * @param {string} userId - User ID
-     * @param {boolean} recentOnly - Only return recent kicks (last 30 days)
-     * @param {string} reason - Filter by specific kick reason
      */
     async getRejoinInfo(userId, recentOnly = true, reason = null) {
         const normalizedUserId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
-        
+
         if (!this.cacheLoaded) {
             await this.loadKickedUserCache();
         }
 
-        // Find all kick records for this user
         const userKickRecords = [];
         const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000));
-        
+
         for (const [key, record] of this.kickedUserCache.entries()) {
             if (record.userId === normalizedUserId && record.canRejoin) {
-                // Filter by time if requested
                 if (recentOnly) {
                     const kickDate = new Date(record.kickedAt);
                     if (kickDate < thirtyDaysAgo) continue;
                 }
-                
-                // Filter by reason if specified
+
                 if (reason && !record.reason.toLowerCase().includes(reason.toLowerCase())) {
                     continue;
                 }
-                
+
                 userKickRecords.push(record);
             }
         }
 
-        // Sort by most recent kicks first
         userKickRecords.sort((a, b) => new Date(b.kickedAt) - new Date(a.kickedAt));
-
         return userKickRecords;
     }
 
@@ -133,24 +90,12 @@ class KickedUserService {
         const normalizedUserId = userId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '');
         let recordsUpdated = 0;
 
-        // Update all records for this user
         for (const [key, record] of this.kickedUserCache.entries()) {
             if (record.userId === normalizedUserId) {
                 record.canRejoin = true;
+                record.approvedAt = new Date().toISOString();
                 this.kickedUserCache.set(key, record);
-
-                // Update Firebase
-                if (db && db.collection) {
-                    try {
-                        await db.collection('kicked_users').doc(key).update({
-                            canRejoin: true,
-                            approvedAt: new Date().toISOString()
-                        });
-                        recordsUpdated++;
-                    } catch (error) {
-                        console.error('❌ Error updating kick record:', error.message);
-                    }
-                }
+                recordsUpdated++;
             }
         }
 
@@ -168,21 +113,9 @@ class KickedUserService {
         if (this.kickedUserCache.has(cacheKey)) {
             const record = this.kickedUserCache.get(cacheKey);
             record.rejoinedAt = new Date().toISOString();
-            record.canRejoin = false; // Reset for future kicks
+            record.canRejoin = false;
             this.kickedUserCache.set(cacheKey, record);
-
-            // Update Firebase
-            if (db && db.collection) {
-                try {
-                    await db.collection('kicked_users').doc(cacheKey).update({
-                        rejoinedAt: record.rejoinedAt,
-                        canRejoin: false
-                    });
-                    console.log(`✅ Recorded rejoin: ${normalizedUserId} back to ${record.groupName}`);
-                } catch (error) {
-                    console.error('❌ Error recording rejoin:', error.message);
-                }
-            }
+            console.log(`✅ Recorded rejoin: ${normalizedUserId} back to ${record.groupName}`);
         }
     }
 
@@ -190,27 +123,19 @@ class KickedUserService {
      * Clean up old kick records (maintenance)
      */
     async cleanupOldRecords(daysOld = 90) {
-        if (!db || db.collection === undefined) {
-            console.warn('⚠️ Firebase not available - cleanup skipped');
-            return;
+        const cutoffDate = new Date(Date.now() - (daysOld * 24 * 60 * 60 * 1000));
+        let cleaned = 0;
+
+        for (const [key, record] of this.kickedUserCache.entries()) {
+            const kickDate = new Date(record.kickedAt);
+            if (kickDate < cutoffDate && record.rejoinedAt !== null) {
+                this.kickedUserCache.delete(key);
+                cleaned++;
+            }
         }
 
-        try {
-            const cutoffDate = new Date(Date.now() - (daysOld * 24 * 60 * 60 * 1000));
-            const snapshot = await db.collection('kicked_users')
-                .where('kickedAt', '<', cutoffDate.toISOString())
-                .where('rejoinedAt', '!=', null)
-                .get();
-
-            const batch = db.batch();
-            snapshot.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-
-            await batch.commit();
-            console.log(`✅ Cleaned up ${snapshot.size} old kick records`);
-        } catch (error) {
-            console.error('❌ Error cleaning up kick records:', error.message);
+        if (cleaned > 0) {
+            console.log(`✅ Cleaned up ${cleaned} old kick records`);
         }
     }
 
@@ -241,7 +166,7 @@ class KickedUserService {
             hasRejoined,
             pendingApproval: totalKicks - canRejoin - hasRejoined,
             topGroups: Array.from(groupStats.entries())
-                .sort(([,a], [,b]) => b - a)
+                .sort(([, a], [, b]) => b - a)
                 .slice(0, 5)
         };
     }
@@ -252,7 +177,6 @@ const kickedUserService = new KickedUserService();
 
 module.exports = {
     kickedUserService,
-    // Initialize on module load
     async initialize() {
         return await kickedUserService.loadKickedUserCache();
     }
