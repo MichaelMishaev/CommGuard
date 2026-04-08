@@ -3142,9 +3142,11 @@ class CommandHandler {
         // Identify sender (group message: participant; DM: remoteJid)
         const sender = msg.key.participant || msg.key.remoteJid;
         const senderPhone = sender.split('@')[0].split(':')[0];
+        const adminLid = config.ADMIN_LID || '';
 
-        // Silent ignore for non-admins
-        if (senderPhone !== adminPhone) return true;
+        // Silent ignore for non-admins (check both phone and LID format)
+        const isAdmin = senderPhone === adminPhone || senderPhone === adminLid;
+        if (!isAdmin) return true;
 
         const quotedMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         const textToTranslate = quotedMessage?.conversation ||
