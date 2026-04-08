@@ -1,4 +1,5 @@
 const config = require('../config');
+const OpenAI = require('openai');
 const { addToBlacklist, removeFromBlacklist, listBlacklist, isBlacklisted } = require('./blacklistService');
 const { addToWhitelist, removeFromWhitelist, listWhitelist, isWhitelisted } = require('./whitelistService');
 const { addMutedUser, removeMutedUser, isMuted, getMutedUsers } = require('./muteService');
@@ -209,7 +210,10 @@ class CommandHandler {
                     
                 case '#translate':
                     return await this.handleTranslate(msg, args, isAdmin);
-                    
+
+                case '#ru':
+                    return await this.handleTranslateRu(msg);
+
                 case '#langs':
                     return await this.handleLanguageList(msg, isAdmin);
                     
@@ -3125,6 +3129,59 @@ class CommandHandler {
             });
         }
         
+        return true;
+    }
+
+    /**
+     * Handle #ru command — translate replied message to Russian (admin only)
+     */
+    async handleTranslateRu(msg) {
+        const adminPhone = config.ADMIN_PHONE; // '972544345287'
+        const adminJid = `${adminPhone}@s.whatsapp.net`;
+
+        // Identify sender (group message: participant; DM: remoteJid)
+        const sender = msg.key.participant || msg.key.remoteJid;
+        const senderPhone = sender.split('@')[0].split(':')[0];
+
+        // Silent ignore for non-admins
+        if (senderPhone !== adminPhone) return true;
+
+        const quotedMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        const textToTranslate = quotedMessage?.conversation ||
+            quotedMessage?.extendedTextMessage?.text ||
+            quotedMessage?.imageMessage?.caption ||
+            quotedMessage?.videoMessage?.caption;
+
+        if (!textToTranslate) {
+            await this.sock.sendMessage(adminJid, {
+                text: '❌ #ru: Reply to a message to translate it to Russian'
+            });
+            return true;
+        }
+
+        try {
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const response = await openai.chat.completions.create({
+                model: 'gpt-4.1-nano',
+                messages: [
+                    { role: 'system', content: 'Translate the following text to Russian. Return ONLY the translated text, no explanations.' },
+                    { role: 'user', content: textToTranslate }
+                ],
+                max_completion_tokens: 500
+            });
+
+            const translation = response.choices[0]?.message?.content?.trim();
+            if (!translation) throw new Error('Empty response from OpenAI');
+
+            await this.sock.sendMessage(msg.key.remoteJid, { text: translation });
+            console.log(`[${getTimestamp()}] ✅ #ru translation sent`);
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ #ru translation failed:`, error);
+            await this.sock.sendMessage(adminJid, {
+                text: `❌ #ru error: ${error.message}`
+            });
+        }
+
         return true;
     }
 

@@ -15,7 +15,7 @@ const globalBanTracker = require('../services/globalBanTracker');
  * @param {number} maxGroups - Maximum number of groups to process (default: 10 for safety)
  * @returns {Object} Summary report of the operation
  */
-async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null, maxGroups = 10) {
+async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null, maxGroups = 20) {
     console.log(`[${getTimestamp()}] 🌍 Starting Global Ban for user: ${userJid}`);
     console.log(`   Admin phone: ${adminPhone}`);
     console.log(`   ⚠️ SAFETY LIMIT: Processing max ${maxGroups} groups to prevent Meta bans`);
@@ -37,10 +37,32 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
         // Step 1: Get all groups
         console.log(`[${getTimestamp()}] 📋 Fetching all groups...`);
         const groups = await sock.groupFetchAllParticipating();
-        const groupIds = Object.keys(groups);
-        report.totalGroups = groupIds.length;
+        const allGroupIds = Object.keys(groups);
 
-        console.log(`[${getTimestamp()}] ✅ Found ${groupIds.length} total groups`);
+        console.log(`[${getTimestamp()}] 📋 Bot is in ${allGroupIds.length} total groups`);
+
+        // Step 1b: Filter to only groups where bot is admin (can actually kick)
+        const botId = sock.user?.id || '';
+        const botPhone = botId.split(':')[0].split('@')[0];
+        const knownBotLids = ['171012763213843@lid'];
+
+        const groupIds = allGroupIds.filter(gid => {
+            const group = groups[gid];
+            if (!group.participants) return false;
+
+            const botParticipant = group.participants.find(p => {
+                if (p.id === botId) return true;
+                if (knownBotLids.includes(p.id)) return true;
+                const pPhone = p.id.split(':')[0].split('@')[0];
+                if (pPhone === botPhone) return true;
+                return false;
+            });
+
+            return botParticipant && (botParticipant.admin === 'admin' || botParticipant.admin === 'superadmin');
+        });
+
+        report.totalGroups = groupIds.length;
+        console.log(`[${getTimestamp()}] ✅ Bot is admin in ${groupIds.length} groups (filtered from ${allGroupIds.length} total)`);
 
         // Get already processed groups for this user
         const processedGroups = await globalBanTracker.getProcessedGroups(userJid);
@@ -83,7 +105,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
 
         // Step 2: Process each group (LIMITED to maxGroups for safety)
         let processedCount = 0;
-        const groupsToProcess = groupIds.slice(0, maxGroups); // Only take first maxGroups
+        const groupsToProcess = unprocessedGroups.slice(0, maxGroups); // Only take first maxGroups
 
         for (const groupId of groupsToProcess) {
             processedCount++;
@@ -231,6 +253,15 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
             }
         }
 
+        // Track processed groups for batching safety
+        const processedGroupIds = groupsToProcess.map(gid => gid);
+        await globalBanTracker.addProcessedGroups(userJid, processedGroupIds);
+
+        // If all groups processed, clear tracking
+        if (!report.limitReached) {
+            await globalBanTracker.clearTracking(userJid);
+        }
+
         console.log(`[${getTimestamp()}] 🏁 Global Ban Complete!`);
         console.log(`   Total Groups: ${report.totalGroups}`);
         console.log(`   User Found In: ${report.groupsWhereUserFound}`);
@@ -314,7 +345,26 @@ async function listGroupsForSelection(sock, userJid, userPhone) {
 
         // Get all groups
         const groups = await sock.groupFetchAllParticipating();
-        const groupIds = Object.keys(groups);
+        const allGroupIds = Object.keys(groups);
+
+        // Filter to only groups where bot is admin
+        const botId = sock.user?.id || '';
+        const botPhone = botId.split(':')[0].split('@')[0];
+        const knownBotLids = ['171012763213843@lid'];
+
+        const groupIds = allGroupIds.filter(gid => {
+            const group = groups[gid];
+            if (!group.participants) return false;
+            const botP = group.participants.find(p => {
+                if (p.id === botId) return true;
+                if (knownBotLids.includes(p.id)) return true;
+                const pPhone = p.id.split(':')[0].split('@')[0];
+                return pPhone === botPhone;
+            });
+            return botP && (botP.admin === 'admin' || botP.admin === 'superadmin');
+        });
+
+        console.log(`[${getTimestamp()}] ✅ Bot is admin in ${groupIds.length} groups (of ${allGroupIds.length} total)`);
 
         const groupsWithUser = [];
         let index = 1;
