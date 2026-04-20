@@ -339,7 +339,7 @@ const { sendKickAlert, sendSecurityAlert, sendBlacklistRejoinAlert } = require('
 const { robustKick } = require('./utils/kickHelper');
 const { decodeLIDToPhone } = require('./utils/jidUtils');
 const { storePendingRequest, getPendingRequest, removePendingRequest } = require('./utils/blacklistPendingRequests');
-const { isBlockedUrl } = require('./services/urlBlacklistService');
+const { isBlockedUrl, addBlockedDomain } = require('./services/urlBlacklistService');
 
 // Initialize Database (PostgreSQL + Redis)
 const { initDatabase } = require('./database/connection');
@@ -1701,7 +1701,8 @@ async function handleMessage(sock, msg, commandHandler) {
                     }
                     if (messageText === '3' && detectedUrl) {
                         urlBlacklist.add(detectedUrl);
-                        status.push(`🔒 URL globally blacklisted: ${detectedUrl}`);
+                        const addedDomain = addBlockedDomain(detectedUrl);
+                        status.push(`🔒 URL globally blacklisted: ${detectedUrl}\n🌐 Domain added to block list: ${addedDomain}`);
                     }
                     await sock.sendMessage(chatId, { text: `✅ URL Alert Action:\n${status.join('\n')}` });
                     return;
