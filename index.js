@@ -1685,7 +1685,6 @@ async function handleMessage(sock, msg, commandHandler) {
                     }
                     if (messageText === '2' || messageText === '3') {
                         try {
-                            const { blacklistUser, cacheBlacklistedUser } = require('./database/groupService');
                             const urlUserPhone = urlSender.split('@')[0];
                             await blacklistUser(urlUserPhone, 'URL spam - admin approved');
                             await cacheBlacklistedUser(urlUserPhone);
