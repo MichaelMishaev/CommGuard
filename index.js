@@ -339,6 +339,7 @@ const { sendKickAlert, sendSecurityAlert, sendBlacklistRejoinAlert } = require('
 const { robustKick } = require('./utils/kickHelper');
 const { decodeLIDToPhone } = require('./utils/jidUtils');
 const { storePendingRequest, getPendingRequest, removePendingRequest } = require('./utils/blacklistPendingRequests');
+const { isBlockedUrl } = require('./services/urlBlacklistService');
 
 // Initialize Database (PostgreSQL + Redis)
 const { initDatabase } = require('./database/connection');
@@ -2272,6 +2273,30 @@ async function handleMessage(sock, msg, commandHandler) {
             'instagram.com', 'tiktok.com', 'vm.tiktok.com', 'youtube.com', 'youtu.be',
         ];
         const urlMatches = messageText.match(/https?:\/\/[^\s<>"]+/gi) || [];
+
+        // Check URL blacklist first — auto-delete without asking admin
+        const blacklistedUrls = urlMatches.filter(u => isBlockedUrl(u));
+        if (blacklistedUrls.length > 0 && !senderIsAdminForUrl) {
+            try { await sock.sendMessage(groupId, { delete: msg.key }); } catch (e) { /* silent */ }
+            const rawPhone = senderId.split('@')[0];
+            const decoded = senderId.endsWith('@lid') ? await decodeLIDToPhone(sock, senderId) : null;
+            const phoneDisplay = decoded || rawPhone;
+            try {
+                await sock.sendMessage(adminId, {
+                    text: [
+                        '🚫 *Blocked URL Auto-Deleted*',
+                        `👤 User: +${phoneDisplay}`,
+                        `📍 Group: ${groupNameForUrl}`,
+                        `🔗 URL: ${blacklistedUrls[0]}`,
+                        `🕒 Time: ${getTimestamp()}`,
+                        '',
+                        '_Message was deleted automatically (domain is blacklisted)_',
+                    ].join('\n')
+                });
+            } catch (e) { /* silent */ }
+            return;
+        }
+
         const blockedUrls = urlMatches.filter(url => {
             try {
                 const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');

@@ -1,6 +1,7 @@
 const config = require('../config');
 const OpenAI = require('openai');
 const { addToBlacklist, removeFromBlacklist, listBlacklist, isBlacklisted } = require('./blacklistService');
+const { addBlockedDomain, removeBlockedDomain, listBlockedDomains } = require('./urlBlacklistService');
 const { addToWhitelist, removeFromWhitelist, listWhitelist, isWhitelisted } = require('./whitelistService');
 const { addMutedUser, removeMutedUser, isMuted, getMutedUsers } = require('./muteService');
 const { getTimestamp } = require('../utils/logger');
@@ -170,6 +171,15 @@ class CommandHandler {
                 case '#blacklst':
                 case '#blklst':
                     return await this.handleBlacklistList(msg, isAdmin);
+
+                case '#urlblock':
+                    return await this.handleUrlBlock(msg, args, isAdmin);
+
+                case '#urlunblock':
+                    return await this.handleUrlUnblock(msg, args, isAdmin);
+
+                case '#urlblocklist':
+                    return await this.handleUrlBlocklist(msg, isAdmin);
 
                 case '#sweep':
                     return await this.handleSweep(msg, isSuperAdmin);
@@ -2638,6 +2648,58 @@ class CommandHandler {
 
         return true;
     }
+    async handleUrlBlock(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { text: 'מה אני עובד אצלך?!' });
+            return true;
+        }
+        if (!args || !args.trim()) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Usage: #urlblock <domain>\nExample: #urlblock evil.com'
+            });
+            return true;
+        }
+        const domain = addBlockedDomain(args.trim());
+        await this.sock.sendMessage(msg.key.remoteJid, {
+            text: `✅ Domain blacklisted: *${domain}*\nAny URL from this domain will be auto-deleted.`
+        });
+        return true;
+    }
+
+    async handleUrlUnblock(msg, args, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { text: 'מה אני עובד אצלך?!' });
+            return true;
+        }
+        if (!args || !args.trim()) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '❌ Usage: #urlunblock <domain>\nExample: #urlunblock evil.com'
+            });
+            return true;
+        }
+        const { existed, domain } = removeBlockedDomain(args.trim());
+        await this.sock.sendMessage(msg.key.remoteJid, {
+            text: existed
+                ? `✅ Removed from URL blacklist: *${domain}*`
+                : `⚠️ Domain not found in URL blacklist: *${domain}*`
+        });
+        return true;
+    }
+
+    async handleUrlBlocklist(msg, isAdmin) {
+        if (!isAdmin) {
+            await this.sock.sendMessage(msg.key.remoteJid, { text: 'מה אני עובד אצלך?!' });
+            return true;
+        }
+        const domains = listBlockedDomains();
+        await this.sock.sendMessage(msg.key.remoteJid, {
+            text: domains.length
+                ? `🚫 *Blocked Domains (${domains.length}):*\n${domains.map(d => `• ${d}`).join('\n')}`
+                : '📋 URL blacklist is empty.'
+        });
+        return true;
+    }
+
     async handleSweep(msg, isSuperAdmin) {
         if (!isSuperAdmin) {
             await this.sock.sendMessage(msg.key.remoteJid, { 
