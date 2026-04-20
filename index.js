@@ -2285,13 +2285,14 @@ async function handleMessage(sock, msg, commandHandler) {
 
         // Check URL blacklist first — auto-delete without asking admin
         const blacklistedUrls = urlMatches.filter(u => isBlockedUrl(u));
-        if (blacklistedUrls.length > 0 && !senderIsAdminForUrl) {
+        if (blacklistedUrls.length > 0) {
+            const blAdminId = (config.ALERT_PHONE || '972544345287') + '@s.whatsapp.net';
             try { await sock.sendMessage(groupId, { delete: msg.key }); } catch (e) { /* silent */ }
             const rawPhone = senderId.split('@')[0];
             const decoded = senderId.endsWith('@lid') ? await decodeLIDToPhone(sock, senderId) : null;
             const phoneDisplay = decoded || rawPhone;
             try {
-                await sock.sendMessage(adminId, {
+                await sock.sendMessage(blAdminId, {
                     text: [
                         '🚫 *Blocked URL Auto-Deleted*',
                         `👤 User: +${phoneDisplay}`,
