@@ -2283,7 +2283,13 @@ async function handleMessage(sock, msg, commandHandler) {
                 senderParticipantForUrl.admin === 'admin' || senderParticipantForUrl.admin === 'superadmin'
             );
             if (!senderIsAdminForUrl) {
-                const userPhone = senderId.split('@')[0];
+                const rawPhone = senderId.split('@')[0];
+                const isLidForUrl = senderId.endsWith('@lid');
+                let userPhone = rawPhone;
+                if (isLidForUrl) {
+                    const decoded = await decodeLIDToPhone(sock, senderId);
+                    if (decoded) userPhone = decoded;
+                }
                 const msgPreview = messageText.length > 80 ? messageText.substring(0, 80) + '…' : messageText;
                 const alertText = [
                     '🔗 *URL Detected in Group*',
