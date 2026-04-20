@@ -363,7 +363,8 @@ if (process.env.REDIS_URL) {
 
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
-const pendingUrlAlerts = new Map(); // Map<alertMsgId, {messageKey, senderId, groupId, groupName}>
+const pendingUrlAlerts = new Map(); // Map<alertMsgId, {messageKey, senderId, groupId, groupName, url}>
+const groupUrlBlacklist = new Map(); // Map<groupId, Set<url>> — URLs blacklisted by admin per group
 
 // Track reconnection attempts with error-specific handling
 let reconnectAttempts = 0;
@@ -1668,11 +1669,11 @@ async function handleMessage(sock, msg, commandHandler) {
             if (quotedMessage && quotedMsgId) {
                 console.log(`   Reply Detected - Quoted Message ID: ${quotedMsgId}`);
 
-                // URL alert reply: 1 = delete only, 2 = delete + kick + blacklist
-                if ((messageText === '1' || messageText === '2') && pendingUrlAlerts.has(quotedMsgId)) {
+                // URL alert reply: 1 = delete only, 2 = delete + kick + blacklist, 3 = 2 + blacklist URL
+                if ((messageText === '1' || messageText === '2' || messageText === '3') && pendingUrlAlerts.has(quotedMsgId)) {
                     const urlPending = pendingUrlAlerts.get(quotedMsgId);
                     pendingUrlAlerts.delete(quotedMsgId);
-                    const { messageKey, senderId: urlSender, groupId: urlGroup, groupName: urlGroupName } = urlPending;
+                    const { messageKey, senderId: urlSender, groupId: urlGroup, groupName: urlGroupName, url: detectedUrl } = urlPending;
                     const status = [];
                     try {
                         await sock.sendMessage(urlGroup, { delete: messageKey });
@@ -1680,7 +1681,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     } catch (e) {
                         status.push(`❌ Delete failed: ${e.message}`);
                     }
-                    if (messageText === '2') {
+                    if (messageText === '2' || messageText === '3') {
                         try {
                             const { blacklistUser, cacheBlacklistedUser } = require('./database/groupService');
                             const urlUserPhone = urlSender.split('@')[0];
@@ -1696,6 +1697,11 @@ async function handleMessage(sock, msg, commandHandler) {
                         } catch (e) {
                             status.push(`❌ Kick failed: ${e.message}`);
                         }
+                    }
+                    if (messageText === '3' && detectedUrl) {
+                        if (!groupUrlBlacklist.has(urlGroup)) groupUrlBlacklist.set(urlGroup, new Set());
+                        groupUrlBlacklist.get(urlGroup).add(detectedUrl);
+                        status.push(`🔒 URL blacklisted in group: ${detectedUrl}`);
                     }
                     await sock.sendMessage(chatId, { text: `✅ URL Alert Action:\n${status.join('\n')}` });
                     return;
@@ -2273,6 +2279,14 @@ async function handleMessage(sock, msg, commandHandler) {
             } catch { return false; }
         });
 
+        // Auto-delete messages containing a URL previously blacklisted by admin for this group
+        const groupBlacklisted = groupUrlBlacklist.get(groupId);
+        if (groupBlacklisted && urlMatches.some(u => groupBlacklisted.has(u))) {
+            console.log(`[${getTimestamp()}] 🔒 Blacklisted URL detected — auto-deleting message in ${groupId}`);
+            try { await sock.sendMessage(groupId, { delete: msg.key }); } catch (e) { /* silent */ }
+            return;
+        }
+
         if (blockedUrls.length > 0) {
             const adminPhone = config.ALERT_PHONE || '972544345287';
             const adminId = adminPhone + '@s.whatsapp.net';
@@ -2302,6 +2316,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     '↩️ *Reply to this message:*',
                     '*1* — Delete message only',
                     '*2* — Delete + kick & blacklist user',
+                    '*3* — Delete + kick & blacklist user + blacklist URL',
                 ].join('\n');
                 try {
                     const sentMsg = await sock.sendMessage(adminId, { text: alertText });
@@ -2312,6 +2327,7 @@ async function handleMessage(sock, msg, commandHandler) {
                             senderId,
                             groupId,
                             groupName: groupNameForUrl,
+                            url: blockedUrls[0],
                         });
                         setTimeout(() => pendingUrlAlerts.delete(alertMsgId), 24 * 60 * 60 * 1000);
                     }
