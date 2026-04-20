@@ -363,6 +363,7 @@ if (process.env.REDIS_URL) {
 
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
+const pendingUrlAlerts = new Map(); // Map<alertMsgId, {messageKey, senderId, groupId, groupName}>
 
 // Track reconnection attempts with error-specific handling
 let reconnectAttempts = 0;
@@ -1667,6 +1668,39 @@ async function handleMessage(sock, msg, commandHandler) {
             if (quotedMessage && quotedMsgId) {
                 console.log(`   Reply Detected - Quoted Message ID: ${quotedMsgId}`);
 
+                // URL alert reply: 1 = delete only, 2 = delete + kick + blacklist
+                if ((messageText === '1' || messageText === '2') && pendingUrlAlerts.has(quotedMsgId)) {
+                    const urlPending = pendingUrlAlerts.get(quotedMsgId);
+                    pendingUrlAlerts.delete(quotedMsgId);
+                    const { messageKey, senderId: urlSender, groupId: urlGroup, groupName: urlGroupName } = urlPending;
+                    const status = [];
+                    try {
+                        await sock.sendMessage(urlGroup, { delete: messageKey });
+                        status.push('🗑️ Message deleted');
+                    } catch (e) {
+                        status.push(`❌ Delete failed: ${e.message}`);
+                    }
+                    if (messageText === '2') {
+                        try {
+                            const { blacklistUser, cacheBlacklistedUser } = require('./database/groupService');
+                            const urlUserPhone = urlSender.split('@')[0];
+                            await blacklistUser(urlUserPhone, 'URL spam - admin approved');
+                            await cacheBlacklistedUser(urlUserPhone);
+                            status.push(`🚫 Blacklisted: +${urlUserPhone}`);
+                        } catch (e) {
+                            status.push(`❌ Blacklist failed: ${e.message}`);
+                        }
+                        try {
+                            await sock.groupParticipantsUpdate(urlGroup, [urlSender], 'remove');
+                            status.push(`👢 Kicked from: ${urlGroupName}`);
+                        } catch (e) {
+                            status.push(`❌ Kick failed: ${e.message}`);
+                        }
+                    }
+                    await sock.sendMessage(chatId, { text: `✅ URL Alert Action:\n${status.join('\n')}` });
+                    return;
+                }
+
                 // Check if admin replied with action choice (1, 2, 3, or 0)
                 if (messageText === '1' || messageText === '2' || messageText === '3' || messageText === '0') {
                     const pendingRequest = getPendingRequest(quotedMsgId);
@@ -2226,8 +2260,64 @@ async function handleMessage(sock, msg, commandHandler) {
     }
 
     const matches = messageText.match(config.PATTERNS.INVITE_LINK);
-    if (!matches || matches.length === 0) return;
-    
+    if (!matches || matches.length === 0) {
+        const URL_ALLOWED_DOMAINS = [
+            'chat.whatsapp.com', 'facebook.com', 'fb.com', 'm.facebook.com', 'l.facebook.com',
+            'instagram.com', 'tiktok.com', 'vm.tiktok.com', 'youtube.com', 'youtu.be',
+        ];
+        const urlMatches = messageText.match(/https?:\/\/[^\s<>"]+/gi) || [];
+        const blockedUrls = urlMatches.filter(url => {
+            try {
+                const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+                return !URL_ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+            } catch { return false; }
+        });
+
+        if (blockedUrls.length > 0) {
+            const adminPhone = config.ALERT_PHONE || '972544345287';
+            const adminId = adminPhone + '@s.whatsapp.net';
+            const groupMetaForUrl = await sock.groupMetadata(groupId).catch(() => null);
+            const groupNameForUrl = groupMetaForUrl?.subject || groupId;
+            const senderParticipantForUrl = groupMetaForUrl?.participants?.find(p => p.id === senderId);
+            const senderIsAdminForUrl = senderParticipantForUrl && (
+                senderParticipantForUrl.admin === 'admin' || senderParticipantForUrl.admin === 'superadmin'
+            );
+            if (!senderIsAdminForUrl) {
+                const userPhone = senderId.split('@')[0];
+                const msgPreview = messageText.length > 80 ? messageText.substring(0, 80) + '…' : messageText;
+                const alertText = [
+                    '🔗 *URL Detected in Group*',
+                    `👤 User: +${userPhone}`,
+                    `📍 Group: ${groupNameForUrl}`,
+                    `🔗 URL: ${blockedUrls[0]}`,
+                    `💬 Message: "${msgPreview}"`,
+                    `🕒 Time: ${getTimestamp()}`,
+                    '',
+                    '↩️ *Reply to this message:*',
+                    '*1* — Delete message only',
+                    '*2* — Delete + kick & blacklist user',
+                ].join('\n');
+                try {
+                    const sentMsg = await sock.sendMessage(adminId, { text: alertText });
+                    const alertMsgId = sentMsg?.key?.id;
+                    if (alertMsgId) {
+                        pendingUrlAlerts.set(alertMsgId, {
+                            messageKey: msg.key,
+                            senderId,
+                            groupId,
+                            groupName: groupNameForUrl,
+                        });
+                        setTimeout(() => pendingUrlAlerts.delete(alertMsgId), 24 * 60 * 60 * 1000);
+                    }
+                    console.log(`[${getTimestamp()}] 🔗 URL alert sent for ${senderId} in ${groupNameForUrl}`);
+                } catch (e) {
+                    console.error(`[${getTimestamp()}] ❌ Failed to send URL alert: ${e.message}`);
+                }
+            }
+        }
+        return;
+    }
+
     console.log(`\n[${getTimestamp()}] 🚨 INVITE LINK DETECTED!`);
     console.log(`Group: ${groupId}`);
     console.log(`Sender: ${senderId}`);
