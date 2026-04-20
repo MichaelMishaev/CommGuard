@@ -365,7 +365,8 @@ if (process.env.REDIS_URL) {
 // Track kicked users to prevent spam
 const kickCooldown = new Map();
 const pendingUrlAlerts = new Map(); // Map<alertMsgId, {messageKey, senderId, groupId, groupName, url}>
-const groupUrlBlacklist = new Map(); // Map<groupId, Set<url>> — URLs blacklisted by admin per group
+const urlBlacklist = new Set(); // Global URL blacklist — applies to all groups
+const pendingUrlUnblacklistAlerts = new Map(); // Map<alertMsgId, url> — admin replies 0 to remove
 
 // Track reconnection attempts with error-specific handling
 let reconnectAttempts = 0;
@@ -1700,11 +1701,19 @@ async function handleMessage(sock, msg, commandHandler) {
                         }
                     }
                     if (messageText === '3' && detectedUrl) {
-                        if (!groupUrlBlacklist.has(urlGroup)) groupUrlBlacklist.set(urlGroup, new Set());
-                        groupUrlBlacklist.get(urlGroup).add(detectedUrl);
-                        status.push(`🔒 URL blacklisted in group: ${detectedUrl}`);
+                        urlBlacklist.add(detectedUrl);
+                        status.push(`🔒 URL globally blacklisted: ${detectedUrl}`);
                     }
                     await sock.sendMessage(chatId, { text: `✅ URL Alert Action:\n${status.join('\n')}` });
+                    return;
+                }
+
+                // Handle unblacklist reply (admin replies 0 to auto-delete notification)
+                if (messageText === '0' && pendingUrlUnblacklistAlerts.has(quotedMsgId)) {
+                    const urlToRemove = pendingUrlUnblacklistAlerts.get(quotedMsgId);
+                    pendingUrlUnblacklistAlerts.delete(quotedMsgId);
+                    urlBlacklist.delete(urlToRemove);
+                    await sock.sendMessage(chatId, { text: `✅ URL removed from blacklist:\n🔗 ${urlToRemove}` });
                     return;
                 }
 
@@ -2304,11 +2313,35 @@ async function handleMessage(sock, msg, commandHandler) {
             } catch { return false; }
         });
 
-        // Auto-delete messages containing a URL previously blacklisted by admin for this group
-        const groupBlacklisted = groupUrlBlacklist.get(groupId);
-        if (groupBlacklisted && urlMatches.some(u => groupBlacklisted.has(u))) {
-            console.log(`[${getTimestamp()}] 🔒 Blacklisted URL detected — auto-deleting message in ${groupId}`);
+        // Auto-delete messages containing a globally blacklisted URL, then notify admin
+        const blacklistedMatch = urlMatches.find(u => urlBlacklist.has(u));
+        if (blacklistedMatch) {
+            console.log(`[${getTimestamp()}] 🔒 Blacklisted URL auto-deleted in ${groupId}`);
             try { await sock.sendMessage(groupId, { delete: msg.key }); } catch (e) { /* silent */ }
+            const adminPhone = config.ALERT_PHONE || '972544345287';
+            const adminId = adminPhone + '@s.whatsapp.net';
+            const groupMeta = await sock.groupMetadata(groupId).catch(() => null);
+            const gName = groupMeta?.subject || groupId;
+            const senderPhone = senderId.split('@')[0];
+            const msgSnippet = messageText.length > 60 ? messageText.substring(0, 60) + '…' : messageText;
+            const notifText = [
+                '🔒 *Blacklisted URL Auto-Deleted*',
+                `👤 User: +${senderPhone}`,
+                `📍 Group: ${gName}`,
+                `🔗 URL: ${blacklistedMatch}`,
+                `💬 Message: "${msgSnippet}"`,
+                `🕒 Time: ${getTimestamp()}`,
+                '',
+                '↩️ Reply *0* to remove this URL from blacklist',
+            ].join('\n');
+            try {
+                const notif = await sock.sendMessage(adminId, { text: notifText });
+                const notifMsgId = notif?.key?.id;
+                if (notifMsgId) {
+                    pendingUrlUnblacklistAlerts.set(notifMsgId, blacklistedMatch);
+                    setTimeout(() => pendingUrlUnblacklistAlerts.delete(notifMsgId), 48 * 60 * 60 * 1000);
+                }
+            } catch (e) { /* silent */ }
             return;
         }
 
