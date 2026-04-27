@@ -2370,10 +2370,13 @@ async function handleMessage(sock, msg, commandHandler) {
                     const inviteCode = await sock.groupInviteCode(groupId);
                     if (inviteCode) groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
                 } catch (_) {}
-                const alertText = [
+                const alertLines = [
                     '🔗 *URL Detected in Group*',
                     `👤 User: +${userPhone}`,
-                    `📍 Group: ${groupNameForUrl}${groupInviteLink ? ' — ' + groupInviteLink : ''}`,
+                    `📍 Group: ${groupNameForUrl}`,
+                ];
+                if (groupInviteLink) alertLines.push(`🔗 Join group: ${groupInviteLink}`);
+                alertLines.push(
                     `🔗 URL: ${blockedUrls[0]}`,
                     `💬 Message: "${msgPreview}"`,
                     `🕒 Time: ${getTimestamp()}`,
@@ -2382,7 +2385,8 @@ async function handleMessage(sock, msg, commandHandler) {
                     '*1* — Delete message only',
                     '*2* — Delete + kick & blacklist user',
                     '*3* — Delete + kick & blacklist user + blacklist URL',
-                ].join('\n');
+                );
+                const alertText = alertLines.join('\n');
                 try {
                     const sentMsg = await sock.sendMessage(adminId, { text: alertText });
                     const alertMsgId = sentMsg?.key?.id;
