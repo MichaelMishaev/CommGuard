@@ -1675,7 +1675,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 if ((messageText === '1' || messageText === '2' || messageText === '3') && pendingUrlAlerts.has(quotedMsgId)) {
                     const urlPending = pendingUrlAlerts.get(quotedMsgId);
                     pendingUrlAlerts.delete(quotedMsgId);
-                    const { messageKey, senderId: urlSender, groupId: urlGroup, groupName: urlGroupName, url: detectedUrl } = urlPending;
+                    const { messageKey, senderId: urlSender, groupId: urlGroup, groupName: urlGroupName, groupInviteLink: urlGroupLink, url: detectedUrl } = urlPending;
                     const status = [];
                     try {
                         await sock.sendMessage(urlGroup, { delete: messageKey });
@@ -1702,7 +1702,8 @@ async function handleMessage(sock, msg, commandHandler) {
                     if (messageText === '3' && detectedUrl) {
                         urlBlacklist.add(detectedUrl);
                         const addedDomain = addBlockedDomain(detectedUrl);
-                        status.push(`🔒 URL globally blacklisted: ${detectedUrl}\n🌐 Domain added to block list: ${addedDomain}`);
+                        const groupRef = urlGroupLink ? `${urlGroupName}\n🔗 ${urlGroupLink}` : urlGroupName;
+                        status.push(`🔒 URL globally blacklisted: ${detectedUrl}\n🌐 Domain added to block list: ${addedDomain}\n📍 Detected in: ${groupRef}`);
                     }
                     await sock.sendMessage(chatId, { text: `✅ URL Alert Action:\n${status.join('\n')}` });
                     return;
@@ -2364,10 +2365,15 @@ async function handleMessage(sock, msg, commandHandler) {
                     if (decoded) userPhone = decoded;
                 }
                 const msgPreview = messageText.length > 80 ? messageText.substring(0, 80) + '…' : messageText;
+                let groupInviteLink = '';
+                try {
+                    const inviteCode = await sock.groupInviteCode(groupId);
+                    if (inviteCode) groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+                } catch (_) {}
                 const alertText = [
                     '🔗 *URL Detected in Group*',
                     `👤 User: +${userPhone}`,
-                    `📍 Group: ${groupNameForUrl}`,
+                    `📍 Group: ${groupNameForUrl}${groupInviteLink ? ' — ' + groupInviteLink : ''}`,
                     `🔗 URL: ${blockedUrls[0]}`,
                     `💬 Message: "${msgPreview}"`,
                     `🕒 Time: ${getTimestamp()}`,
@@ -2386,6 +2392,7 @@ async function handleMessage(sock, msg, commandHandler) {
                             senderId,
                             groupId,
                             groupName: groupNameForUrl,
+                            groupInviteLink,
                             url: blockedUrls[0],
                         });
                         setTimeout(() => pendingUrlAlerts.delete(alertMsgId), 24 * 60 * 60 * 1000);
