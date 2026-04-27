@@ -135,6 +135,9 @@ module.exports = {
     },
   },
 
+  // Google Safe Browsing API (free - checks URLs against Google's threat database)
+  GOOGLE_SAFE_BROWSING_API_KEY: process.env.GOOGLE_SAFE_BROWSING_API_KEY || '',
+
   // Logging
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
 };

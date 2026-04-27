@@ -19,6 +19,7 @@ const memoryLeakDetector = require('./utils/memoryLeakDetector');
 const { queueScan } = require('./services/scanQueueService');
 const { startScanWorker } = require('./services/blacklistScanWorker');
 const { extractPhoneNumber } = require('./utils/lidDecoder');
+const { checkUrl: checkUrlSafety } = require('./services/safeBrowsingService');
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -2370,6 +2371,7 @@ async function handleMessage(sock, msg, commandHandler) {
                     const inviteCode = await sock.groupInviteCode(groupId);
                     if (inviteCode) groupInviteLink = `https://chat.whatsapp.com/${inviteCode}`;
                 } catch (_) {}
+                const safetyResult = await checkUrlSafety(blockedUrls[0]);
                 const alertLines = [
                     '🔗 *URL Detected in Group*',
                     `👤 User: +${userPhone}`,
@@ -2378,6 +2380,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 if (groupInviteLink) alertLines.push(`🔗 Join group: ${groupInviteLink}`);
                 alertLines.push(
                     `🔗 URL: ${blockedUrls[0]}`,
+                    `🛡️ Safety: ${safetyResult.label}`,
                     `💬 Message: "${msgPreview}"`,
                     `🕒 Time: ${getTimestamp()}`,
                     '',
