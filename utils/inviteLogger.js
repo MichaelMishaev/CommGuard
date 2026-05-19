@@ -46,11 +46,20 @@ function formatInviteOutcome(fields) {
  * @param {object} fields                    The same shape as formatInviteOutcome's input
  */
 function logInviteOutcome(getTimestamp, fields) {
+    // Defensive: getTimestamp itself can throw or be undefined.
+    // Logging must never crash the bot, so capture a timestamp safely first.
+    let ts;
     try {
-        console.log(`[${getTimestamp()}] ${formatInviteOutcome(fields)}`);
+        ts = typeof getTimestamp === 'function' ? getTimestamp() : '??';
+    } catch (_) {
+        ts = '??';
+    }
+
+    try {
+        console.log(`[${ts}] ${formatInviteOutcome(fields)}`);
     } catch (err) {
         try {
-            console.log(`[${getTimestamp()}] 📋 INVITE_OUTCOME FALLBACK ${JSON.stringify(fields)}`);
+            console.log(`[${ts}] 📋 INVITE_OUTCOME FALLBACK ${JSON.stringify(fields)}`);
         } catch (_) {
             // Swallow — never throw from a log call
         }

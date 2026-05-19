@@ -129,5 +129,38 @@ console.log('🧪 Testing inviteLogger.formatInviteOutcome\n');
     assert('grep \'deleted=NO\' matches', out.includes('deleted=NO'));
 }
 
+// Scenario 7: logInviteOutcome survives a throwing getTimestamp
+{
+    const { logInviteOutcome } = require('../utils/inviteLogger');
+    const throwingTs = () => { throw new Error('clock broken'); };
+    let threw = false;
+    try {
+        logInviteOutcome(throwingTs, {
+            msgId: 'X', group: 'g', groupId: 'g@g.us', user: 'u', phone: '1',
+            link: 'l', deleted: true, deleteReason: 'ok', kicked: true, kickReason: 'ok',
+            cooldownExpiresInMs: null,
+        });
+    } catch (_) {
+        threw = true;
+    }
+    assert('logInviteOutcome does NOT throw when getTimestamp throws', threw === false);
+}
+
+// Scenario 8: logInviteOutcome survives an undefined getTimestamp
+{
+    const { logInviteOutcome } = require('../utils/inviteLogger');
+    let threw = false;
+    try {
+        logInviteOutcome(undefined, {
+            msgId: 'X', group: 'g', groupId: 'g@g.us', user: 'u', phone: '1',
+            link: 'l', deleted: true, deleteReason: 'ok', kicked: true, kickReason: 'ok',
+            cooldownExpiresInMs: null,
+        });
+    } catch (_) {
+        threw = true;
+    }
+    assert('logInviteOutcome does NOT throw when getTimestamp is undefined', threw === false);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
