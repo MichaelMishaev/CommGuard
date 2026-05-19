@@ -2532,61 +2532,80 @@ async function handleMessage(sock, msg, commandHandler) {
             }
         }
 
-        // Extract user information
-        const userPhone = senderId.split('@')[0];
-        const isLidFormat = senderId.endsWith('@lid');
-        const isIsraeliUser = userPhone.startsWith('972');
+        // Cooldown gate — applies only to the KICK action. Deletion above is already done.
+        // When cooldown is active, the violation+kick+alert+pendingRequest chunk is skipped
+        // entirely. This matches today's pre-bug behavior on the cooldown path (today's early
+        // return at the old line 2444 also skipped all of these). The only behavior change vs
+        // today is that deletion (above) now always runs for non-admin senders.
+        const kickDecision = decideKick(kickCooldown, senderId, Date.now(), config.KICK_COOLDOWN);
 
-        console.log(`[${getTimestamp()}] 📊 Processing invite link violation: ${userPhone} - Israeli: ${isIsraeliUser}, LID: ${isLidFormat}`);
+        let kicked = false;
+        let kickReason = 'not_attempted';
+        let userPhone = senderId.split('@')[0];
 
-        // Increment violation count in database
-        try {
-            const violations = await incrementViolation(userPhone, 'invite_link');
-            console.log(`[${getTimestamp()}] 📊 Violation recorded - Total violations:`, violations);
-        } catch (error) {
-            console.error(`[${getTimestamp()}] ❌ Failed to record violation:`, error.message);
-        }
-
-        // Kick the user (only if bot has permission)
-        if (permissions.canKickUsers) {
-            try {
-                await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
-                console.log('✅ Kicked user for invite link:', senderId);
-                kickCooldown.set(senderId, Date.now());
-
-                // Get user violations
-                const violations = await getViolations(userPhone);
-
-                // Try to decode LID to real phone number
-                let phoneDisplay = userPhone;
-                if (isLidFormat) {
-                    const decoded = await decodeLIDToPhone(sock, senderId);
-                    phoneDisplay = decoded || `${userPhone} (LID - Encrypted ID)`;
-                }
-
-                // Send alert with NEW format (ask admin to blacklist)
-                const alertResult = await sendKickAlert(sock, {
-                    userPhone: phoneDisplay,
-                    userId: senderId,
-                    groupName: groupMetadata.subject,
-                    groupId: groupId,
-                    reason: 'invite_link',
-                    spamLink: matches.join(', '),
-                    violations: violations
-                });
-
-                // Store pending blacklist request with groupId
-                if (alertResult && alertResult.key) {
-                    storePendingRequest(alertResult.key.id, phoneDisplay, senderId, 'invite_link', groupId);
-                    console.log(`[${getTimestamp()}] 📋 Stored pending blacklist request for: ${phoneDisplay}`);
-                }
-
-            } catch (kickError) {
-                console.error('❌ Failed to kick user:', kickError.message);
-                advancedLogger.logPermissionError('kick_invite_spam_user', groupId, kickError);
-            }
+        if (!kickDecision.shouldKick) {
+            kickReason = kickDecision.reason; // 'cooldown_active'
+            console.log(`[${getTimestamp()}] ⏳ User recently kicked elsewhere — message deleted, kick deferred (cooldown ${kickDecision.cooldownExpiresInMs}ms remaining)`);
         } else {
-            console.log(`⚠️ Cannot kick user - bot lacks kick permission in ${groupId}`);
+            // Extract user information
+            const isLidFormat = senderId.endsWith('@lid');
+            const isIsraeliUser = userPhone.startsWith('972');
+
+            console.log(`[${getTimestamp()}] 📊 Processing invite link violation: ${userPhone} - Israeli: ${isIsraeliUser}, LID: ${isLidFormat}`);
+
+            // Increment violation count in database
+            try {
+                const violations = await incrementViolation(userPhone, 'invite_link');
+                console.log(`[${getTimestamp()}] 📊 Violation recorded - Total violations:`, violations);
+            } catch (error) {
+                console.error(`[${getTimestamp()}] ❌ Failed to record violation:`, error.message);
+            }
+
+            // Kick the user (only if bot has permission)
+            if (permissions.canKickUsers) {
+                try {
+                    await sock.groupParticipantsUpdate(groupId, [senderId], 'remove');
+                    console.log('✅ Kicked user for invite link:', senderId);
+                    kickCooldown.set(senderId, Date.now());
+                    kicked = true;
+                    kickReason = 'ok';
+
+                    // Get user violations
+                    const violations = await getViolations(userPhone);
+
+                    // Try to decode LID to real phone number
+                    let phoneDisplay = userPhone;
+                    if (isLidFormat) {
+                        const decoded = await decodeLIDToPhone(sock, senderId);
+                        phoneDisplay = decoded || `${userPhone} (LID - Encrypted ID)`;
+                    }
+
+                    // Send alert with NEW format (ask admin to blacklist)
+                    const alertResult = await sendKickAlert(sock, {
+                        userPhone: phoneDisplay,
+                        userId: senderId,
+                        groupName: groupMetadata.subject,
+                        groupId: groupId,
+                        reason: 'invite_link',
+                        spamLink: matches.join(', '),
+                        violations: violations
+                    });
+
+                    // Store pending blacklist request with groupId
+                    if (alertResult && alertResult.key) {
+                        storePendingRequest(alertResult.key.id, phoneDisplay, senderId, 'invite_link', groupId);
+                        console.log(`[${getTimestamp()}] 📋 Stored pending blacklist request for: ${phoneDisplay}`);
+                    }
+
+                } catch (kickError) {
+                    console.error('❌ Failed to kick user:', kickError.message);
+                    advancedLogger.logPermissionError('kick_invite_spam_user', groupId, kickError);
+                    kickReason = `error_${(kickError.message || 'unknown').replace(/\s+/g, '_').substring(0, 40)}`;
+                }
+            } else {
+                console.log(`⚠️ Cannot kick user - bot lacks kick permission in ${groupId}`);
+                kickReason = 'no_kick_permission';
+            }
         }
         
     } catch (error) {
