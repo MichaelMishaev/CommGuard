@@ -3259,7 +3259,7 @@ class CommandHandler {
         try {
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
             const response = await openai.chat.completions.create({
-                model: 'gpt-5-nano',
+                model: 'gpt-4.1-nano',
                 messages: [
                     { role: 'system', content: 'Translate the following text to Russian. Return ONLY the translated text, no explanations.' },
                     { role: 'user', content: textToTranslate }

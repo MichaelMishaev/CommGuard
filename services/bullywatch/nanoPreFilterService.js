@@ -212,7 +212,7 @@ Respond in JSON ONLY:
 Is this SAFE, HARMFUL, or AMBIGUOUS?`;
 
     const requestPayload = {
-      model: 'gpt-5-nano', // GPT-5-nano: Fastest and most cost-effective for structured JSON output
+      model: 'gpt-4.1-nano', // GPT-4.1-nano: Fastest and most cost-effective for structured JSON output
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -454,7 +454,7 @@ Respond in JSON ONLY:
       const userPrompt = `Hebrew message to analyze:\n"${messageText}"\n\nIs this NARRATIVE (describing a movie/story/news) or DIRECT (actual threat)?`;
 
       const requestPayload = {
-        model: 'gpt-5-nano', // GPT-5-nano: Fastest and most cost-effective for structured JSON output
+        model: 'gpt-4.1-nano', // GPT-4.1-nano: Fastest and most cost-effective for structured JSON output
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
