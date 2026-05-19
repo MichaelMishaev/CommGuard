@@ -2610,7 +2610,31 @@ async function handleMessage(sock, msg, commandHandler) {
                 kickReason = 'no_kick_permission';
             }
         }
-        
+
+        // Structured outcome log — one grep-able line per invite-link incident.
+        // Wrapped internally (logInviteOutcome catches its own errors),
+        // so this can never crash the handler.
+        let phoneForLog = null;
+        try {
+            phoneForLog = senderId.endsWith('@lid')
+                ? await decodeLIDToPhone(sock, senderId).catch(() => null)
+                : userPhone;
+        } catch (_) { /* best-effort */ }
+
+        logInviteOutcome(getTimestamp, {
+            msgId: msg.key.id,
+            group: groupMetadata.subject,
+            groupId,
+            user: senderId,
+            phone: phoneForLog || userPhone,
+            link: matches[0],
+            deleted: !deletionFailed,
+            deleteReason: deletionFailed ? (deletionError || 'unknown') : 'ok',
+            kicked,
+            kickReason,
+            cooldownExpiresInMs: kickDecision.shouldKick ? null : kickDecision.cooldownExpiresInMs,
+        });
+
     } catch (error) {
         console.error('❌ Error handling invite spam:', error);
     }
