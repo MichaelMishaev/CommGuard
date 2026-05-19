@@ -27,6 +27,12 @@ async function analyzeImage(imageBuffer) {
         const openai = getOpenAI();
         const base64 = imageBuffer.toString('base64');
 
+        // Detect MIME type from magic bytes (WhatsApp sends JPEG, but handle PNG/WebP too)
+        let mimeType = 'image/jpeg';
+        if (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) mimeType = 'image/png';
+        else if (imageBuffer[0] === 0x52 && imageBuffer[1] === 0x49) mimeType = 'image/webp';
+        else if (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) mimeType = 'image/gif';
+
         const response = await openai.chat.completions.create({
             model: 'gpt-5-mini',
             messages: [
@@ -40,7 +46,7 @@ async function analyzeImage(imageBuffer) {
                         {
                             type: 'image_url',
                             image_url: {
-                                url: `data:image/jpeg;base64,${base64}`,
+                                url: `data:${mimeType};base64,${base64}`,
                                 detail: 'low'
                             }
                         }
