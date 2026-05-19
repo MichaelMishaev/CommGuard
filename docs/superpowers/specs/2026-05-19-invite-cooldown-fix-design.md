@@ -56,7 +56,7 @@ A human investigating "why is this invite link still visible?" must grep across 
 
 1. **Delete invite-link messages even when the sender is in cross-group kick cooldown.**
 2. **Preserve kick-spam prevention.** Kick is the WhatsApp-API-expensive action; the cooldown must continue to suppress repeated kicks of the same user across groups.
-3. **Preserve admin exemption.** Group admins must remain fully exempt from invite-link enforcement — admin messages must never be deleted, kicked, or alerted on. This is unchanged from existing behavior.
+3. **Preserve admin exemption.** Group admins must remain fully exempt from invite-link enforcement — admin messages must never be deleted, kicked, or alerted on. This is unchanged from existing behavior. See the dedicated "Admin Exemption" section below for the four admin signals and a known pre-existing edge case that this fix does NOT make worse.
 4. **Make incidents grep-able.** One structured terminal log line per invite-link incident, so "show me all missed invites today" is a one-line shell command.
 5. **No regressions.** Touch the minimum number of call sites. No new infrastructure (no Redis changes, no caches, no queues). On any failure path, behavior must be no worse than today.
 
@@ -70,6 +70,41 @@ A human investigating "why is this invite link still visible?" must grep across 
 - Not modifying `extractMessageText()` or any text-extraction path.
 
 ## Design
+
+### Admin Exemption (preserved, with optional safety net)
+
+The existing check at `index.js:2426-2438` uses **four signals** to classify an admin:
+
+```js
+senderParticipant.admin === 'admin' ||
+senderParticipant.admin === 'superadmin' ||
+senderParticipant.isAdmin ||
+senderParticipant.isSuperAdmin
+```
+
+This check stays **first in the flow, unchanged**, before any deletion logic runs. If the sender matches any of the four signals, the handler returns immediately. No delete, no kick, no alert, no violation.
+
+**Pre-existing edge case (NOT introduced by this fix):** the check uses `participants.find(p => p.id === senderId)` — an exact JID match. If WhatsApp delivers the sender JID in a different format than what's stored in `groupMetadata.participants` (e.g., bare `@lid` vs `@lid` with device suffix, or LID format drift during the ongoing WhatsApp migration), `find` returns `undefined` → `senderIsAdmin = false` → admin's message could be deleted.
+
+This is a **pre-existing risk in the current code base**. This fix does not make it worse, but since "admin can post anything" is now a stated invariant, the spec recommends an **optional defensive fallback**:
+
+```js
+// AFTER the existing find()-based check, before proceeding to delete:
+if (!senderIsAdmin) {
+    // Defensive: also match by phone number prefix to catch JID format drift
+    const senderPhone = senderId.split('@')[0].split(':')[0];
+    const adminByPhone = groupMetadata.participants.find(p => {
+        const pPhone = p.id.split('@')[0].split(':')[0];
+        return pPhone === senderPhone && (p.admin === 'admin' || p.admin === 'superadmin');
+    });
+    if (adminByPhone) {
+        console.log(`✅ Sender matched admin by phone fallback (JID drift): ${senderId} → ${adminByPhone.id}`);
+        return;
+    }
+}
+```
+
+**This fallback is recommended but not required for the fix to work.** It strengthens admin protection without changing any other behavior. If included, add it as a separate, small, reviewable commit after the cooldown fix lands.
 
 ### Change 1: Cooldown gates kick only, not delete
 
@@ -129,6 +164,15 @@ const cooldownActive = lastKick && cooldownActiveMs < config.KICK_COOLDOWN;
 
 let kickOutcome;
 if (cooldownActive) {
+    // IMPORTANT: when cooldown skips the kick, the entire existing kick try-block
+    // at lines 2547-2587 is bypassed. That means:
+    //   - incrementViolation()  — NOT called
+    //   - sendKickAlert()       — NOT called
+    //   - storePendingRequest() — NOT called
+    // This is INTENTIONAL and matches today's behavior on the cooldown path
+    // (today the early return at line 2444 also skips all of these).
+    // The only NEW behavior on this path is that the message is now deleted.
+    // Admins still get notified about the FIRST kick in the wave (Group A).
     kickOutcome = {
         kicked: false,
         reason: 'cooldown_active',
@@ -136,7 +180,9 @@ if (cooldownActive) {
         cooldownExpiresInMs: config.KICK_COOLDOWN - cooldownActiveMs,
     };
 } else {
-    kickOutcome = await kickUser(...);   // existing code at lines ~2553+, sets kickCooldown at line 2560 on success
+    kickOutcome = await kickUser(...);   // existing block at lines ~2547-2595, untouched,
+                                          // includes incrementViolation, kick, sendKickAlert,
+                                          // storePendingRequest, and kickCooldown.set at line 2560
 }
 
 // 5. Structured log (new — see Change 2)
@@ -151,25 +197,26 @@ logInviteOutcome({ groupId, senderId, link, deletionOutcome, kickOutcome });
 At the end of every invite-link incident (success, partial, or skipped), log a single line in a fixed grep-able format:
 
 ```
-[timestamp] 📋 INVITE_OUTCOME group="<group_subject>" groupId=<jid> user=<lid> phone=+<decoded> link=<url> deleted=<YES|NO> deleteReason="<reason>" kicked=<YES|NO> kickReason="<reason>" cooldownExpiresInMs=<n|->
+[timestamp] 📋 INVITE_OUTCOME msgId=<msgId> group="<group_subject>" groupId=<jid> user=<lid> phone=+<decoded> link=<url> deleted=<YES|NO> deleteReason="<reason>" kicked=<YES|NO> kickReason="<reason>" cooldownExpiresInMs=<n|->
 ```
 
 Concrete example for the 03:33:56 incident under the new behavior:
 
 ```
-[19/05/2026 03:33:56] 📋 INVITE_OUTCOME group="מועדון האמהות - נתניה" groupId=120363398653946949@g.us user=205544954552423@lid phone=+972567261261 link=https://chat.whatsapp.com/CT79U7ro8kp3UwLPg8fs9u deleted=YES deleteReason="ok" kicked=NO kickReason="cooldown_active" cooldownExpiresInMs=6042
+[19/05/2026 03:33:56] 📋 INVITE_OUTCOME msgId=3AD7729C56A166A0E0DE group="מועדון האמהות - נתניה" groupId=120363398653946949@g.us user=205544954552423@lid phone=+972567261261 link=https://chat.whatsapp.com/CT79U7ro8kp3UwLPg8fs9u deleted=YES deleteReason="ok" kicked=NO kickReason="cooldown_active" cooldownExpiresInMs=6042
 ```
 
 Concrete example for a clean kick (no cooldown):
 
 ```
-[19/05/2026 03:33:48] 📋 INVITE_OUTCOME group="Crypto Talk" groupId=120363... user=205544954552423@lid phone=+972567261261 link=https://chat.whatsapp.com/CT79U7... deleted=YES deleteReason="ok" kicked=YES kickReason="ok" cooldownExpiresInMs=-
+[19/05/2026 03:33:48] 📋 INVITE_OUTCOME msgId=AB1234... group="Crypto Talk" groupId=120363... user=205544954552423@lid phone=+972567261261 link=https://chat.whatsapp.com/CT79U7... deleted=YES deleteReason="ok" kicked=YES kickReason="ok" cooldownExpiresInMs=-
 ```
 
 #### Required fields
 
 | Field | Source | Notes |
 |---|---|---|
+| `msgId` | `msg.key.id` | Cross-references with `[MSG-UPSERT]` and `[RAW-MSG]` lines |
 | `group` | `groupMetadata.subject` | Quoted; may contain Hebrew/Russian/special chars |
 | `groupId` | `groupId` arg | The `@g.us` JID |
 | `user` | `senderId` | Raw JID (could be `@lid` or `@s.whatsapp.net`) |
@@ -178,7 +225,7 @@ Concrete example for a clean kick (no cooldown):
 | `deleted` | `YES` or `NO` | |
 | `deleteReason` | `ok` / `no_delete_permission` / `stealth_failure` / `<error.message>` | Short token, no spaces (use underscore) |
 | `kicked` | `YES` or `NO` | |
-| `kickReason` | `ok` / `cooldown_active` / `delete_failed` / `<error.message>` | Short token |
+| `kickReason` | `ok` / `cooldown_active` / `delete_failed` / `not_attempted` / `<error.message>` | Short token; `not_attempted` is used when delete failed and we never tried to kick |
 | `cooldownExpiresInMs` | integer ms or `-` | Only meaningful when `kickReason=cooldown_active` |
 
 #### Why this format
@@ -231,16 +278,23 @@ In `tests/`:
 2. Assert: both messages get deleted; only one kick is attempted (second is cooldown-suppressed).
 3. Assert: two `INVITE_OUTCOME` lines emitted with correct field values.
 
-### Regression checks (must hold)
+### Regression matrix (must hold — every "same as today" cell is the no-regression contract)
 
-| Scenario | Expected behavior |
-|---|---|
-| Admin posts an invite link | No delete, no kick, no alert. Same as today. |
-| Non-admin posts invite, bot lacks delete permission | Hebrew message sent to group requesting admin status. Same as today. |
-| Non-admin posts invite, no cooldown active | Delete + kick + violation recorded + admin alert. Same as today. |
-| Same user posts invite in Group A then Group B within 10s | **NEW:** both messages deleted. Only Group A kick fires. Group B logs cooldown skip on kick. |
-| Same user posts invite in Group A then Group B after 11s | Both messages deleted. Both kicks fire (cooldown expired). Same as today. |
-| Delete fails for transient reason | `deleted=NO deleteReason=<reason>` logged. Kick still proceeds if not on cooldown. Same as today (no new retry behavior). |
+| Scenario | Behavior today | Behavior after fix | Net change |
+|---|---|---|---|
+| Admin posts invite link (4 admin signals match) | Ignored — no action | Ignored — no action | **Same** |
+| Admin's JID format drifts from participant list (pre-existing risk) | Treated as non-admin → message deleted | Treated as non-admin → message deleted (UNLESS optional phone-fallback included) | **Same** (or better if fallback applied) |
+| Non-admin posts invite, bot lacks delete permission | Hebrew "make me admin" message sent | Hebrew "make me admin" message sent | **Same** |
+| Non-admin posts invite, no cooldown | Delete + violation + kick + alert + pendingRequest | Delete + violation + kick + alert + pendingRequest | **Same** |
+| Same user, Group A then Group B within 10s — Group A | Delete + kick + alert | Delete + kick + alert | **Same** |
+| Same user, Group A then Group B within 10s — Group B | **Bug:** detected, returned early, NO delete, NO kick, NO alert, NO violation | **Fixed:** delete happens. No kick, no alert, no violation (cooldown still skips those). | **Better** (delete now happens) — violation/alert behavior on cooldown path is UNCHANGED from today |
+| Same user, Group A then Group B after 11s | Both: delete + kick + alert | Both: delete + kick + alert | **Same** |
+| Delete fails for transient reason | `❌ Failed to delete` logged; flow continues to kick | `❌ Failed to delete` logged + `INVITE_OUTCOME deleted=NO`; flow continues to kick | **Same** (plus new structured log) |
+| `sock.groupMetadata()` throws | Outer try/catch at line 2421 catches; returns; no action | Outer try/catch catches; returns; no action; no `INVITE_OUTCOME` line emitted | **Same** |
+| Whitelisted user posts invite | Bypassed at line 1924 before reaching invite handler | Bypassed at line 1924 before reaching invite handler | **Same** |
+| Bot itself posts (e.g., admin notification with link) | Skipped at line 1255 (fromMe check) | Skipped at line 1255 (fromMe check) | **Same** |
+
+**The only behavior change in the entire fix is the "Group B within 10s" row.** Everything else is bit-identical to today. This is the no-regression guarantee.
 
 ### Out-of-scope failure modes (explicitly NOT fixed)
 
@@ -259,12 +313,14 @@ These will still cause missed invites occasionally. Acceptable for this fix — 
 
 ## Risks & Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Admin's invite-link message gets deleted by mistake (highest user-facing risk) | Admin check at line 2434 is **unchanged and remains first**. Uses 4 signals (`admin === 'admin'`, `admin === 'superadmin'`, `isAdmin`, `isSuperAdmin`). |
-| Log helper throws and breaks the handler | Wrap `logInviteOutcome` in try/catch; on failure, fall back to a plain `console.log(JSON.stringify(...))`. Never let logging crash the bot. |
-| Move of cooldown breaks an unnoticed code path | Cooldown is read in exactly one place (line 2441) and written in exactly one place (line ~2570 after kick). Both are in this handler. Verified by grep. |
-| Structured log line is too long, breaks PM2 log file lines | Format is single-line, ~300 chars max. PM2 has no line length limit; pm2-logrotate is enabled. |
+| Risk | Mitigation | Pre-existing? |
+|---|---|---|
+| Admin's invite-link message gets deleted by mistake — admin signals match | Admin check at line 2434 is **unchanged and remains first**. Uses 4 signals. | No risk; behavior unchanged |
+| Admin's invite-link message gets deleted by mistake — JID format drift causes `find()` miss | **Pre-existing risk in current code.** Not made worse by this fix. Optional phone-fallback recommended (see Admin Exemption section). | YES — exists today |
+| Log helper throws and breaks the handler | Wrap `logInviteOutcome` in try/catch; on failure, fall back to a plain `console.log(JSON.stringify(...))`. Never let logging crash the bot. | New code, mitigated |
+| Move of cooldown breaks an unnoticed code path | Cooldown is read in exactly one place (line 2441) and written in exactly one place (line 2560 after kick). Both are in this handler. Verified by grep: `grep -n kickCooldown index.js` returns lines 367, 2441, 2560 — and no other usages. | New code, mitigated |
+| Structured log line is too long, breaks PM2 log file lines | Format is single-line, ~300 chars max. PM2 has no line length limit; pm2-logrotate is enabled. | New code, mitigated |
+| Cooldown skip now leaves user IN Group B unaddressed (spammer still in group) | **Unchanged from today.** Today the message also stays AND user stays. After fix the message is deleted; user remains until either (a) cooldown expires and next message triggers another delete+kick, (b) admin manually kicks, (c) join-time blacklist check kicks them on rejoin. No regression — strictly improved. | YES — same gap exists today |
 
 ## Definition of Done
 
