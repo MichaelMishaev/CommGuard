@@ -770,6 +770,44 @@ async function upsertGroup(groupMetadata) {
     }
 }
 
+async function setRestrictCountryCodes(whatsappGroupId, enabled) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET restrict_country_codes = $2
+            WHERE whatsapp_group_id = $1
+            RETURNING name, restrict_country_codes
+        `, [whatsappGroupId, enabled]);
+
+        if (result.rows.length > 0) {
+            const status = enabled ? 'enabled' : 'disabled';
+            console.log(`[${getTimestamp()}] ✅ Restrict country codes ${status} for ${result.rows[0].name}`);
+            return true;
+        } else {
+            console.log(`[${getTimestamp()}] ❌ Group not found: ${whatsappGroupId}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to set restrict_country_codes:`, error.message);
+        return false;
+    }
+}
+
+async function isRestrictCountryCodesEnabled(whatsappGroupId) {
+    try {
+        const result = await query(`
+            SELECT restrict_country_codes
+            FROM groups
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId]);
+
+        return result.rows[0]?.restrict_country_codes || false;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to check restrict_country_codes:`, error.message);
+        return false;
+    }
+}
+
 module.exports = {
     getAllGroups,
     getGroupByWhatsAppId,
@@ -803,5 +841,7 @@ module.exports = {
     getGroupClassName,
     setGroupClassName,
     getBullywatchGroups,
-    upsertGroup  // Auto-register groups on join
+    upsertGroup,  // Auto-register groups on join
+    setRestrictCountryCodes,
+    isRestrictCountryCodesEnabled
 };

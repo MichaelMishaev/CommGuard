@@ -345,7 +345,7 @@ const { isBlockedUrl, addBlockedDomain } = require('./services/urlBlacklistServi
 // Initialize Database (PostgreSQL + Redis)
 const { initDatabase } = require('./database/connection');
 const { initRedis } = require('./services/redisService');
-const { incrementViolation, getViolations, blacklistUser, getUserByPhone, upsertGroup } = require('./database/groupService');
+const { incrementViolation, getViolations, blacklistUser, getUserByPhone, upsertGroup, isRestrictCountryCodesEnabled } = require('./database/groupService');
 const { cacheBlacklistedUser, removeFromBlacklistCache } = require('./services/redisService');
 
 // Initialize databases if URLs are provided
@@ -2703,6 +2703,11 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
             return;
         }
         
+        // Check per-group flag — only auto-kick if #botforeign was run in this group
+        const restrictCountryCodes = process.env.DATABASE_URL
+            ? await isRestrictCountryCodesEnabled(groupId)
+            : false;
+
         // Check each participant
         for (const _participant of participants) {
             const participantId = typeof _participant === "string" ? _participant : (_participant?.id || String(_participant));
@@ -2710,9 +2715,11 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
 
             // Extract phone number - prioritize phoneNumber field for LID format users
             let phoneNumber = participantId.split('@')[0];
+            let hasRealPhone = false;
             if (typeof _participant === 'object' && _participant?.phoneNumber) {
                 // Extract real phone from phoneNumber field (format: "972527332312@s.whatsapp.net")
                 phoneNumber = _participant.phoneNumber.split('@')[0];
+                hasRealPhone = true;
                 console.log(`📞 Extracted real phone from LID participant: ${phoneNumber}`);
             }
 
@@ -2789,14 +2796,12 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 console.log(`🇮🇱 Protecting Israeli number on join: ${phoneNumber}`);
             }
             
-            // CRITICAL FIX: LID format users are exempt from country code restrictions
-            // @lid identifiers are encrypted privacy IDs, NOT phone numbers
-            // The first digit has NO relationship to country codes
-            if (isLidFormat) {
-                console.log(`🔒 LID format user exempt from country restrictions: ${phoneNumber} (encrypted privacy ID)`);
+            // LID users without a real phone are exempt — their JID digits are not a phone prefix
+            if (isLidFormat && !hasRealPhone) {
+                console.log(`🔒 LID format user exempt from country restrictions: ${phoneNumber} (encrypted privacy ID, no real phone available)`);
             }
-            
-            if (config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !addedByAdmin && !isLidFormat &&
+
+            if (restrictCountryCodes && !isIsraeliNumber && !addedByAdmin && !(isLidFormat && !hasRealPhone) &&
                 ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || // US/Canada format
                  (phoneNumber.startsWith('+1') && phoneNumber.length === 12) || // US/Canada with +
                  (phoneNumber.startsWith('6') && phoneNumber.length >= 10 && phoneNumber.length <= 12) || // Southeast Asia
@@ -2848,7 +2853,7 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                 } catch (error) {
                     advancedLogger.logPermissionError('kick_restricted_country_code', groupId, error);
                 }
-            } else if (addedByAdmin && config.FEATURES.RESTRICT_COUNTRY_CODES && !isIsraeliNumber && !isLidFormat &&
+            } else if (addedByAdmin && restrictCountryCodes && !isIsraeliNumber && !(isLidFormat && !hasRealPhone) &&
                       ((phoneNumber.startsWith('1') && phoneNumber.length === 11) || 
                        (phoneNumber.startsWith('6') && phoneNumber.length >= 10 && phoneNumber.length <= 12))) {
                 console.log(`⚠️ Restricted country code user ${participantId} allowed to join - added by admin`);

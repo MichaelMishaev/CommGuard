@@ -2181,9 +2181,15 @@ class CommandHandler {
             
             for (const participant of participants) {
                 const userId = participant.id;
-                const phoneNumber = userId.split('@')[0];
                 const isLidFormat = userId.endsWith('@lid');
-                
+                let phoneNumber = userId.split('@')[0];
+                let hasRealPhone = false;
+                if (isLidFormat && participant.phoneNumber) {
+                    phoneNumber = participant.phoneNumber.split('@')[0];
+                    hasRealPhone = true;
+                    console.log(`📞 Extracted real phone from LID participant: ${phoneNumber}`);
+                }
+
                 // Debug: Log all phone numbers to see format
                 console.log(`🔍 Checking participant: ${phoneNumber} (length: ${phoneNumber.length}, LID: ${isLidFormat})`);
                 
@@ -2222,14 +2228,13 @@ class CommandHandler {
                 
                 console.log(`📊 ${phoneNumber}: starts1=${startsWithOne}, starts+1=${startsWithPlusOne}, starts6=${startsWithSix}, starts+6=${startsWithPlusSix}, len=${phoneNumber.length}, israeli=${isIsraeliNumber}, 10digitUS=${isTenDigitUSNumber}, isLID=${isLidFormat}`);
                 
-                // CRITICAL FIX: LID format users are exempt from country code restrictions
-                // @lid identifiers are encrypted privacy IDs, NOT phone numbers
-                if (isLidFormat) {
-                    console.log(`🔒 LID format user exempt from country restrictions: ${phoneNumber} (encrypted privacy ID)`);
+                // LID users without a real phone are exempt — their JID digits are not a phone prefix
+                if (isLidFormat && !hasRealPhone) {
+                    console.log(`🔒 LID format user exempt from country restrictions: ${phoneNumber} (encrypted privacy ID, no real phone available)`);
                 }
-                
-                // Only match if it's clearly a US/Canada or Southeast Asian number AND NOT Israeli AND NOT LID format
-                if (!isIsraeliNumber && !isLidFormat && 
+
+                // Only match if it's clearly a US/Canada or Southeast Asian number AND NOT Israeli AND NOT LID without real phone
+                if (!isIsraeliNumber && !(isLidFormat && !hasRealPhone) &&
                     ((startsWithOne && lengthEleven) || // US/Canada format with 1
                      (startsWithPlusOne && lengthTwelve) || // US/Canada with +1
                      isTenDigitUSNumber || // US format without country code (10 digits)
@@ -2315,9 +2320,15 @@ class CommandHandler {
                 summaryMessage += `ℹ️ Whitelisted users skipped: ${whitelistedSkipped.length}\n`;
             }
             summaryMessage += `\n⏰ Time: ${getTimestamp()}`;
-            
+
             await this.sock.sendMessage(groupId, { text: summaryMessage });
-            
+
+            // Enable auto-kick on join for this group going forward
+            await groupService.setRestrictCountryCodes(groupId, true);
+            await this.sock.sendMessage(groupId, {
+                text: '🔒 Auto-kick for +1/+6 numbers is now *ENABLED* for this group.\nAnyone with those country codes will be removed automatically when they join.'
+            });
+
             // Alert admin
             const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
             
