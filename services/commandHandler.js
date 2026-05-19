@@ -400,6 +400,11 @@ class CommandHandler {
 • *#rejoinlinks <phone>* - Shows rejoin links for kicked user
   Example: #rejoinlinks 972555123456
 
+*🔗 URL Blacklist Management:*
+• *#urlblock <url>* - Add URL to global blacklist (auto-deleted in all groups)
+• *#urlunblock <url>* - Remove URL from global blacklist
+• *#urlblocklist* - Show all globally blocked URLs
+
 *📊 Violation Tracking System:*
 • When user posts invite link → Kicked + Violation recorded + Alert sent
 • When admin uses #kick → Kicked + Violation recorded + Alert sent
@@ -421,6 +426,11 @@ class CommandHandler {
 • *#botadmin* - Checks if bot has admin privileges in current group
 • *#debugnumbers* - Shows participant phone formats (for debugging LID issues)
 
+*📊 Incident Logging & Analysis:*
+• Invite-link incidents are logged as grep-able INVITE_OUTCOME lines
+• Use on server: grep 'INVITE_OUTCOME.*deleted=NO' [logfile] → missed deletions
+• Fields logged: group, user phone, link, deleted (YES/NO), kicked (YES/NO), reason, cooldown remaining
+
 *🔍 Search Commands (Requires MCP Setup):*
 • *#search <query>* - Search the web (rate limited: 5/minute)
 • *#verify <url>* - Verify if a link is safe
@@ -430,6 +440,8 @@ class CommandHandler {
 • *#translate <lang> <text>* - Translate to specific language
 • *#langs* - Show supported language codes (20+ languages)
 • *#autotranslate <on/off/status>* - Control auto-translation (bot only)
+• *#ru <text>* - Translate text to Russian (shortcut)
+• *#translation <on/off/status>* - Alias for #autotranslate
 • **Auto-Translation** - ${config.FEATURES.AUTO_TRANSLATION ? '✅ ENABLED' : '❌ DISABLED'} (translates non-Hebrew to Hebrew)
 • **Smart Detection** - Only translates pure non-Hebrew (ignores mixed Hebrew/English, Russian)
 
@@ -441,10 +453,11 @@ class CommandHandler {
 • **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (125+ jokes)
 
 *🚨 AUTO-PROTECTION FEATURES:*
-1. **Invite Link Detection** ✅
+1. **Invite Link Detection** ✅ (Enhanced Protection)
    - All users: Immediate kick + violation tracking
-   - Always: Message deleted + Admin alert with violation count
+   - Always: Message *deleted immediately* + Admin alert with violation count
    - Detects: chat.whatsapp.com links
+   - Cross-group attack protection: Message deleted even if user was recently kicked elsewhere
    - Admin can reply 1/0 to blacklist/skip
    - Violations stored permanently in database
 
@@ -568,6 +581,11 @@ class CommandHandler {
 • *#botkick* - Scan group and kick all blacklisted users
 • *#rejoinlinks <phone>* - Show rejoin links for kicked user
 
+*🔗 URL Blacklist Management:*
+• *#urlblock <url>* - Add URL to global blacklist (auto-deleted in all groups)
+• *#urlunblock <url>* - Remove URL from global blacklist
+• *#urlblocklist* - Show all globally blocked URLs
+
 *🧠 Memory & Performance:*
 • *#memory* - Quick memory status check
 • *#memreport* - Detailed memory report
@@ -596,6 +614,8 @@ class CommandHandler {
 • *#translate <text>* - Translate text
 • *#langs* - Show supported languages
 • *#autotranslate <on/off/status>* - Control auto-translation (bot only)
+• *#ru <text>* - Translate text to Russian (shortcut)
+• *#translation <on/off/status>* - Alias for #autotranslate
 • Status: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
 
 *🚨 Auto-Protection Features:*
