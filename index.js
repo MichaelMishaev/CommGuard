@@ -339,6 +339,8 @@ const { clearSessionErrors, mightContainInviteLink, extractMessageText } = requi
 const { sendKickAlert, sendSecurityAlert, sendBlacklistRejoinAlert } = require('./utils/alertService');
 const { robustKick } = require('./utils/kickHelper');
 const { decodeLIDToPhone } = require('./utils/jidUtils');
+const { decideKick } = require('./utils/kickCooldownPolicy');
+const { logInviteOutcome } = require('./utils/inviteLogger');
 const { storePendingRequest, getPendingRequest, removePendingRequest } = require('./utils/blacklistPendingRequests');
 const { isBlockedUrl, addBlockedDomain } = require('./services/urlBlacklistService');
 
