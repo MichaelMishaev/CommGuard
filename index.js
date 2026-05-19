@@ -2438,14 +2438,7 @@ async function handleMessage(sock, msg, commandHandler) {
             console.log(`   Admin properties: admin="${senderParticipant.admin}", isAdmin=${senderParticipant.isAdmin}, isSuperAdmin=${senderParticipant.isSuperAdmin}`);
             return;
         }
-        
-        // Check cooldown
-        const lastKick = kickCooldown.get(senderId);
-        if (lastKick && Date.now() - lastKick < config.KICK_COOLDOWN) {
-            console.log('⏳ User recently kicked, skipping to prevent spam');
-            return;
-        }
-        
+
         // Check bot permissions before attempting deletion (unless bypass is enabled)
         let permissions = { canDeleteMessages: true, canKickUsers: true };
         if (!config.FEATURES.BYPASS_BOT_ADMIN_CHECK) {
