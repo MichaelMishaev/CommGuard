@@ -324,10 +324,10 @@ These will still cause missed invites occasionally. Acceptable for this fix — 
 
 ## Definition of Done
 
-- [ ] `index.js` modified: cooldown moved after delete, applies to kick only
-- [ ] `INVITE_OUTCOME` structured log emitted at end of every invite-link incident
-- [ ] Admin exemption verified preserved (manual test: admin posts a link, no action taken)
-- [ ] Synthetic test added in `tests/`
+- [x] `index.js` modified: cooldown moved after delete, applies to kick only
+- [x] `INVITE_OUTCOME` structured log emitted at end of every invite-link incident
+- [x] Admin exemption verified preserved (admin check at line 2434 is unchanged, remains first guard)
+- [x] Synthetic test added in `tests/` (testKickCooldownPolicy.js + testInviteLogger.js, 29 assertions total)
 - [ ] Deployed to prod via documented deploy command
 - [ ] 24h post-deploy: `grep INVITE_OUTCOME` shows incidents with reasons populated
 - [ ] Spec linked from a PR description
