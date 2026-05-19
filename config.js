@@ -28,6 +28,10 @@ module.exports = {
     RANDOMIZE_RESPONSES: true, // Use varied message responses
     SIMULATE_TYPING: true, // Show typing indicators before messages
 
+    // Image Moderation — detects sexual/violent/offensive images (requires bullywatch enabled per group)
+    IMAGE_MODERATION_ENABLED: true,
+    IMAGE_MODERATION_CONFIDENCE_THRESHOLD: 7, // 1-10: minimum GPT confidence to trigger alert
+
     // Anti-Bullying System (#bullywatch)
     BULLYWATCH_ENABLED: true, // Enable bullying detection system
     BULLYWATCH_MONITOR_MODE: true, // CRITICAL: Start in monitor mode (no auto-deletions)

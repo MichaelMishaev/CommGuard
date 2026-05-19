@@ -1,7 +1,7 @@
 // Load environment variables from .env file
 require('dotenv').config();
 
-const { makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, delay } = require('baileys');
+const { makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, delay, downloadMediaMessage } = require('baileys');
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
@@ -370,6 +370,7 @@ const kickCooldown = new Map();
 const pendingUrlAlerts = new Map(); // Map<alertMsgId, {messageKey, senderId, groupId, groupName, url}>
 const urlBlacklist = new Set(); // Global URL blacklist — applies to all groups
 const pendingUrlUnblacklistAlerts = new Map(); // Map<alertMsgId, url> — admin replies 0 to remove
+const pendingImageAlerts = new Map(); // Map<alertMsgId, {messageKey, senderId, groupId, groupName}>
 
 // Track reconnection attempts with error-specific handling
 let reconnectAttempts = 0;
@@ -1518,6 +1519,91 @@ async function handleMessage(sock, msg, commandHandler) {
         }
     }
 
+    // Image Moderation — detects sexual/violent/offensive images in groups with bullywatch enabled
+    if (isGroup && config.FEATURES.IMAGE_MODERATION_ENABLED && msg.message?.imageMessage) {
+        try {
+            const groupService = require('./database/groupService');
+            const isDatabaseEnabled = await groupService.isBullyingMonitoringEnabled(chatId);
+
+            if (isDatabaseEnabled) {
+                const sender = msg.key.participant || msg.key.remoteJid;
+
+                // Admins bypass image moderation
+                const groupMeta = await sock.groupMetadata(chatId).catch(() => null);
+                const senderParticipant = groupMeta?.participants?.find(p => p.id === sender);
+                const senderIsAdmin = senderParticipant && (
+                    senderParticipant.admin === 'admin' || senderParticipant.admin === 'superadmin'
+                );
+
+                if (!senderIsAdmin) {
+                    console.log(`[${getTimestamp()}] 🖼️ IMAGE_MOD: Analyzing image from ${sender}`);
+                    const imageModeration = require('./services/imageModeration');
+
+                    let buffer;
+                    try {
+                        buffer = await downloadMediaMessage(msg, 'buffer', {}, {
+                            logger,
+                            reuploadRequest: sock.updateMediaMessage
+                        });
+                    } catch (dlErr) {
+                        console.error(`[${getTimestamp()}] ⚠️ IMAGE_MOD: Download failed: ${dlErr.message}`);
+                        buffer = null;
+                    }
+
+                    if (buffer) {
+                        const result = await imageModeration.analyzeImage(buffer);
+                        console.log(`[${getTimestamp()}] 🖼️ IMAGE_MOD: ${result.verdict} (${result.confidence}/10) — ${result.reason}`);
+
+                        const threshold = config.FEATURES.IMAGE_MODERATION_CONFIDENCE_THRESHOLD || 7;
+                        if (result.verdict !== 'SAFE' && result.confidence >= threshold) {
+                            const senderPhone = extractPhoneNumber(sender);
+                            const groupSubject = groupMeta?.subject || chatId;
+                            const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
+
+                            // Forward the flagged image to admin first
+                            try {
+                                await sock.sendMessage(adminId, { forward: msg });
+                            } catch (fwdErr) {
+                                console.error(`[${getTimestamp()}] ⚠️ IMAGE_MOD: Forward failed: ${fwdErr.message}`);
+                            }
+
+                            const alertLines = [
+                                '🖼️ *תמונה חשודה זוהתה*',
+                                `👤 שולח: +${senderPhone} (${msg.pushName || senderPhone})`,
+                                `📍 קבוצה: ${groupSubject}`,
+                                `⚠️ סיבה: ${result.reason}`,
+                                `📊 ביטחון: ${result.confidence}/10`,
+                                '',
+                                '↩️ *השב להודעה זו:*',
+                                '*1* — מחק תמונה',
+                                '*2* — מחק + הסר מהקבוצה',
+                            ];
+
+                            try {
+                                const sentMsg = await sock.sendMessage(adminId, { text: alertLines.join('\n') });
+                                const alertMsgId = sentMsg?.key?.id;
+                                if (alertMsgId) {
+                                    pendingImageAlerts.set(alertMsgId, {
+                                        messageKey: msg.key,
+                                        senderId: sender,
+                                        groupId: chatId,
+                                        groupName: groupSubject,
+                                    });
+                                    setTimeout(() => pendingImageAlerts.delete(alertMsgId), 24 * 60 * 60 * 1000);
+                                }
+                                console.log(`[${getTimestamp()}] 🖼️ IMAGE_MOD: Alert sent — ${senderPhone} in ${groupSubject}`);
+                            } catch (alertErr) {
+                                console.error(`[${getTimestamp()}] ❌ IMAGE_MOD: Alert failed: ${alertErr.message}`);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ IMAGE_MOD: Error:`, error.message);
+        }
+    }
+
     // Handle private message commands from admin
     if (isPrivate) {
         const senderPhone = extractPhoneNumber(senderId); // Handle both regular and LID format
@@ -1709,6 +1795,31 @@ async function handleMessage(sock, msg, commandHandler) {
                         status.push(`🔒 URL globally blacklisted: ${detectedUrl}\n🌐 Domain added to block list: ${addedDomain}\n📍 Detected in: ${groupRef}`);
                     }
                     await sock.sendMessage(chatId, { text: `✅ URL Alert Action:\n${status.join('\n')}` });
+                    return;
+                }
+
+                // Image moderation reply: 1 = delete only, 2 = delete + kick
+                if ((messageText === '1' || messageText === '2') && pendingImageAlerts.has(quotedMsgId)) {
+                    const imgPending = pendingImageAlerts.get(quotedMsgId);
+                    pendingImageAlerts.delete(quotedMsgId);
+                    const { messageKey, senderId: imgSender, groupId: imgGroup, groupName: imgGroupName } = imgPending;
+                    const status = [];
+                    try {
+                        await sock.sendMessage(imgGroup, { delete: messageKey });
+                        status.push('🗑️ תמונה נמחקה');
+                    } catch (e) {
+                        status.push(`❌ מחיקה נכשלה: ${e.message}`);
+                    }
+                    if (messageText === '2') {
+                        try {
+                            await sock.groupParticipantsUpdate(imgGroup, [imgSender], 'remove');
+                            const imgSenderPhone = imgSender.split('@')[0];
+                            status.push(`👢 הוסר מהקבוצה: +${imgSenderPhone}`);
+                        } catch (e) {
+                            status.push(`❌ הסרה נכשלה: ${e.message}`);
+                        }
+                    }
+                    await sock.sendMessage(chatId, { text: `✅ פעולת מודרציה:\n${status.join('\n')}` });
                     return;
                 }
 
