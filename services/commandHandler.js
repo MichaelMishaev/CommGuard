@@ -482,6 +482,8 @@ class CommandHandler {
    - Group Control: Can enable/disable per group (#jokeson/#jokesoff)
 
 6. **Bullywatch AI System** 🛡️ (Advanced Anti-Bullying)
+   - ⚠️ *REQUIRES ACTIVATION PER GROUP* — type *#bullywatch on [class]* in each group
+   - Once activated, persists across bot restarts (saved in database)
    - Multi-Layer Detection:
      * Layer -1: Critical word filter (instant alerts)
      * Layer 0: Multi-model AI voting (GPT-5-nano + Sentiment)
