@@ -2598,6 +2598,9 @@ async function handleMessage(sock, msg, commandHandler) {
                     }
 
                 } catch (kickError) {
+                    // Note: if kicked=true above (kick API call succeeded but a subsequent
+                    // step like sendKickAlert/getViolations threw), kicked stays true while
+                    // kickReason reflects the post-kick error. The kick itself did happen.
                     console.error('❌ Failed to kick user:', kickError.message);
                     advancedLogger.logPermissionError('kick_invite_spam_user', groupId, kickError);
                     kickReason = `error_${(kickError.message || 'unknown').replace(/\s+/g, '_').substring(0, 40)}`;
