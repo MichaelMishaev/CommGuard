@@ -334,213 +334,143 @@ class CommandHandler {
         if (isAlertPhone) {
             const detailedHelpText = `📝 *CommGuard Bot - FULL COMMAND REFERENCE*
 
-*✅ WORKING COMMANDS:*
-
 *🔧 Basic Commands:*
-• *#status* - Shows bot online status, ID, version, and configuration
-• *#stats* - Displays group statistics (members, admins, etc)
-• *#help* - This command list (private chat only)
-• *#msg1* - Send pre-written admin warning about invite links
+• *#status* - Bot status, ID, version, configuration
+• *#stats* - Group statistics (members, admins)
+• *#msg1* - Send admin warning about invite links
+• *#restarthistory* - View last 10 bot restarts with reasons
 
 *📂 Group Management:*
-• *#markmine [category] [notes]* - Mark group as yours with optional category and notes
+• *#markmine [category] [notes]* - Mark group as yours
   Example: #markmine family Main family group
 • *#unmarkmine* - Unmark current group
 • *#mygroups [category]* - List all your groups (private chat)
-  Example: #mygroups family (filter by category)
-• *#setcategory <category>* - Set category for current group
+• *#setcategory <category>* - Set group category
   Categories: personal, business, community, family, friends, hobby, education, work, other
 • *#categories* - Show category statistics (private chat)
 
 *👮 Moderation Commands:*
-• *#kick* - Reply to message → Kicks user + deletes message + asks for blacklist
-• *#kickglobal* - Reply to message → Shows group list → Select specific groups (max 10 recommended)
-• *#ban* - Reply to message → Permanently bans user (same as kick but called ban)
-• *#clear* - Remove all blacklisted users from current group
+• *#kick* - Reply to message → Kick user + delete message + ask for blacklist
+• *#kickglobal* - Reply to message → Remove user from multiple groups
+• *#ban* - Reply to message → Kick + blacklist user
+• *#clear* - Scan group and remove all blacklisted users
 
 *🛡️ Bullywatch Commands:*
-• *#bullywatch on [class]* - Enable bullying monitoring with class name (MANDATORY)
+• *#bullywatch on [class]* - Enable bullying + image monitoring (MANDATORY: include class name)
   Example: #bullywatch on ג3
-• *#bullywatch off* - Disable bullying monitoring
-• *#bullywatch class [class]* - Update class name for group
+• *#bullywatch off* - Disable monitoring
+• *#bullywatch class [class]* - Update class name
 • *#bullywatch status* - Show monitoring status and class assignment
-• *#bullyalert on/off* - Send alerts to all group admins (admin only)
-  When ON: All group admins receive bullying alerts
-  When OFF: Only main admin receives alerts
-
-*📊 Bullywatch Admin Feedback (Continuous Learning):*
-• *#bullywatch review* - Review last 10 flagged messages for feedback
-• *#bullywatch feedback <id> <verdict>* - Provide verdict on flagged message
-  Verdicts: true_positive | false_positive | low | medium | high
-  Example: #bullywatch feedback msg_123 true_positive
-• *#bullywatch suggest <word>* - Suggest new offensive word for detection
-  Example: #bullywatch suggest חנון
-• *#bullywatch suggestions* - List all pending word suggestions
-• *#bullywatch approve <word> <category>* - Add word to lexicon (NO RESTART NEEDED)
+• *#bullyalert on/off* - Send alerts to all group admins (vs main admin only)
+• *#bullywatch review* - Review last 10 flagged messages
+• *#bullywatch feedback <id> <verdict>* - Provide verdict (true_positive | false_positive | low | medium | high)
+• *#bullywatch suggest <word>* - Suggest new offensive word
+• *#bullywatch approve <word> <category>* - Add word to lexicon (no restart needed)
   Categories: sexual_harassment | general_insult | social_exclusion | direct_threat | privacy_threat
-  Example: #bullywatch approve חנון general_insult
-• *#bullywatch metrics* - View accuracy statistics (true/false positives)
-• *#bullywatch export* - Export all feedback data as CSV for analysis
+• *#bullywatch metrics* - Accuracy statistics
+• *#bullywatch export* - Export feedback data as CSV
 
 *🔇 Mute Commands:*
-• *#mute 30* - Mutes entire group for 30 minutes (only admins can speak)
-• *#mute* (reply) - Mutes specific user (deletes all their messages)
-• *#unmute* - Unmutes group or user
+• *#mute 30* - Mute entire group for 30 minutes
+• *#mute* (reply) - Mute specific user (auto-deletes their messages)
+• *#unmute* - Unmute group or user
 
 *📋 Whitelist Management:*
-• *#whitelist 972555123456* - Adds number to whitelist (bypasses ALL restrictions)
-• *#unwhitelist 972555123456* - Removes from whitelist
-• *#whitelst* - Shows all whitelisted numbers
+• *#whitelist 972555123456* - Add to whitelist (bypasses ALL restrictions)
+• *#unwhitelist 972555123456* - Remove from whitelist
+• *#whitelst* - List whitelisted numbers
 
 *🚫 Blacklist Management:*
-• *#blacklist 972555123456* - Adds to blacklist (auto-kicked on join)
-• *#unblacklist 972555123456* or *#ub 972555123456* - Removes from blacklist
-• *#blacklst* or *#blklst* - Shows all blacklisted numbers with violation counts
-• *#botkick* - Scans current group and kicks all blacklisted members
-• *#rejoinlinks <phone>* - Shows rejoin links for kicked user
-  Example: #rejoinlinks 972555123456
+• *#blacklist 972555123456* - Add to blacklist (auto-kicked on join)
+• *#unblacklist 972555123456* or *#ub 972555123456* - Remove from blacklist
+• *#blacklst* or *#blklst* - List blacklisted numbers with violation counts
+• *#botkick* - Scan group and kick all blacklisted members
+• *#rejoinlinks <phone>* - Show rejoin links for kicked user
 
 *🔗 URL Blacklist Management:*
 • *#urlblock <url>* - Add URL to global blacklist (auto-deleted in all groups)
 • *#urlunblock <url>* - Remove URL from global blacklist
-• *#urlblocklist* - Show all globally blocked URLs
+• *#urlblocklist* - Show all blocked URLs
 
-*📊 Violation Tracking System:*
-• When user posts invite link → Kicked + Violation recorded + Alert sent
-• When admin uses #kick → Kicked + Violation recorded + Alert sent
-• Admin receives alert asking: "Reply 1 = blacklist, 0 = skip"
-• Reply *1* to alert → User added to blacklist
-• Reply *0* to alert → Skip blacklist (violation still recorded)
-• Reply *#ub* to alert → Remove user from blacklist
-• Violation types tracked: invite_link, kicked_by_admin
-• Violations preserved in database even after unblacklist
+*📊 Violation Tracking:*
+• Invite link posted → Kick + violation recorded + admin alert
+• Admin kick → Violation recorded + admin alert
+• Reply *1* to alert → Blacklist user
+• Reply *0* to alert → Skip (violation still recorded)
+• Reply *#ub* to alert → Remove from blacklist
 
 *🌍 Country Restriction:*
-• *#botforeign* - Removes ALL users with +1 (US/Canada) and +6 (Southeast Asia) numbers
-  - Protects Israeli numbers (+972)
-  - Skips whitelisted users
-
-*🧹 Advanced Commands:*
-• *#sweep* - Removes inactive users (requires superadmin)
-• *#sessioncheck* - Shows session decryption error statistics
-• *#botadmin* - Checks if bot has admin privileges in current group
-• *#debugnumbers* - Shows participant phone formats (for debugging LID issues)
-
-*📊 Incident Logging & Analysis:*
-• Invite-link incidents are logged as grep-able INVITE_OUTCOME lines
-• Use on server: grep 'INVITE_OUTCOME.*deleted=NO' [logfile] → missed deletions
-• Fields logged: group, user phone, link, deleted (YES/NO), kicked (YES/NO), reason, cooldown remaining
-
-*🔍 Search Commands (Requires MCP Setup):*
-• *#search <query>* - Search the web (rate limited: 5/minute)
-• *#verify <url>* - Verify if a link is safe
+• *#botforeign* - Remove all +1 (US/Canada) and +6x (Southeast Asia) users
+  Protects +972 (Israel) — never kicked
 
 *🌐 Translation Commands:*
-• *#translate <text>* - Translate to English (auto-detect source)
+• *#translate <text>* - Translate text (auto-detect source language)
 • *#translate <lang> <text>* - Translate to specific language
-• *#langs* - Show supported language codes (20+ languages)
-• *#autotranslate <on/off/status>* - Control auto-translation (bot only)
-• *#ru <text>* - Translate text to Russian (shortcut)
-• *#translation <on/off/status>* - Alias for #autotranslate
-• **Auto-Translation** - ${config.FEATURES.AUTO_TRANSLATION ? '✅ ENABLED' : '❌ DISABLED'} (translates non-Hebrew to Hebrew)
-• **Smart Detection** - Only translates pure non-Hebrew (ignores mixed Hebrew/English, Russian)
+• *#langs* - Show supported language codes
+• *#ru <text>* - Translate to Russian (shortcut)
+• *#autotranslate <on/off/status>* - Control auto-translation
+• Auto-Translation: ${config.FEATURES.AUTO_TRANSLATION ? '✅ ENABLED' : '❌ DISABLED'}
 
-*🎭 Entertainment Commands:*
-• *#jokestats* - View motivational phrase usage statistics
-• *#jokeson* - Enable משעמם jokes for this group
-• *#jokesoff* - Disable משעמם jokes for this group
-• *#jokesstatus* - Show joke settings for this group
-• **Automatic Jokes** - Bot responds to "משעמם" with funny Hebrew jokes (125+ jokes)
+*🎭 Entertainment:*
+• *#jokeson* / *#jokesoff* / *#jokesstatus* - Control Hebrew jokes per group
+• *#jokestats* - View joke usage statistics
+• Bot responds to "משעמם" with random Hebrew jokes (125+)
+
+*🧠 Memory & Performance:*
+• *#memory* or *#memcheck* - Quick memory status
+• *#memreport* - Detailed memory report with leak detection
+• *#gc* or *#clearmem* - Force garbage collection
+
+*🧹 Advanced Commands:*
+• *#sweep* - Remove inactive users (superadmin only)
+• *#sessioncheck* - Session decryption error statistics
+• *#botadmin* - Check bot admin privileges in current group
+• *#debugnumbers* - Show participant phone formats (LID debugging)
 
 *🚨 AUTO-PROTECTION FEATURES:*
-1. **Invite Link Detection** ✅ (Enhanced Protection)
-   - All users: Immediate kick + violation tracking
-   - Always: Message *deleted immediately* + Admin alert with violation count
-   - Detects: chat.whatsapp.com links
-   - Cross-group attack protection: Message deleted even if user was recently kicked elsewhere
-   - Admin can reply 1/0 to blacklist/skip
-   - Violations stored permanently in database
+1. **Invite Link Detection** ✅
+   - Non-admins posting WhatsApp links → Instant kick + delete + admin alert
+   - Admin replies 1/0 to blacklist or skip
 
-2. **Blacklist Auto-Kick** ✅
-   - When blacklisted user joins → Instant kick + Alert sent
-   - Alert shows violation history and #ub option to unblacklist
-   - Admin override: If ADMIN adds blacklisted user → Allowed to stay
+2. **Image Moderation** ✅ (groups with #bullywatch on)
+   - Every image from non-admins analyzed by gpt-5.4-nano vision
+   - Sexual/violent/offensive content → Admin alert with forwarded image
+   - Reply *1* to delete · Reply *2* to delete + kick
 
-3. **Country Code Auto-Kick** ✅
-   - Auto-kicks: +1 (US/Canada) and +6x (Southeast Asia)
-   - Protected: +972 (Israel) NEVER kicked
-   - Admin override: If ADMIN adds restricted user → Allowed to stay
+3. **Blacklist Auto-Kick** ✅
+   - Blacklisted user joins → Instant kick + alert
+   - Admin override: If admin adds blacklisted user → Allowed to stay
 
-4. **Whitelist Bypass** ✅
-   - Whitelisted users bypass ALL restrictions
-   - Never kicked for any reason
+4. **Country Code Auto-Kick** ✅
+   - Auto-kicks +1 and +6x numbers, never +972
 
-5. **Anti-Boredom System** ✅
-   - Auto-detects: Messages containing "משעמם"
-   - Actions: Responds with random funny Hebrew jokes
-   - Features: Smart rotation, usage tracking, 125+ modern Hebrew jokes
-   - Group Control: Can enable/disable per group (#jokeson/#jokesoff)
+5. **Bullywatch AI** 🛡️ (groups with #bullywatch on)
+   - 4-layer detection: Lexicon → Temporal → Scoring → gpt-5.4-nano (ambiguous only)
+   - Detects: harassment, social exclusion, threats, doxxing, body shaming
+   - Monitor mode ON by default (alerts only, no auto-delete)
 
-6. **Bullywatch AI System** 🛡️ (Advanced Anti-Bullying)
-   - ⚠️ *REQUIRES ACTIVATION PER GROUP* — type *#bullywatch on [class]* in each group
-   - Once activated, persists across bot restarts (saved in database)
-   - Multi-Layer Detection:
-     * Layer -1: Critical word filter (instant alerts)
-     * Layer 0: Multi-model AI voting (GPT-5-nano + Sentiment)
-     * Layer 1: Hebrew lexicon with compound pattern detection
-     * Layer 2: Temporal analysis (pile-on detection)
-     * Layer 3: Context-aware scoring
-     * Layer 4: GPT-5-mini deep analysis (ambiguous cases)
-   - Detects: Sexual harassment, social exclusion, doxxing, threats, body shaming
-   - Smart Features:
-     * Context-aware: "חתיכת עוגה" (safe) vs "חתיכת חרה" (harmful)
-     * Narrative dampening: "ראיתי בסרט כלב" (movie context) = safe
-     * Defense in depth: Lexicon ALWAYS runs even if AI says safe
-     * Model disagreement escalation: Auto-escalates to GPT-5-mini
-   - Continuous Learning:
-     * Admin feedback loop (#bullywatch feedback)
-     * Crowdsourced lexicon updates (#bullywatch suggest)
-     * Runtime word addition - NO RESTART NEEDED (#bullywatch approve)
-     * Accuracy tracking and metrics (#bullywatch metrics)
-   - Monitor Mode: Enabled by default (logs only, no auto-delete)
-   - Class Assignment: Mandatory for reporting and tracking
-   - Expected Accuracy: 95%+ true positive rate, <5% false positives
+6. **Anti-Boredom** ✅
+   - "משעמם" in any message → Bot replies with random Hebrew joke
+   - Enable/disable per group with #jokeson / #jokesoff
 
-*🧠 Memory & Performance Commands:*
-• *#memory* or *#memcheck* - Quick memory status check
-• *#memreport* - Detailed memory report with leak detection
-• *#gc* or *#clearmem* - Force garbage collection (requires --expose-gc)
-• *#restarthistory* - View last 10 bot restarts with reasons
+*⚙️ BEHAVIORS:*
+• Violations stored permanently in PostgreSQL
+• Blacklist cached in Redis (24hr TTL)
+• Muted users auto-kicked after 10 messages
+• Memory monitored — alert at 85%, auto-restart at 400MB
 
-*⚙️ SPECIAL BEHAVIORS:*
-• Bot needs admin to work (bypass enabled for LID issues)
-• #kick now deletes the target message too
-• Violations tracked for invite_link and kicked_by_admin
-• Admin controls blacklisting via reply system (1/0/#ub)
-• Violation history preserved permanently in PostgreSQL database
-• Blacklist synced across PostgreSQL + Firebase + Redis
-• Muted users kicked after 10 messages
-• Session errors handled automatically
-• Automatic memory monitoring with alerts at 85%+ usage
-• Memory leak detection with 5-minute snapshots
-
-*🔒 SECURITY NOTES:*
+*🔒 SECURITY:*
 • #help only works in private chat
-• #help shows "Unknown command" in groups
-• Only admin phones can access commands
 • Alert phone: ${config.ALERT_PHONE} (YOU)
 • Admin phone: ${config.ADMIN_PHONE}
 
 *📱 BOT STATUS:*
-• Version: 2.1 (Baileys + Enhanced Nationality System)
-• Firebase: ${config.FEATURES.FIREBASE_INTEGRATION ? '✅ Enabled (Optimized)' : '❌ Disabled'}
-• Blacklist System: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? '✅ Enabled (24hr Cache)' : '❌ Disabled'}
-• Bot Admin Bypass: ${config.FEATURES.BYPASS_BOT_ADMIN_CHECK ? '✅ Enabled' : '❌ Disabled'}
-• Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? '✅ Enabled' : '❌ Disabled'}
-• Auto-Translation: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
-• Stealth Mode: ${config.FEATURES.STEALTH_MODE ? '✅ Enabled' : '❌ Disabled'}
-• Randomize Responses: ${config.FEATURES.RANDOMIZE_RESPONSES ? '✅ Enabled' : '❌ Disabled'}
-• Simulate Typing: ${config.FEATURES.SIMULATE_TYPING ? '✅ Enabled' : '❌ Disabled'}
+• Version: 2.0 (Baileys)
+• Blacklist: ${config.FEATURES.AUTO_KICK_BLACKLISTED ? '✅ Active' : '❌ Disabled'}
+• Country Restrictions: ${config.FEATURES.RESTRICT_COUNTRY_CODES ? '✅ Active' : '❌ Disabled'}
+• Image Moderation: ${config.FEATURES.IMAGE_MODERATION_ENABLED ? '✅ Active (bullywatch groups)' : '❌ Disabled'}
+• Auto-Translation: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Active' : '❌ Disabled'}
+• Stealth Mode: ${config.FEATURES.STEALTH_MODE ? '✅ Active' : '❌ Disabled'}
 
 *🛡️ Bot is protecting your groups 24/7!*`;
 
@@ -550,106 +480,82 @@ class CommandHandler {
             const helpText = `📝 *CommGuard Bot Commands*
 
 *🔧 Basic Commands:*
-• *#status* - Check bot status and configuration
-• *#stats* - Show group statistics
+• *#status* - Bot status and configuration
+• *#stats* - Group statistics
 • *#msg1* - Send admin warning about invite links
+• *#restarthistory* - View last 10 restarts
 
 *📂 Group Management:*
 • *#markmine [category] [notes]* - Mark group as yours
 • *#unmarkmine* - Unmark current group
 • *#mygroups [category]* - List your groups (private chat)
 • *#setcategory <category>* - Set group category
-• *#categories* - Show category stats (private chat)
+• *#categories* - Category statistics (private chat)
 
-*👮 Moderation Commands:* (Reply to message)
-• *#kick* - Remove user from group + blacklist (bot only)
-• *#ban* - Permanently ban user from group
-• *#clear* - Clear messages (not yet implemented)
+*👮 Moderation:* (reply to a message)
+• *#kick* - Kick user + delete message + ask for blacklist
+• *#kickglobal* - Remove user from multiple groups
+• *#ban* - Kick + blacklist user
+• *#clear* - Remove all blacklisted users from current group
+
+*🛡️ Bullywatch (anti-bullying + image moderation):*
+• *#bullywatch on [class]* - Enable (required: class name e.g. ג3)
+• *#bullywatch off* - Disable
+• *#bullywatch status* - Show status and class
+• *#bullyalert on/off* - Alert all admins vs main admin only
+• *#bullywatch review* - Review flagged messages
+• *#bullywatch metrics* - Accuracy statistics
 
 *🔇 Mute Commands:*
-• *#mute [minutes]* - Mute entire group (admin only)
-• *#mute (reply) [minutes]* - Mute specific user
+• *#mute 30* - Mute group for 30 minutes
+• *#mute* (reply) - Mute specific user
 • *#unmute* - Unmute group/user
 
-*📋 Whitelist Management:*
-• *#whitelist [number]* - Add number to whitelist
-• *#unwhitelist [number]* - Remove from whitelist
-• *#whitelst* - List whitelisted numbers
+*📋 Whitelist:*
+• *#whitelist 972555123456* - Bypass all restrictions
+• *#unwhitelist 972555123456* - Remove from whitelist
+• *#whitelst* - List whitelist
 
-*🚫 Blacklist Management:*
-• *#blacklist [number]* - Add to blacklist
-• *#unblacklist [number]* or *#ub [number]* - Remove from blacklist
-• *#blacklst* or *#blklst* - List blacklisted numbers with violations
-• *#botkick* - Scan group and kick all blacklisted users
+*🚫 Blacklist:*
+• *#blacklist 972555123456* - Add to blacklist
+• *#unblacklist 972555123456* or *#ub* - Remove from blacklist
+• *#blacklst* or *#blklst* - List with violation counts
+• *#botkick* - Kick all blacklisted users from current group
 • *#rejoinlinks <phone>* - Show rejoin links for kicked user
 
-*🔗 URL Blacklist Management:*
-• *#urlblock <url>* - Add URL to global blacklist (auto-deleted in all groups)
-• *#urlunblock <url>* - Remove URL from global blacklist
-• *#urlblocklist* - Show all globally blocked URLs
-
-*🧠 Memory & Performance:*
-• *#memory* - Quick memory status check
-• *#memreport* - Detailed memory report
-• *#gc* - Force garbage collection
-
-*📊 Violation Tracking:*
-• Reply *1* or *0* to kick alerts to blacklist/skip
-• Reply *#ub* to alerts to unblacklist users
-• Violations tracked: invite_link, kicked_by_admin
+*🔗 URL Blacklist:*
+• *#urlblock <url>* / *#urlunblock <url>* / *#urlblocklist*
 
 *🌍 Country Restriction:*
-• *#botforeign* - Remove all +1 and +6 users from group
+• *#botforeign* - Remove all +1 and +6x users (protects +972)
 
-*🧹 Advanced Commands:*
-• *#sweep* - Clean up inactive users (superadmin)
-• *#sessioncheck* - Check for session decryption errors
-• *#botadmin* - Check if bot has admin privileges
-• *#jokestats* - View joke usage statistics
-
-*🎭 Joke Control Commands:*
-• *#jokeson* - Enable משעמם jokes in this group
-• *#jokesoff* - Disable משעמם jokes in this group
-• *#jokesstatus* - Show joke settings for this group
-
-*🌐 Translation Commands:*
+*🌐 Translation:*
 • *#translate <text>* - Translate text
-• *#langs* - Show supported languages
-• *#autotranslate <on/off/status>* - Control auto-translation (bot only)
-• *#ru <text>* - Translate text to Russian (shortcut)
-• *#translation <on/off/status>* - Alias for #autotranslate
+• *#ru <text>* - Translate to Russian
+• *#langs* - Show language codes
+• *#autotranslate <on/off/status>* - Auto-translation control
 • Status: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
 
-*🚨 Auto-Protection Features:*
-• **Invite Link Detection** - Auto-kick + blacklist
-• **Blacklist Enforcement** - Auto-kick banned users
-• **Country Code Restriction** - Auto-kick +1 and +6 numbers
-• **Whitelist Protection** - Bypass all restrictions
-• **Anti-Boredom System** - Responds to "משעמם" with Hebrew jokes (per-group control)
+*🎭 Jokes:*
+• *#jokeson* / *#jokesoff* / *#jokesstatus* - Per-group control
+• Bot auto-replies to "משעמם" with Hebrew jokes
 
-*💡 Usage Examples:*
-• Mark group: \`#markmine family Main family group\`
-• Mute group: \`#mute 30\` (30 minutes)
-• Add to whitelist: \`#whitelist 972555123456\`
-• Remove all foreign users: \`#botforeign\`
-• Get jokes: Any message with "משעמם" → Bot responds with humor
-• View joke stats: \`#jokestats\`
-• Control jokes: \`#jokesoff\` → Disable jokes in this group
-• Translate text: \`#translate שלום עולם\` → "Hello world"
-• Show rejoin links: \`#rejoinlinks 972555123456\`
+*🧠 Memory:*
+• *#memory* - Status · *#memreport* - Detailed · *#gc* - Force GC
 
-*⚠️ Important Notes:*
-• Most commands require admin privileges
-• Cannot kick/ban other admins
-• Whitelisted users bypass all restrictions
-• All actions are logged and tracked
+*🧹 Advanced:*
+• *#sweep* - Remove inactive users (superadmin)
+• *#botadmin* - Check bot admin status
+• *#sessioncheck* - Session error statistics
 
-*🔒 Security Notice:*
-• This command list is PRIVATE
-• Only accessible via DM to authorized admin
-• #help is disabled in groups for security
+*🚨 Auto-Protection:*
+• Invite links → Auto-kick + alert (reply 1/0 to blacklist/skip)
+• Image moderation → NSFW/violent images alerted (bullywatch groups)
+• Blacklisted users → Auto-kicked on join
+• +1 / +6x numbers → Auto-kicked
+• Whitelisted users → Never kicked
 
-*🛡️ Bot protects your groups 24/7 automatically!*`;
+*🔒 #help only works in private chat · Admin only*`;
 
             await this.sock.sendMessage(msg.key.remoteJid, { text: helpText });
         }
