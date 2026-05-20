@@ -4,6 +4,10 @@
 const { query } = require('./connection');
 const { getTimestamp } = require('../utils/logger');
 
+// In-memory cache for isBullyingMonitoringEnabled — avoids a 150-300ms DB round-trip per message
+const bullyingMonitoringCache = new Map(); // groupId -> {value: boolean, expiresAt: number}
+const BULLYING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Get all groups from database
  * @returns {Promise<Array>} List of groups
@@ -546,6 +550,7 @@ async function setBullyingMonitoring(whatsappGroupId, enabled, className = null)
 
         if (result.rows.length > 0) {
             const group = result.rows[0];
+            bullyingMonitoringCache.delete(whatsappGroupId); // invalidate cache on change
             const status = enabled ? 'enabled' : 'disabled';
             const classInfo = group.class_name ? ` (Class: ${group.class_name})` : '';
             console.log(`[${getTimestamp()}] ✅ Bullying monitoring ${status} for ${group.name}${classInfo}`);
@@ -566,6 +571,9 @@ async function setBullyingMonitoring(whatsappGroupId, enabled, className = null)
  * @returns {Promise<boolean>} True if enabled, false otherwise
  */
 async function isBullyingMonitoringEnabled(whatsappGroupId) {
+    const cached = bullyingMonitoringCache.get(whatsappGroupId);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
     try {
         const result = await query(`
             SELECT bullying_monitoring
@@ -573,7 +581,9 @@ async function isBullyingMonitoringEnabled(whatsappGroupId) {
             WHERE whatsapp_group_id = $1
         `, [whatsappGroupId]);
 
-        return result.rows[0]?.bullying_monitoring || false;
+        const value = result.rows[0]?.bullying_monitoring || false;
+        bullyingMonitoringCache.set(whatsappGroupId, { value, expiresAt: Date.now() + BULLYING_CACHE_TTL });
+        return value;
     } catch (error) {
         console.error(`[${getTimestamp()}] ❌ Failed to check bullying monitoring:`, error.message);
         return false;
