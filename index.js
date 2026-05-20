@@ -2217,19 +2217,9 @@ async function handleMessage(sock, msg, commandHandler) {
             return;
         }
 
-        // Require admin for all other commands (allow fromMe for bot's own WhatsApp Web)
+        // Require admin for all group commands — silently ignore non-admins
         if (!isAdmin && !msg.key.fromMe) {
-            console.log(`   Result: ❌ Non-admin tried to use command`);
-
-            const adminOnlyText = config.FEATURES.RANDOMIZE_RESPONSES ?
-                stealthUtils.getMessageVariation('admin_only_hebrew', 'מה אני עובד אצלך?!') :
-                'מה אני עובד אצלך?!';
-
-            if (config.FEATURES.STEALTH_MODE) {
-                await stealthUtils.sendHumanLikeMessage(sock, groupId, { text: adminOnlyText });
-            } else {
-                await sock.sendMessage(groupId, { text: adminOnlyText });
-            }
+            console.log(`   Result: ❌ Non-admin command ignored`);
             return;
         }
 
