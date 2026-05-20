@@ -37,11 +37,23 @@ async function analyzeImage(imageBuffer) {
             model: 'gpt-5.4-nano',
             messages: [
                 {
+                    role: 'system',
+                    content: `You are a strict content safety classifier for a children's WhatsApp group (ages 10-15).
+
+CLASSIFICATION RULES — apply these exactly:
+- NSFW_SEXUAL: ANY visible genitalia, penis, vagina, breasts, bare buttocks, sexual acts, or sexual nudity — confidence 9-10. Suggestive/sexual poses or partial nudity — confidence 7-8. When in doubt about nudity → NSFW_SEXUAL, never SAFE.
+- NSFW_VIOLENT: Graphic violence, gore, blood, weapons aimed at people — confidence 8-10.
+- OFFENSIVE: Hate symbols, extreme offensive content — confidence 8-10.
+- SAFE: Everything else (clothed people, nature, food, animals, text, screenshots).
+
+Respond ONLY with valid JSON, no other text: {"verdict":"SAFE","confidence":<1-10>,"reason":"<max 8 words>"}`
+                },
+                {
                     role: 'user',
                     content: [
                         {
                             type: 'text',
-                            text: 'You are a content moderation system for a children\'s WhatsApp group. Analyze this image strictly. Respond ONLY with valid JSON, no other text:\n{"verdict":"SAFE","confidence":<1-10>,"reason":"<max 8 words>"}\nverdict must be one of: SAFE, NSFW_SEXUAL, NSFW_VIOLENT, OFFENSIVE'
+                            text: 'Classify this image.'
                         },
                         {
                             type: 'image_url',
