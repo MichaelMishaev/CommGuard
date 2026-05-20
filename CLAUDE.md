@@ -15,7 +15,7 @@ CommGuard-prod is the **production** WhatsApp group moderation bot. It uses Bail
 git push origin main && ssh root@209.38.231.184 "cd ~/CommGuard && git pull && pm2 restart commguard-bot"
 ```
 
-**Deploy with env change:**
+**Deploy with env change** (when `.env` was modified on server):
 ```bash
 ssh root@209.38.231.184 "cd ~/CommGuard && git pull && pm2 restart commguard-bot --update-env"
 ```
@@ -50,12 +50,25 @@ messages.upsert (type=notify only)
       → image moderation (isGroup + imageMessage + isBullyingMonitoringEnabled)
       → invite/URL detection
       → mute check
-      → command handler (isPrivate only)
+      → group command handler
+      → private command handler
 ```
+
+### Command Authorization
+
+**Group commands** — two ways to pass the admin gate:
+1. Sender is a WhatsApp group admin (`participant.admin === 'admin'|'superadmin'`)
+2. Sender is the bot owner (`isBotOwner` check in `index.js`) — matches `ADMIN_PHONE`, `ALERT_PHONE`, or `ADMIN_LID` from `config.js`, regardless of group admin status
+
+`isBotOwner` is passed as `isAdmin=true` into `commandHandler.handleCommand()` so all internal per-command `!isAdmin` checks also pass.
+
+Non-admins/non-owners sending `#commands` in groups → **silently ignored** (no response).
+
+**Private commands** — `isAdmin` is determined solely by phone/LID matching `ADMIN_PHONE`/`ALERT_PHONE`/`ADMIN_LID`.
 
 ### Pending Action Maps (global in `index.js`)
 
-Admin receives an alert message → replies to it → bot looks up the quoted message ID:
+Admin receives an alert → replies to it → bot looks up quoted message ID:
 
 | Map | Trigger | Admin replies |
 |-----|---------|---------------|
@@ -68,7 +81,7 @@ All maps auto-expire after 24h via `setTimeout`.
 ### In-Memory Caches
 
 - `groupAdminCache` — Map in `index.js`, 10-min TTL, caches group participant admin status
-- `bullyingMonitoringCache` — Map in `database/groupService.js`, 5-min TTL, caches `SELECT bullying_monitoring FROM groups` result per group (eliminates 150-300ms DB round-trip on every message); invalidated immediately when `setBullyingMonitoring()` is called
+- `bullyingMonitoringCache` — Map in `database/groupService.js`, 5-min TTL, eliminates 150-300ms DB round-trip on every message; invalidated immediately on `setBullyingMonitoring()`
 
 ### GPT Integration (`OPENAI_API_KEY`)
 
@@ -84,22 +97,23 @@ All maps auto-expire after 24h via `setTimeout`.
 
 **GPT-5.4 family rules:**
 - Always use `max_completion_tokens` (not `max_tokens`)
-- Image MIME type is detected from buffer magic bytes (`ff d8` = JPEG, `89 50` = PNG, `52 49` = WebP)
-- `imageModeration.js` is fail-open: any API error returns `{verdict: 'SAFE'}` to avoid blocking legitimate images
+- Image MIME type detected from buffer magic bytes (`ff d8` = JPEG, `89 50` = PNG, `52 49` = WebP)
+- `imageModeration.js` fail-open: any API error returns `{verdict: 'SAFE'}` to avoid blocking legitimate images
 
 ### Services
 
-- `imageModeration.js` — `analyzeImage(buffer)` → `{verdict, confidence, reason}`
+- `imageModeration.js` — `analyzeImage(buffer)` → `{verdict, confidence, reason}`; prompt uses system+user split with explicit NSFW rules
 - `bullywatch/` — 4-layer detection: lexicon → temporal → scoring → GPT
 - `commandHandler.js` — all `#command` routing (3000+ lines)
 - `safeBrowsingService.js` — Google Safe Browsing API (4s timeout, graceful fail)
 - `urlBlacklistService.js` — file-based domain blocklist + in-memory Set
-- `redisService.js` — blacklist TTL cache, rate limiting, bullywatch context window (last 5 msgs/group, 5-min TTL)
+- `redisService.js` — blacklist TTL cache, rate limiting, bullywatch context window; uses `keepAlive: 15000` + `reconnectOnError` to prevent ECONNRESET drops
 
 ### Database (`database/`)
 
 - `groupService.js` — most-used: `isBullyingMonitoringEnabled`, `setBullyingMonitoring`, `getAlertRecipients`
 - `connection.js` — `pg` Pool; logs slow queries (>100ms)
+- Per-group `restrict_country_codes` boolean column — `#botforeign` scans current members; auto-kick on join is controlled by `FEATURES.RESTRICT_COUNTRY_CODES` globally but the per-group column can differ
 - Schema migrations: `database/*.sql` applied via matching `apply-*.js` scripts
 
 ### Utilities (`utils/`)
@@ -117,7 +131,7 @@ All maps auto-expire after 24h via `setTimeout`.
 #bullywatch off
 #bullywatch status
 ```
-Stores `bullying_monitoring = true` + `class_name` in `groups` table. Gate: `isBullyingMonitoringEnabled(chatId)` (cached).
+Stores `bullying_monitoring = true` + `class_name` in `groups` table. Gate: `isBullyingMonitoringEnabled(chatId)` (cached 5 min).
 
 ### Detection Layers
 1. **Lexicon** (`lexiconService.js`) — Hebrew keyword + emoji pattern matching
@@ -135,7 +149,7 @@ Stores `bullying_monitoring = true` + `class_name` in `groups` table. Gate: `isB
 `BULLYWATCH_MONITOR_MODE: true` (default) — alerts only, no auto-deletions.
 
 ### Image Moderation (tied to bullywatch)
-Activates automatically when `bullying_monitoring = true` for the group. Non-admin sends image → download via `downloadMediaMessage` → `analyzeImage()` → if confidence ≥ 7 and verdict ≠ SAFE → forward image to admin + send Hebrew alert.
+Activates automatically when `bullying_monitoring = true` for the group. Non-admin sends image → download via `downloadMediaMessage` → `analyzeImage()` → if confidence ≥ 7 and verdict ≠ SAFE → forward image to admin + send **English** alert with `1`/`2` reply options.
 
 ## Environment Variables (`.env`)
 
@@ -143,17 +157,16 @@ Activates automatically when `bullying_monitoring = true` for the group. Non-adm
 |-----|---------|
 | `OPENAI_API_KEY` | GPT-5.4-nano calls (bullywatch + image moderation) |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection |
+| `REDIS_URL` | Redis connection (uses keepAlive=15s to prevent ECONNRESET) |
 | `GOOGLE_SAFE_BROWSING_API_KEY` | URL safety checks (optional) |
-| `ADMIN_PHONE` / `ALERT_PHONE` | Override `config.js` defaults |
+| `ADMIN_PHONE` / `ALERT_PHONE` | Bot owner phone — overrides config.js defaults |
 
 ## Known Issues
 
 - `#mute` requires bot to have group admin status
-- `#clear` does not reliably delete messages — root cause unidentified
-- LID-format sender IDs must go through `extractPhoneNumber()` (from `utils/lidDecoder.js`) before display
-- DB connection timeout burst on startup (58 groups upserted in parallel) — recovers automatically
-- `BYPASS_BOT_ADMIN_CHECK: true` in config works around LID-format bot admin detection issues
+- LID-format sender IDs must go through `extractPhoneNumber()` (`utils/lidDecoder.js`) before display
+- DB connection timeout burst on startup (groups upserted in parallel) — recovers automatically
+- `BYPASS_BOT_ADMIN_CHECK: true` in config works around LID-format bot admin detection
 
 ## Memory Protection (960MB Server)
 
