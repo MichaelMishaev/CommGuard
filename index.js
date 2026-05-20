@@ -1568,15 +1568,15 @@ async function handleMessage(sock, msg, commandHandler) {
                             }
 
                             const alertLines = [
-                                '🖼️ *תמונה חשודה זוהתה*',
-                                `👤 שולח: +${senderPhone} (${msg.pushName || senderPhone})`,
-                                `📍 קבוצה: ${groupSubject}`,
-                                `⚠️ סיבה: ${result.reason}`,
-                                `📊 ביטחון: ${result.confidence}/10`,
+                                '🖼️ *Suspicious image detected*',
+                                `👤 Sender: +${senderPhone} (${msg.pushName || senderPhone})`,
+                                `📍 Group: ${groupSubject}`,
+                                `⚠️ Reason: ${result.reason}`,
+                                `📊 Confidence: ${result.confidence}/10`,
                                 '',
-                                '↩️ *השב להודעה זו:*',
-                                '*1* — מחק תמונה',
-                                '*2* — מחק + הסר מהקבוצה',
+                                '↩️ *Reply to this message:*',
+                                '*1* — Delete image',
+                                '*2* — Delete + remove from group',
                             ];
 
                             try {
@@ -1806,20 +1806,20 @@ async function handleMessage(sock, msg, commandHandler) {
                     const status = [];
                     try {
                         await sock.sendMessage(imgGroup, { delete: messageKey });
-                        status.push('🗑️ תמונה נמחקה');
+                        status.push('🗑️ Image deleted');
                     } catch (e) {
-                        status.push(`❌ מחיקה נכשלה: ${e.message}`);
+                        status.push(`❌ Delete failed: ${e.message}`);
                     }
                     if (messageText === '2') {
                         try {
                             await sock.groupParticipantsUpdate(imgGroup, [imgSender], 'remove');
                             const imgSenderPhone = imgSender.split('@')[0];
-                            status.push(`👢 הוסר מהקבוצה: +${imgSenderPhone}`);
+                            status.push(`👢 Removed from group: +${imgSenderPhone}`);
                         } catch (e) {
-                            status.push(`❌ הסרה נכשלה: ${e.message}`);
+                            status.push(`❌ Remove failed: ${e.message}`);
                         }
                     }
-                    await sock.sendMessage(chatId, { text: `✅ פעולת מודרציה:\n${status.join('\n')}` });
+                    await sock.sendMessage(chatId, { text: `✅ Image moderation action:\n${status.join('\n')}` });
                     return;
                 }
 
