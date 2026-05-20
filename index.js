@@ -2253,7 +2253,7 @@ async function handleMessage(sock, msg, commandHandler) {
             console.log(`   Modified message contextInfo:`, modifiedMsg.message.extendedTextMessage.contextInfo);
         }
 
-        const handled = await commandHandler.handleCommand(modifiedMsg, command, args, isAdmin, isSuperAdmin);
+        const handled = await commandHandler.handleCommand(modifiedMsg, command, args, isAdmin || isBotOwner, isSuperAdmin || isBotOwner);
         if (handled) {
             console.log(`   Result: ✅ Command handled successfully`);
         } else {
