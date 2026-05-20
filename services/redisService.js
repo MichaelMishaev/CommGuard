@@ -22,34 +22,36 @@ function initRedis(config = {}) {
     const redisUrl = typeof config === 'string' ? config :
                      config.url || process.env.REDIS_URL;
 
-    if (redisUrl) {
-        // Use connection URL (Railway style)
-        console.log(`[${getTimestamp()}] 🔌 Connecting to Redis via URL...`);
+    const sharedOptions = {
+        // Exponential backoff: 100ms → 200ms → 400ms … capped at 5s
+        retryStrategy: (times) => Math.min(100 * Math.pow(2, times), 5000),
+        maxRetriesPerRequest: 3,
+        enableOfflineQueue: true,
+        // Send a TCP keepalive every 15s — prevents ECONNRESET from idle timeouts
+        keepAlive: 15000,
+        connectTimeout: 10000,
+        // Reconnect on ECONNRESET / ETIMEDOUT
+        reconnectOnError: (err) => {
+            const target = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'];
+            return target.some(code => err.message.includes(code));
+        },
+    };
 
+    if (redisUrl) {
+        console.log(`[${getTimestamp()}] 🔌 Connecting to Redis via URL...`);
         redisClient = new Redis(redisUrl, {
-            retryStrategy: (times) => {
-                const delay = Math.min(times * 50, 2000);
-                return delay;
-            },
-            maxRetriesPerRequest: 3,
-            tls: redisUrl.includes('rediss://') ? {} : undefined  // Enable TLS for rediss://
+            ...sharedOptions,
+            tls: redisUrl.includes('rediss://') ? {} : undefined,
         });
     } else {
-        // Use individual parameters (self-hosted style)
         const redisConfig = {
             host: config.host || process.env.REDIS_HOST || 'localhost',
             port: config.port || process.env.REDIS_PORT || 6379,
             password: config.password || process.env.REDIS_PASSWORD || undefined,
             db: config.db || 0,
-            retryStrategy: (times) => {
-                const delay = Math.min(times * 50, 2000);
-                return delay;
-            },
-            maxRetriesPerRequest: 3
+            ...sharedOptions,
         };
-
         console.log(`[${getTimestamp()}] 🔌 Connecting to Redis at ${redisConfig.host}:${redisConfig.port}...`);
-
         redisClient = new Redis(redisConfig);
     }
 
