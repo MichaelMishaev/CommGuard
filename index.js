@@ -2217,8 +2217,15 @@ async function handleMessage(sock, msg, commandHandler) {
             return;
         }
 
-        // Require admin for all group commands — silently ignore non-admins
-        if (!isAdmin && !msg.key.fromMe) {
+        // Allow bot owner phones regardless of group admin status
+        const isBotOwner = senderPhone === config.ADMIN_PHONE ||
+                           senderPhone === config.ALERT_PHONE ||
+                           senderId.includes(config.ADMIN_PHONE) ||
+                           senderId.includes(config.ALERT_PHONE) ||
+                           senderId.includes(config.ADMIN_LID);
+
+        // Require admin or bot owner for all group commands — silently ignore others
+        if (!isAdmin && !isBotOwner && !msg.key.fromMe) {
             console.log(`   Result: ❌ Non-admin command ignored`);
             return;
         }
