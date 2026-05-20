@@ -15,7 +15,7 @@ module.exports = {
     MAX_TIMESTAMPS_STORED: 1000,               // Memory safety limit
 
     // GPT API Configuration
-    MODEL: 'gpt-4.1-nano',                     // GPT-4.1-nano: Fast, cheap, non-reasoning
+    MODEL: 'gpt-5.4-nano',                     // GPT-5.4-nano: Fast, cheap, supports vision
     MAX_OUTPUT_TOKENS: 500,                    // Sufficient for JSON response
     API_TIMEOUT_MS: 5000,                      // 5 seconds (was 15s)
     TEMPERATURE: 0.3,                          // Low temperature for consistent structured output

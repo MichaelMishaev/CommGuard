@@ -34,7 +34,7 @@ async function analyzeImage(imageBuffer) {
         else if (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) mimeType = 'image/gif';
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-4.1-mini',
+            model: 'gpt-5.4-nano',
             messages: [
                 {
                     role: 'user',
@@ -53,7 +53,7 @@ async function analyzeImage(imageBuffer) {
                     ]
                 }
             ],
-            max_tokens: 100,
+            max_completion_tokens: 100,
         }, { timeout: 5000 });
 
         const content = response.choices[0]?.message?.content || '';

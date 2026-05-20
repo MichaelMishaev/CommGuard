@@ -186,7 +186,7 @@ Detected categories: ${scoreData.details.categories.join(', ')}
 Is the flagged message harassment or banter?`;
 
     const requestPayload = {
-      model: 'gpt-4.1-nano',
+      model: 'gpt-5.4-nano',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -204,7 +204,7 @@ Is the flagged message harassment or banter?`;
     setImmediate(() => {
       nanoLoggingService.logDecision({
         messageText: conversationContext.find(m => m.flagged)?.text || '',
-        sender: 'gpt-4.1-nano-analysis',
+        sender: 'gpt-5.4-nano-analysis',
         groupId: scoreData.groupId || 'unknown',
         nanoVerdict: null, // Not from nano
         nanoConfidence: null,
