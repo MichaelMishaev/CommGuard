@@ -2185,17 +2185,17 @@ class CommandHandler {
             if (usersToKick.length === 0) {
                 // Still persist the flag so future joins are auto-kicked
                 await groupService.setRestrictCountryCodes(groupId, true);
-                let message = '✅ No foreign numbers found right now.\n🔒 From now on, any +1 or +6 number that joins this group will be automatically removed.';
+                let message = '🛡️ הקבוצה מוגנת מכניסה של בוטים מסוג scam.\nמספרים זרים (+1, +6) יוסרו אוטומטית בכניסה.';
                 if (whitelistedSkipped.length > 0) {
-                    message += `\n\nℹ️ ${whitelistedSkipped.length} whitelisted user(s) were skipped.`;
+                    message += `\n\nℹ️ ${whitelistedSkipped.length} משתמשים ברשימת ההיתרים נדלגו.`;
                 }
                 await this.sock.sendMessage(groupId, { text: message });
                 return true;
             }
             
             // Send initial message
-            await this.sock.sendMessage(groupId, { 
-                text: `🌍 Starting to remove ${usersToKick.length} user(s) with restricted country codes (+1 and +6)...` 
+            await this.sock.sendMessage(groupId, {
+                text: `🧹 מסיר ${usersToKick.length} מספרים זרים מהקבוצה...`
             });
             
             // Kick users in batches with delay
@@ -2241,23 +2241,20 @@ class CommandHandler {
             }
             
             // Send summary
-            let summaryMessage = `🌍 *Foreign User Removal Complete*\n\n`;
-            summaryMessage += `✅ Successfully removed: ${successCount} users\n`;
+            let summaryMessage = `🛡️ *הקבוצה מוגנת מכניסה של בוטים מסוג scam*\n\n`;
+            summaryMessage += `✅ הוסרו: ${successCount} משתמשים\n`;
             if (failCount > 0) {
-                summaryMessage += `❌ Failed to remove: ${failCount} users\n`;
+                summaryMessage += `❌ נכשל: ${failCount} משתמשים\n`;
             }
             if (whitelistedSkipped.length > 0) {
-                summaryMessage += `ℹ️ Whitelisted users skipped: ${whitelistedSkipped.length}\n`;
+                summaryMessage += `ℹ️ ברשימת היתרים: ${whitelistedSkipped.length} משתמשים\n`;
             }
-            summaryMessage += `\n⏰ Time: ${getTimestamp()}`;
+            summaryMessage += `\n🔒 מעכשיו מספרים זרים (+1, +6) יוסרו אוטומטית בכניסה.`;
 
             await this.sock.sendMessage(groupId, { text: summaryMessage });
 
             // Enable auto-kick on join for this group going forward
             await groupService.setRestrictCountryCodes(groupId, true);
-            await this.sock.sendMessage(groupId, {
-                text: '🔒 Auto-kick for +1/+6 numbers is now *ENABLED* for this group.\nAnyone with those country codes will be removed automatically when they join.'
-            });
 
             // Alert admin
             const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
