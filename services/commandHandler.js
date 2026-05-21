@@ -403,7 +403,8 @@ class CommandHandler {
 • Reply *#ub* to alert → Remove from blacklist
 
 *🌍 Country Restriction:*
-• *#botforeign* - Remove all +1 (US/Canada) and +6x (Southeast Asia) users
+• *#botforeign* - Remove all +1/+6 users + enable auto-kick on future joins
+• *#botforeignoff* - Disable the auto-kick filter
   Protects +972 (Israel) — never kicked
 
 *🌐 Translation Commands:*
@@ -530,7 +531,8 @@ class CommandHandler {
 • *#urlblock <url>* / *#urlunblock <url>* / *#urlblocklist*
 
 *🌍 Country Restriction:*
-• *#botforeign* - Remove all +1 and +6x users (protects +972)
+• *#botforeign* - Remove all +1/+6 users + enable auto-kick on future joins
+• *#botforeignoff* - Disable the auto-kick filter
 
 *🌐 Translation:*
 • *#translate <text>* - Translate text
