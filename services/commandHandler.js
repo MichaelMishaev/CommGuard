@@ -2183,6 +2183,8 @@ class CommandHandler {
             }
             
             if (usersToKick.length === 0) {
+                // Still persist the flag so future joins are auto-kicked
+                await groupService.setRestrictCountryCodes(groupId, true);
                 let message = '✅ No foreign numbers found right now.\n🔒 From now on, any +1 or +6 number that joins this group will be automatically removed.';
                 if (whitelistedSkipped.length > 0) {
                     message += `\n\nℹ️ ${whitelistedSkipped.length} whitelisted user(s) were skipped.`;
