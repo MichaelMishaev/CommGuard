@@ -192,6 +192,9 @@ class CommandHandler {
                     
                 case '#botforeign':
                     return await this.handleBotForeign(msg, isAdmin);
+
+                case '#botforeignoff':
+                    return await this.handleBotForeignOff(msg, isAdmin);
                     
                 case '#debugnumbers':
                     return await this.handleDebugNumbers(msg, isAdmin);
@@ -2286,6 +2289,28 @@ class CommandHandler {
             });
         }
         
+        return true;
+    }
+
+    async handleBotForeignOff(msg, isAdmin) {
+        if (!isAdmin) return true; // silently ignore
+
+        if (this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: '⚠️ השתמש בפקודה זו בתוך הקבוצה.'
+            });
+            return true;
+        }
+
+        const groupId = msg.key.remoteJid;
+        try {
+            await groupService.setRestrictCountryCodes(groupId, false);
+            await this.sock.sendMessage(groupId, {
+                text: '🔓 ההגנה מפני מספרים זרים כובתה.\nמספרי +1 ו-+6 יוכלו להצטרף לקבוצה.'
+            });
+        } catch (error) {
+            console.error('❌ Error in botforeignoff:', error);
+        }
         return true;
     }
 
