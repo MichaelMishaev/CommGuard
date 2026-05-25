@@ -340,6 +340,7 @@ const { sendKickAlert, sendSecurityAlert, sendBlacklistRejoinAlert } = require('
 const { robustKick } = require('./utils/kickHelper');
 const { decodeLIDToPhone } = require('./utils/jidUtils');
 const { decideKick } = require('./utils/kickCooldownPolicy');
+const { enqueueDeferredKick } = require('./utils/deferredKickQueue');
 const { logInviteOutcome } = require('./utils/inviteLogger');
 const { storePendingRequest, getPendingRequest, removePendingRequest } = require('./utils/blacklistPendingRequests');
 const { isBlockedUrl, addBlockedDomain } = require('./services/urlBlacklistService');
@@ -2654,6 +2655,73 @@ async function handleMessage(sock, msg, commandHandler) {
         if (!kickDecision.shouldKick) {
             kickReason = kickDecision.reason; // 'cooldown_active'
             console.log(`[${getTimestamp()}] ⏳ User recently kicked elsewhere — message deleted, kick deferred (cooldown ${kickDecision.cooldownExpiresInMs}ms remaining)`);
+
+            const _groupId = groupId;
+            const _senderId = senderId;
+            const _matches = matches.slice();
+            const _groupName = groupMetadata.subject;
+            const _canKick = permissions.canKickUsers;
+
+            enqueueDeferredKick(_senderId, _groupId, kickDecision.cooldownExpiresInMs, async () => {
+                const _userPhone = _senderId.split('@')[0];
+                const _isLidFormat = _senderId.endsWith('@lid');
+                console.log(`[${getTimestamp()}] ⏳→✅ Executing deferred kick for ${_userPhone} in ${_groupName}`);
+
+                try {
+                    const violations = await incrementViolation(_userPhone, 'invite_link');
+                    console.log(`[${getTimestamp()}] 📊 Deferred violation recorded:`, violations);
+                } catch (e) {
+                    console.error(`[${getTimestamp()}] ❌ Deferred: failed to record violation:`, e.message);
+                }
+
+                if (_canKick) {
+                    try {
+                        await sock.groupParticipantsUpdate(_groupId, [_senderId], 'remove');
+                        console.log(`✅ Deferred kick executed: ${_senderId}`);
+                        kickCooldown.set(_senderId, Date.now());
+
+                        let phoneDisplay = _userPhone;
+                        if (_isLidFormat) {
+                            const decoded = await decodeLIDToPhone(sock, _senderId);
+                            phoneDisplay = decoded || `${_userPhone} (LID - Encrypted ID)`;
+                        }
+
+                        const violations = await getViolations(_userPhone);
+                        const alertResult = await sendKickAlert(sock, {
+                            userPhone: phoneDisplay,
+                            userId: _senderId,
+                            groupName: _groupName,
+                            groupId: _groupId,
+                            reason: 'invite_link',
+                            spamLink: _matches.join(', '),
+                            violations,
+                        });
+
+                        if (alertResult?.key) {
+                            storePendingRequest(alertResult.key.id, phoneDisplay, _senderId, 'invite_link', _groupId);
+                            console.log(`[${getTimestamp()}] 📋 Deferred: stored pending blacklist request for: ${phoneDisplay}`);
+                        }
+
+                        logInviteOutcome(getTimestamp, {
+                            msgId: 'deferred',
+                            group: _groupName,
+                            groupId: _groupId,
+                            user: _senderId,
+                            phone: phoneDisplay,
+                            link: _matches[0],
+                            deleted: true,
+                            deleteReason: 'ok',
+                            kicked: true,
+                            kickReason: 'deferred_ok',
+                            cooldownExpiresInMs: null,
+                        });
+                    } catch (e) {
+                        console.error(`❌ Deferred kick failed for ${_senderId}:`, e.message);
+                    }
+                } else {
+                    console.log(`⚠️ Deferred kick skipped — bot lacks kick permission in ${_groupId}`);
+                }
+            });
         } else {
             // Extract user information
             const isLidFormat = senderId.endsWith('@lid');
