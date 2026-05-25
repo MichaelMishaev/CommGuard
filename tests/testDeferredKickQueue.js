@@ -50,15 +50,15 @@ async function runTests() {
         assert('Multi-group: group B fires', cB === 1);
     }
 
-    // Test 4: timer resets on second enqueue — shorter delay wins, both callbacks run
+    // Test 4: timer always uses shortest delay across all enqueues for same user
     {
         let cA = 0, cB = 0;
-        enqueueDeferredKick('u4@lid', 'gA@g.us', 200, async () => { cA++; });
-        await wait(50);
-        enqueueDeferredKick('u4@lid', 'gB@g.us', 50, async () => { cB++; });
+        // First enqueue: short delay (50ms)
+        enqueueDeferredKick('u4@lid', 'gA@g.us', 50, async () => { cA++; });
+        // Second enqueue: longer delay (300ms) — should NOT push the timer out
+        enqueueDeferredKick('u4@lid', 'gB@g.us', 300, async () => { cB++; });
         await wait(120);
-        assert('Timer reset: group A fires after timer reset', cA === 1);
-        assert('Timer reset: group B fires', cB === 1);
+        assert('Min-delay: both fire at the shorter delay (not pushed to 300ms)', cA === 1 && cB === 1);
     }
 
     // Test 5: callback error does not prevent other callbacks from running
