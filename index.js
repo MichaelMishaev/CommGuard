@@ -2707,7 +2707,7 @@ async function handleMessage(sock, msg, commandHandler) {
                             group: _groupName,
                             groupId: _groupId,
                             user: _senderId,
-                            phone: phoneDisplay,
+                            phone: phoneDisplay.replace(/^\+/, ''),
                             link: _matches[0],
                             deleted: true,
                             deleteReason: 'ok',
