@@ -2663,6 +2663,11 @@ async function handleMessage(sock, msg, commandHandler) {
             const _canKick = permissions.canKickUsers;
 
             enqueueDeferredKick(_senderId, _groupId, kickDecision.cooldownExpiresInMs, async () => {
+                const recheck = decideKick(kickCooldown, _senderId, Date.now(), config.KICK_COOLDOWN);
+                if (!recheck.shouldKick) {
+                    console.log(`[${getTimestamp()}] ⏳ Deferred kick skipped — cooldown restarted (${recheck.cooldownAgeMs}ms ago)`);
+                    return;
+                }
                 const _userPhone = _senderId.split('@')[0];
                 const _isLidFormat = _senderId.endsWith('@lid');
                 console.log(`[${getTimestamp()}] ⏳→✅ Executing deferred kick for ${_userPhone} in ${_groupName}`);
