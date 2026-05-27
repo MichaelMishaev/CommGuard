@@ -20,6 +20,7 @@ const { queueScan } = require('./services/scanQueueService');
 const { startScanWorker } = require('./services/blacklistScanWorker');
 const { extractPhoneNumber } = require('./utils/lidDecoder');
 const { checkUrl: checkUrlSafety } = require('./services/safeBrowsingService');
+const fsPromises = require('fs').promises;
 
 // Conditionally load Firebase services only if enabled
 let blacklistService, whitelistService, muteService, unblacklistRequestService;
@@ -49,6 +50,7 @@ setInterval(() => {
 // Track archived chats to skip message processing
 const archivedChats = new Set();
 let startupTimer = null;
+let pruneIntervalStarted = false;
 
 // Track if startup notification was already sent in this process (to avoid duplicate notifications on reconnect)
 let startupNotificationSent = false;
@@ -96,6 +98,27 @@ const clearStartupPhase = () => {
         console.log(`[${getTimestamp()}] 📊 Startup summary: Skipped ${skippedOldMessagesCount} old messages from downtime`);
     }
 };
+
+async function pruneSessionFiles() {
+    const dir = 'baileys_auth_info';
+    const maxAgeMs = 14 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let deleted = 0;
+    try {
+        const files = await fsPromises.readdir(dir);
+        for (const file of files) {
+            if (file === 'creds.json' || file.startsWith('app-state-sync')) continue;
+            const stat = await fsPromises.stat(`${dir}/${file}`);
+            if (now - stat.mtimeMs > maxAgeMs) {
+                await fsPromises.unlink(`${dir}/${file}`);
+                deleted++;
+            }
+        }
+        if (deleted > 0) console.log(`[${getTimestamp()}] [SESSION-PRUNE] Deleted ${deleted} stale session files`);
+    } catch (error) {
+        console.error(`[${getTimestamp()}] [SESSION-PRUNE] Error:`, error.message);
+    }
+}
 
 // Smart admin checking system (DB + Cache)
 async function isUserAdmin(sock, groupId, userId) {
@@ -669,6 +692,12 @@ async function startBot() {
             
             // Start the hourly admin refresh scheduler
             startAdminRefreshScheduler(sock);
+            // Daily session file pruning to prevent memory accumulation
+            if (!pruneIntervalStarted) {
+                pruneIntervalStarted = true;
+                pruneSessionFiles();
+                setInterval(pruneSessionFiles, 24 * 60 * 60 * 1000);
+            }
             
             // Initialize startup phase timer
             if (!startupTimer) {
