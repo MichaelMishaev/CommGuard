@@ -64,6 +64,11 @@ class CommandHandler {
         return this.sassyResponses[Math.floor(Math.random() * this.sassyResponses.length)];
     }
     
+    getAdminJid() {
+        const phone = config.ALERT_PHONE || '972544345287';
+        return phone + '@s.whatsapp.net';
+    }
+
     // TEMPORARY: Use direct API with rate limiting until shared cache is implemented
     async getCachedGroupMetadata(groupId) {
         try {
@@ -81,7 +86,7 @@ class CommandHandler {
     }
     
     async sendGroupOnlyMessage(msg, commandName) {
-        await this.sock.sendMessage(msg.key.remoteJid, { 
+        await this.sock.sendMessage(this.getAdminJid(), { 
             text: `⚠️ The ${commandName} command can only be used in groups.` 
         });
     }
@@ -181,9 +186,6 @@ class CommandHandler {
                 case '#urlblocklist':
                     return await this.handleUrlBlocklist(msg, isAdmin);
 
-                case '#sweep':
-                    return await this.handleSweep(msg, isSuperAdmin);
-                    
                 case '#botkick':
                     return await this.handleBotKick(msg, isAdmin);
                     
@@ -195,9 +197,6 @@ class CommandHandler {
 
                 case '#botforeignoff':
                     return await this.handleBotForeignOff(msg, isAdmin);
-                    
-                case '#debugnumbers':
-                    return await this.handleDebugNumbers(msg, isAdmin);
                     
                 case '#sessioncheck':
                     return await this.handleSessionCheck(msg, isAdmin);
@@ -226,6 +225,15 @@ class CommandHandler {
 
                 case '#ru':
                     return await this.handleTranslateRu(msg);
+
+                case '#he':
+                    return await this.handleTranslateHe(msg);
+
+                case '#fr':
+                    return await this.handleTranslateFr(msg);
+
+                case '#en':
+                    return await this.handleTranslateEn(msg);
 
                 case '#langs':
                     return await this.handleLanguageList(msg, isAdmin);
@@ -269,7 +277,7 @@ class CommandHandler {
             }
         } catch (error) {
             console.error(`❌ Error handling command ${cmd}:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Error executing command: ${error.message}` 
             });
             return true;
@@ -307,7 +315,7 @@ class CommandHandler {
         if (!isPrivateChat) {
             console.log(`[${getTimestamp()}] 🚫 Unauthorized #help attempt in group: ${msg.key.remoteJid} from ${senderPhone}`);
             // Don't reveal that this command exists in groups
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Unknown command.'
             });
             return true;
@@ -316,7 +324,7 @@ class CommandHandler {
         // RULE 2: If in private chat but NOT from authorized admin → Send sassy response
         if (!isAuthorizedAdmin) {
             console.log(`[${getTimestamp()}] 🚫 Unauthorized #help attempt from: ${senderPhone} (not admin)`);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -411,7 +419,7 @@ class CommandHandler {
 • *#translate <text>* - Translate text (auto-detect source language)
 • *#translate <lang> <text>* - Translate to specific language
 • *#langs* - Show supported language codes
-• *#ru <text>* - Translate to Russian (shortcut)
+• *#ru* → Russian  • *#he* → Hebrew  • *#fr* → French  • *#en* → English
 • *#autotranslate <on/off/status>* - Control auto-translation
 • Auto-Translation: ${config.FEATURES.AUTO_TRANSLATION ? '✅ ENABLED' : '❌ DISABLED'}
 
@@ -426,10 +434,8 @@ class CommandHandler {
 • *#gc* or *#clearmem* - Force garbage collection
 
 *🧹 Advanced Commands:*
-• *#sweep* - Remove inactive users (superadmin only)
 • *#sessioncheck* - Session decryption error statistics
 • *#botadmin* - Check bot admin privileges in current group
-• *#debugnumbers* - Show participant phone formats (LID debugging)
 
 *🚨 AUTO-PROTECTION FEATURES:*
 1. **Invite Link Detection** ✅
@@ -478,7 +484,7 @@ class CommandHandler {
 
 *🛡️ Bot is protecting your groups 24/7!*`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: detailedHelpText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: detailedHelpText });
         } else {
             // Regular help text for admin phone
             const helpText = `📝 *CommGuard Bot Commands*
@@ -536,7 +542,7 @@ class CommandHandler {
 
 *🌐 Translation:*
 • *#translate <text>* - Translate text
-• *#ru <text>* - Translate to Russian
+• *#ru* → Russian  • *#he* → Hebrew  • *#fr* → French  • *#en* → English
 • *#langs* - Show language codes
 • *#autotranslate <on/off/status>* - Auto-translation control
 • Status: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
@@ -549,7 +555,6 @@ class CommandHandler {
 • *#memory* - Status · *#memreport* - Detailed · *#gc* - Force GC
 
 *🧹 Advanced:*
-• *#sweep* - Remove inactive users (superadmin)
 • *#botadmin* - Check bot admin status
 • *#sessioncheck* - Session error statistics
 
@@ -562,7 +567,7 @@ class CommandHandler {
 
 *🔒 #help only works in private chat · Admin only*`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: helpText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: helpText });
         }
         return true;
     }
@@ -590,14 +595,14 @@ class CommandHandler {
 
 🛡️ *Protecting your groups 24/7*`;
 
-        await this.sock.sendMessage(msg.key.remoteJid, { text: statusText });
+        await this.sock.sendMessage(this.getAdminJid(), { text: statusText });
         return true;
     }
 
     async handleRestartHistory(msg, isAdmin) {
         // Only admins can view restart history
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return false;
@@ -607,7 +612,7 @@ class CommandHandler {
             const history = getRestartHistory(10); // Get last 10 restarts
 
             if (history.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📊 *Bot Restart History*\n\nNo restart history available yet.'
                 });
                 return true;
@@ -629,11 +634,11 @@ class CommandHandler {
 
             historyText += `\n📁 Full log: restart_history.jsonl`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: historyText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: historyText });
             return true;
         } catch (error) {
             console.error('Error fetching restart history:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error fetching restart history. Check logs.'
             });
             return false;
@@ -644,7 +649,7 @@ class CommandHandler {
         console.log(`[${require('../utils/logger').getTimestamp()}] 🔇 Mute command received from ${msg.key.participant || msg.key.remoteJid}`);
         
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -679,7 +684,7 @@ class CommandHandler {
         const argsString = Array.isArray(args) ? args[0] : args;
         const minutes = parseInt(argsString, 10);
         if (!minutes || minutes <= 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `⚠️ Please specify valid minutes. Example: #mute 10\n` +
                       `⚠️ אנא ציין דקות חוקיות. דוגמה: #mute 10`
             });
@@ -691,7 +696,7 @@ class CommandHandler {
         
         groupMuteStatus.set(groupId, muteUntil);
 
-        await this.sock.sendMessage(groupId, { 
+        await this.sock.sendMessage(this.getAdminJid(), { 
             text: `🔇 הקבוצה הושתקה ל-${minutes} דקות\n` +
                   `👮‍♂️ רק מנהלים יכולים לשלוח הודעות`
         });
@@ -699,7 +704,7 @@ class CommandHandler {
         // Auto-unmute after specified time
         setTimeout(async () => {
             groupMuteStatus.delete(groupId);
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🔊 Group has been unmuted. Everyone can now send messages.\n` +
                       `🔊 הקבוצה שוחררה מההשתקה. כולם יכולים לשלוח הודעות עכשיו.`
             });
@@ -715,7 +720,7 @@ class CommandHandler {
         const minutes = parseInt(parts[0], 10) || 60; // Default 1 hour
         
         if (minutes <= 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `⚠️ Please specify valid minutes. Example: #mute 30\n` +
                       `⚠️ אנא ציין דקות חוקיות. דוגמה: #mute 30`
             });
@@ -769,14 +774,14 @@ class CommandHandler {
                 minute: '2-digit'
             });
             
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🔇 User muted for ${minutes} minutes until ${muteEndTime}\n` +
                       `🗑️ All their messages will be automatically deleted\n\n` +
                       `🔇 המשתמש הושתק ל-${minutes} דקות עד ${muteEndTime}\n` +
                       `🗑️ כל ההודעות שלו יימחקו אוטומטית`
             });
         } else {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Failed to mute user. Please try again.\n` +
                       `❌ נכשל בהשתקת המשתמש. אנא נסה שוב.`
             });
@@ -799,7 +804,7 @@ class CommandHandler {
 
     async handleStats(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -854,7 +859,7 @@ class CommandHandler {
 
 ⏰ *Generated:* ${getTimestamp()}`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: statsText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: statsText });
             return true;
         }
 
@@ -879,9 +884,9 @@ class CommandHandler {
 
 ⏰ *Generated:* ${getTimestamp()}`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: statsText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: statsText });
         } catch (error) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Failed to get group statistics.' 
             });
         }
@@ -902,7 +907,7 @@ class CommandHandler {
 
         // Check if user is admin (allow both manual admin kicks and automated bot kicks)
         if (!isAdmin && !msg.key.fromMe) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Only admins can kick users.'
             });
             return true;
@@ -910,7 +915,7 @@ class CommandHandler {
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ The #kick command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kick'
             });
             return true;
@@ -962,7 +967,7 @@ class CommandHandler {
 
         if (!quotedMsg || !targetUserId) {
             // Send warning message to the group
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ Please reply to a message from the user you want to kick.\n\nUsage: Reply to a user\'s message and type #kick'
             });
 
@@ -1004,7 +1009,7 @@ class CommandHandler {
             // Check if target user is admin
             const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
             if (targetParticipant && (targetParticipant.admin === 'admin' || targetParticipant.admin === 'superadmin')) {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '❌ Cannot kick admin users.' 
                 });
                 return true;
@@ -1012,7 +1017,7 @@ class CommandHandler {
 
             // Check if target user is still in group
             if (!targetParticipant) {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '❌ User is not in this group.' 
                 });
                 return true;
@@ -1023,7 +1028,7 @@ class CommandHandler {
             // Delete the replied-to message first
             if (messageId) {
                 try {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         delete: {
                             remoteJid: groupId,
                             fromMe: false,
@@ -1036,7 +1041,7 @@ class CommandHandler {
                     console.error(`[${require('../utils/logger').getTimestamp()}] ⚠️ Failed to delete target message:`, deleteError.message);
                     // Try alternative deletion method
                     try {
-                        await this.sock.sendMessage(groupId, { 
+                        await this.sock.sendMessage(this.getAdminJid(), { 
                             delete: {
                                 remoteJid: groupId,
                                 fromMe: false,
@@ -1054,7 +1059,7 @@ class CommandHandler {
 
             // Delete the #kick command message
             try {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     delete: msg.key 
                 });
                 console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted #kick command message`);
@@ -1109,7 +1114,7 @@ class CommandHandler {
             
             if (!kickSuccessful) {
                 console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to kick user after ${maxRetries} attempts`);
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `⚠️ Failed to kick user after ${maxRetries} attempts. This sometimes happens in large groups.\n\nError: ${kickError?.message || 'Unknown error'}\n\nPlease try again or kick manually.` 
                 });
                 return true;
@@ -1150,7 +1155,7 @@ class CommandHandler {
 
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to kick user:`, error);
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Need to be an admin' 
             });
         }
@@ -1163,7 +1168,7 @@ class CommandHandler {
 
         // Check if user is admin
         if (!isAdmin && !msg.key.fromMe) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Only admins can use #kickglobal.'
             });
             return true;
@@ -1171,7 +1176,7 @@ class CommandHandler {
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ The #kickglobal command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #kickglobal'
             });
             return true;
@@ -1210,7 +1215,7 @@ class CommandHandler {
         }
 
         if (!quotedMsg || !targetUserId) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ Please reply to a message from the user you want to globally kick.\n\nUsage: Reply to a user\'s message and type #kickglobal'
             });
             return true;
@@ -1225,7 +1230,7 @@ class CommandHandler {
             // Check if target user is admin
             const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
             if (targetParticipant && (targetParticipant.admin === 'admin' || targetParticipant.admin === 'superadmin')) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '❌ Cannot kick admin users.'
                 });
                 return true;
@@ -1233,7 +1238,7 @@ class CommandHandler {
 
             // Check if target user is still in group
             if (!targetParticipant) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '❌ User is not in this group.'
                 });
                 return true;
@@ -1244,7 +1249,7 @@ class CommandHandler {
             // Delete the replied-to message first
             if (messageId) {
                 try {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         delete: {
                             remoteJid: groupId,
                             fromMe: false,
@@ -1260,7 +1265,7 @@ class CommandHandler {
 
             // Delete the #kickglobal command message
             try {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     delete: msg.key
                 });
                 console.log(`[${require('../utils/logger').getTimestamp()}] 🗑️ Deleted #kickglobal command message`);
@@ -1293,7 +1298,7 @@ class CommandHandler {
             }
 
             if (!kickSuccessful) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `⚠️ Failed to kick user from this group. Cannot proceed with global ban.`
                 });
                 return true;
@@ -1354,7 +1359,7 @@ class CommandHandler {
 
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to execute #kickglobal:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to execute global kick. Check logs for details.'
             });
         }
@@ -1366,7 +1371,7 @@ class CommandHandler {
         console.log(`[${require('../utils/logger').getTimestamp()}] 🧹 #clear command received (clean blacklisted users)`);
 
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Only admins can use #clear'
             });
             return true;
@@ -1374,7 +1379,7 @@ class CommandHandler {
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ The #clear command can only be used in groups.\n\nUsage: Type #clear in a group to remove all blacklisted users from current group'
             });
             return true;
@@ -1414,7 +1419,7 @@ class CommandHandler {
             }
 
             if (blacklistedInGroup.length === 0) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '✅ No blacklisted users found in this group.\n\nGroup is clean!'
                 });
                 console.log(`[${require('../utils/logger').getTimestamp()}] ✅ No blacklisted users found in ${groupName}`);
@@ -1422,7 +1427,7 @@ class CommandHandler {
             }
 
             // Send start message
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `🧹 *Cleaning Group*\n\n` +
                       `Found ${blacklistedInGroup.length} blacklisted user(s)\n` +
                       `⏳ Removing them now...`
@@ -1445,7 +1450,7 @@ class CommandHandler {
 
                     // Progress update every 5 users
                     if ((i + 1) % 5 === 0 && (i + 1) < blacklistedInGroup.length) {
-                        await this.sock.sendMessage(groupId, {
+                        await this.sock.sendMessage(this.getAdminJid(), {
                             text: `🧹 Progress: ${i + 1}/${blacklistedInGroup.length} removed...`
                         });
                     }
@@ -1469,7 +1474,7 @@ class CommandHandler {
                           (failed > 0 ? `   • Failed to remove: ${failed}\n` : '') +
                           `   • Group: ${groupName}`;
 
-            await this.sock.sendMessage(groupId, { text: report });
+            await this.sock.sendMessage(this.getAdminJid(), { text: report });
 
             // Send detailed private report to admin (0544345287)
             const adminJid = '0544345287@s.whatsapp.net';
@@ -1487,7 +1492,7 @@ class CommandHandler {
 
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to clean group:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to clean group. Check logs for details.'
             });
         }
@@ -1517,7 +1522,7 @@ class CommandHandler {
         console.log(`[${getTimestamp()}] 🔍 Admin check: sender=${senderPhone}, authorized=${isAuthorizedAdmin}`);
 
         if (!isAuthorizedAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Only the bot administrator can use this command.',
                 quoted: msg
             });
@@ -1526,7 +1531,7 @@ class CommandHandler {
 
         // Must be in a group
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ This command can only be used in groups.\n\nUsage: Send #bullywatch on [class] in a group chat',
                 quoted: msg
             });
@@ -1549,7 +1554,7 @@ class CommandHandler {
                 const className = args && args[1] ? args[1] : null;
 
                 if (!className) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: '❌ *Class name is required*\n\n' +
                               'Usage: #bullywatch on [class_name]\n\n' +
                               'Examples:\n' +
@@ -1564,14 +1569,14 @@ class CommandHandler {
                 const success = await groupService.setBullyingMonitoring(groupId, true, className);
 
                 if (!success) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: '❌ Failed to enable bullying monitoring. Group may not be in database.',
                         quoted: msg
                     });
                     return true;
                 }
 
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `✅ *ניטור בריונות מופעל*\n` +
                           `✅ *Bullying Monitoring ENABLED*\n\n` +
                           `🛡️ קבוצה / Group: ${groupName}\n` +
@@ -1596,14 +1601,14 @@ class CommandHandler {
                 const success = await groupService.setBullyingMonitoring(groupId, false, null);
 
                 if (!success) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: '❌ Failed to disable bullying monitoring. Group may not be in database.',
                         quoted: msg
                     });
                     return true;
                 }
 
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `⏸️ *Bullying Monitoring DISABLED*\n\n` +
                           `Group: ${groupName}\n\n` +
                           `Offensive content monitoring has been turned off for this group.`,
@@ -1617,7 +1622,7 @@ class CommandHandler {
                 const className = args && args[1] ? args[1] : null;
 
                 if (!className) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: '❌ Please specify class name.\n\n' +
                               'Usage: #bullywatch class [class_name]\n\n' +
                               'Example: #bullywatch class ג3',
@@ -1629,7 +1634,7 @@ class CommandHandler {
                 // Check if monitoring is enabled
                 const isEnabled = await groupService.isBullyingMonitoringEnabled(groupId);
                 if (!isEnabled) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: '❌ Bullying monitoring is not enabled for this group.\n\n' +
                               'First enable with: #bullywatch on [class_name]',
                         quoted: msg
@@ -1640,12 +1645,12 @@ class CommandHandler {
                 // Update class name
                 const success = await groupService.setGroupClassName(groupId, className);
                 if (success) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: `✅ Class updated to: ${className}`,
                         quoted: msg
                     });
                 } else {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: '❌ Failed to update class name.',
                         quoted: msg
                     });
@@ -1656,7 +1661,7 @@ class CommandHandler {
                 const isEnabled = await groupService.isBullyingMonitoringEnabled(groupId);
                 const className = await groupService.getGroupClassName(groupId);
 
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `🛡️ *Bullying Monitoring Status*\n\n` +
                           `Group: ${groupName}\n` +
                           `Status: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}\n` +
@@ -1694,7 +1699,7 @@ class CommandHandler {
             }
             else {
                 // Show usage
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '❌ *Usage:*\n\n' +
                           '#bullywatch on [class] - Enable monitoring\n' +
                           '#bullywatch off - Disable monitoring\n' +
@@ -1715,7 +1720,7 @@ class CommandHandler {
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to handle bullywatch command:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to update bullying monitoring. Check logs for details.',
                 quoted: msg
             });
@@ -1746,7 +1751,7 @@ class CommandHandler {
         console.log(`[${getTimestamp()}] 🔍 Admin check: sender=${senderPhone}, authorized=${isAuthorizedAdmin}`);
 
         if (!isAuthorizedAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Only the bot administrator can use this command.',
                 quoted: msg
             });
@@ -1755,7 +1760,7 @@ class CommandHandler {
 
         // Must be in a group
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ This command can only be used in groups.\n\nUsage: Send #bullyalert on/off in a group chat',
                 quoted: msg
             });
@@ -1766,7 +1771,7 @@ class CommandHandler {
         const action = args && args[0] ? args[0].toLowerCase() : null;
 
         if (!action || !['on', 'off'].includes(action)) {
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Usage: #bullyalert on|off\n\n' +
                       'Examples:\n' +
                       '  • #bullyalert on - Send alerts to ALL group admins\n' +
@@ -1794,7 +1799,7 @@ class CommandHandler {
                 });
 
                 if (admins.length === 0) {
-                    await this.sock.sendMessage(groupId, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: `ℹ️ No additional admins found in this group.\n\n` +
                               `Only the main admin (+${config.ALERT_PHONE}) will receive alerts.`,
                         quoted: msg
@@ -1816,7 +1821,7 @@ class CommandHandler {
                 // Get final recipient list
                 const recipients = await groupService.getAlertRecipients(groupId);
 
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `✅ *Multi-Admin Alerts ENABLED*\n\n` +
                           `🛡️ Group: ${groupName}\n\n` +
                           `Bullying alerts will be sent to:\n` +
@@ -1843,7 +1848,7 @@ class CommandHandler {
                     }
                 }
 
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `⏸️ *Multi-Admin Alerts DISABLED*\n\n` +
                           `Group: ${groupName}\n\n` +
                           `Bullying alerts will only be sent to:\n` +
@@ -1857,7 +1862,7 @@ class CommandHandler {
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to set multi-admin alerts:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to update multi-admin alerts. Check logs for details.',
                 quoted: msg
             });
@@ -1868,14 +1873,14 @@ class CommandHandler {
 
     async handleWhitelist(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
 
         if (!args) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ Please provide a phone number. Example: #whitelist 972555123456' 
             });
             return true;
@@ -1883,11 +1888,11 @@ class CommandHandler {
 
         const success = await addToWhitelist(args);
         if (success) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `✅ Added ${args} to whitelist.` 
             });
         } else {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Failed to add ${args} to whitelist (may already exist).` 
             });
         }
@@ -1896,7 +1901,7 @@ class CommandHandler {
 
     async handleWhitelistList(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -1904,12 +1909,12 @@ class CommandHandler {
 
         const whitelisted = await listWhitelist();
         if (whitelisted.length === 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '📝 Whitelist is empty.' 
             });
         } else {
             const list = whitelisted.map((num, index) => `${index + 1}. ${num}`).join('\n');
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `📝 *Whitelisted Users:*\n\n${list}` 
             });
         }
@@ -1918,7 +1923,7 @@ class CommandHandler {
 
     async handleBan(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך??' 
             });
             return true;
@@ -1926,7 +1931,7 @@ class CommandHandler {
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ The #ban command can only be used in groups.\n\nUsage: Reply to a user\'s message in a group and type #ban' 
             });
             return true;
@@ -1962,7 +1967,7 @@ class CommandHandler {
 
         if (!quotedMsg || !targetUserId) {
             // Send warning message to the group
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ Please reply to a message from the user you want to ban.\n\nUsage: Reply to a user\'s message and type #ban'
             });
 
@@ -2004,7 +2009,7 @@ class CommandHandler {
             // Check if target user is admin
             const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
             if (targetParticipant && (targetParticipant.admin === 'admin' || targetParticipant.admin === 'superadmin')) {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '❌ Cannot ban admin users.' 
                 });
                 return true;
@@ -2016,7 +2021,7 @@ class CommandHandler {
             const { addToBlacklist } = require('./blacklistService');
             const blacklistSuccess = await addToBlacklist(targetUserId, 'Banned by admin command');
             if (!blacklistSuccess) {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '❌ Failed to add user to blacklist. Ban command aborted.' 
                 });
                 return true;
@@ -2063,11 +2068,11 @@ class CommandHandler {
                     console.error(`Failed to send admin notification:`, notificationError.message);
                 }
                 
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `🚫 User has been banned and removed from the group.\nThey cannot rejoin until unbanned.` 
                 });
             } else {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `🚫 User has been banned and cannot join this group.` 
                 });
             }
@@ -2076,7 +2081,7 @@ class CommandHandler {
 
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Failed to ban user:`, error);
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Need to be an admin' 
             });
         }
@@ -2087,7 +2092,7 @@ class CommandHandler {
 
     async handleBotForeign(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -2095,7 +2100,7 @@ class CommandHandler {
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ The #botforeign command can only be used in groups.\n\nUsage: In a group, type #botforeign to remove all users with +1 or +6 country codes' 
             });
             return true;
@@ -2194,12 +2199,12 @@ class CommandHandler {
                 if (whitelistedSkipped.length > 0) {
                     message += `\n\nℹ️ ${whitelistedSkipped.length} משתמשים ברשימת ההיתרים נדלגו.`;
                 }
-                await this.sock.sendMessage(groupId, { text: message });
+                await this.sock.sendMessage(this.getAdminJid(), { text: message });
                 return true;
             }
             
             // Send initial message
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `🧹 מסיר ${usersToKick.length} מספרים זרים מהקבוצה...`
             });
             
@@ -2256,7 +2261,7 @@ class CommandHandler {
             }
             summaryMessage += `\n🔒 מעכשיו מספרים זרים (+1, +6) יוסרו אוטומטית בכניסה.`;
 
-            await this.sock.sendMessage(groupId, { text: summaryMessage });
+            await this.sock.sendMessage(this.getAdminJid(), { text: summaryMessage });
 
             // Enable auto-kick on join for this group going forward
             await groupService.setRestrictCountryCodes(groupId, true);
@@ -2286,7 +2291,7 @@ class CommandHandler {
             
         } catch (error) {
             console.error('❌ Error in botforeign command:', error);
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Need to be an admin' 
             });
         }
@@ -2298,7 +2303,7 @@ class CommandHandler {
         if (!isAdmin) return true; // silently ignore
 
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ השתמש בפקודה זו בתוך הקבוצה.'
             });
             return true;
@@ -2307,7 +2312,7 @@ class CommandHandler {
         const groupId = msg.key.remoteJid;
         try {
             await groupService.setRestrictCountryCodes(groupId, false);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '🔓 ההגנה מפני מספרים זרים כובתה.\nמספרי +1 ו-+6 יוכלו להצטרף לקבוצה.'
             });
         } catch (error) {
@@ -2316,73 +2321,9 @@ class CommandHandler {
         return true;
     }
 
-    async handleDebugNumbers(msg, isAdmin) {
-        if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: 'מה אני עובד אצלך?!' 
-            });
-            return true;
-        }
-
-        // Check if in private chat
-        if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #debugnumbers command can only be used in groups.\n\nUsage: In a group, type #debugnumbers to see phone number formats' 
-            });
-            return true;
-        }
-
-        const groupId = msg.key.remoteJid;
-        
-        try {
-            // Get group metadata
-            const groupMetadata = await this.getCachedGroupMetadata(groupId);
-            const participants = groupMetadata.participants;
-            
-            let debugReport = `🔍 *Group Number Formats Debug*\n\n`;
-            debugReport += `Total participants: ${participants.length}\n\n`;
-            
-            for (const participant of participants) {
-                const userId = participant.id;
-                const phoneNumber = userId.split('@')[0];
-                const isAdmin = participant.admin === 'admin' || participant.admin === 'superadmin';
-                const isLidFormat = userId.endsWith('@lid');
-                
-                debugReport += `📱 ${phoneNumber}\n`;
-                debugReport += `   Full ID: ${userId}\n`;
-                debugReport += `   Length: ${phoneNumber.length}\n`;
-                debugReport += `   LID Format: ${isLidFormat}\n`;
-                debugReport += `   Starts with 1: ${phoneNumber.startsWith('1')}\n`;
-                debugReport += `   Starts with +1: ${phoneNumber.startsWith('+1')}\n`;
-                debugReport += `   Starts with 6: ${phoneNumber.startsWith('6')}\n`;
-                debugReport += `   Starts with +6: ${phoneNumber.startsWith('+6')}\n`;
-                debugReport += `   Starts with 972: ${phoneNumber.startsWith('972')}\n`;
-                debugReport += `   Admin: ${isAdmin}\n`;
-                debugReport += `   10-digit US pattern: ${phoneNumber.length === 10 && /^[2-9]\d{9}$/.test(phoneNumber)}\n`;
-                debugReport += `   LID exempt: ${isLidFormat ? 'Yes (encrypted privacy ID)' : 'No'}\n\n`;
-                
-                // Break if message gets too long
-                if (debugReport.length > 3000) {
-                    debugReport += `... (truncated - too many participants)\n`;
-                    break;
-                }
-            }
-            
-            await this.sock.sendMessage(groupId, { text: debugReport });
-            
-        } catch (error) {
-            console.error('❌ Error in debug numbers command:', error);
-            await this.sock.sendMessage(groupId, { 
-                text: '❌ Failed to debug numbers.' 
-            });
-        }
-        
-        return true;
-    }
-
     async handleUnmute(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -2404,12 +2345,12 @@ class CommandHandler {
             
             if (quotedParticipant) {
                 await removeMutedUser(quotedParticipant);
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `🔊 User has been unmuted.\n` +
                           `🔊 המשתמש שוחרר מההשתקה.`
                 });
             } else {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `⚠️ Could not identify user to unmute.\n` +
                           `⚠️ לא ניתן לזהות את המשתמש לביטול השתקה.`
                 });
@@ -2418,12 +2359,12 @@ class CommandHandler {
             // Unmute entire group
             if (groupMuteStatus.has(groupId)) {
                 groupMuteStatus.delete(groupId);
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `🔊 Group has been unmuted. Everyone can now send messages.\n` +
                           `🔊 הקבוצה שוחררה מההשתקה. כולם יכולים לשלוח הודעות עכשיו.`
                 });
             } else {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `⚠️ Group is not muted.\n` +
                           `⚠️ הקבוצה לא מושתקת.`
                 });
@@ -2434,14 +2375,14 @@ class CommandHandler {
 
     async handleUnwhitelist(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
 
         if (!args) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ Please provide a phone number. Example: #unwhitelist 972555123456' 
             });
             return true;
@@ -2449,11 +2390,11 @@ class CommandHandler {
 
         const success = await removeFromWhitelist(args);
         if (success) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `✅ Removed ${args} from whitelist.` 
             });
         } else {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Failed to remove ${args} from whitelist (may not exist).` 
             });
         }
@@ -2461,14 +2402,14 @@ class CommandHandler {
     }
     async handleBlacklistAdd(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
 
         if (!args) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ Please provide a phone number. Example: #blacklist 972555123456' 
             });
             return true;
@@ -2477,11 +2418,11 @@ class CommandHandler {
         const { addToBlacklist } = require('./blacklistService');
         const success = await addToBlacklist(args, 'Added by admin command');
         if (success) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `✅ Added ${args} to blacklist.` 
             });
         } else {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Failed to add ${args} to blacklist.` 
             });
         }
@@ -2490,7 +2431,7 @@ class CommandHandler {
     
     async handleBlacklistRemove(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: 'מה אני עובד אצלך?!'
             });
             return true;
@@ -2522,7 +2463,7 @@ class CommandHandler {
 
         // Validate we have a phone number
         if (!phoneNumber || phoneNumber === '') {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ Please provide a phone number or reply to an alert message.\n\nUsage:\n• #unblacklist 972555123456\n• Reply #ub to an alert message'
             });
             return true;
@@ -2558,11 +2499,11 @@ class CommandHandler {
 
         const success = firebaseSuccess || dbSuccess;
         if (success) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `✅ Removed +${phoneNumber} from blacklist.\n\nViolation history preserved for record keeping.`
             });
         } else {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `❌ Failed to remove ${phoneNumber} from blacklist.`
             });
         }
@@ -2571,7 +2512,7 @@ class CommandHandler {
     
     async handleBlacklistList(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: 'מה אני עובד אצלך?!'
             });
             return true;
@@ -2583,7 +2524,7 @@ class CommandHandler {
             const blacklistedUsers = await getBlacklistedUsers();
 
             if (blacklistedUsers.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📝 Blacklist is empty.'
                 });
             } else {
@@ -2602,11 +2543,11 @@ class CommandHandler {
                     ? `📝 *Blacklisted Users (showing first 50 of ${totalCount}):*\n\n${list.join('\n')}`
                     : `📝 *Blacklisted Users (${totalCount} total):*\n\n${list.join('\n')}`;
 
-                await this.sock.sendMessage(msg.key.remoteJid, { text: message });
+                await this.sock.sendMessage(this.getAdminJid(), { text: message });
             }
         } catch (error) {
             console.error('Error fetching blacklist:', error.message);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error fetching blacklist from database.'
             });
         }
@@ -2615,17 +2556,17 @@ class CommandHandler {
     }
     async handleUrlBlock(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { text: 'מה אני עובד אצלך?!' });
+            await this.sock.sendMessage(this.getAdminJid(), { text: 'מה אני עובד אצלך?!' });
             return true;
         }
         if (!args || !args.trim()) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Usage: #urlblock <domain>\nExample: #urlblock evil.com'
             });
             return true;
         }
         const domain = addBlockedDomain(args.trim());
-        await this.sock.sendMessage(msg.key.remoteJid, {
+        await this.sock.sendMessage(this.getAdminJid(), {
             text: `✅ Domain blacklisted: *${domain}*\nAny URL from this domain will be auto-deleted.`
         });
         return true;
@@ -2633,17 +2574,17 @@ class CommandHandler {
 
     async handleUrlUnblock(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { text: 'מה אני עובד אצלך?!' });
+            await this.sock.sendMessage(this.getAdminJid(), { text: 'מה אני עובד אצלך?!' });
             return true;
         }
         if (!args || !args.trim()) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Usage: #urlunblock <domain>\nExample: #urlunblock evil.com'
             });
             return true;
         }
         const { existed, domain } = removeBlockedDomain(args.trim());
-        await this.sock.sendMessage(msg.key.remoteJid, {
+        await this.sock.sendMessage(this.getAdminJid(), {
             text: existed
                 ? `✅ Removed from URL blacklist: *${domain}*`
                 : `⚠️ Domain not found in URL blacklist: *${domain}*`
@@ -2653,11 +2594,11 @@ class CommandHandler {
 
     async handleUrlBlocklist(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { text: 'מה אני עובד אצלך?!' });
+            await this.sock.sendMessage(this.getAdminJid(), { text: 'מה אני עובד אצלך?!' });
             return true;
         }
         const domains = listBlockedDomains();
-        await this.sock.sendMessage(msg.key.remoteJid, {
+        await this.sock.sendMessage(this.getAdminJid(), {
             text: domains.length
                 ? `🚫 *Blocked Domains (${domains.length}):*\n${domains.map(d => `• ${d}`).join('\n')}`
                 : '📋 URL blacklist is empty.'
@@ -2665,30 +2606,9 @@ class CommandHandler {
         return true;
     }
 
-    async handleSweep(msg, isSuperAdmin) {
-        if (!isSuperAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Only superadmins can use the sweep command.' 
-            });
-            return true;
-        }
-        
-        // Check if in private chat
-        if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
-                text: '⚠️ The #sweep command can only be used in groups.\n\nUsage: In a group, type #sweep to clean up inactive users' 
-            });
-            return true;
-        }
-
-        await this.sock.sendMessage(msg.key.remoteJid, { 
-            text: '⚠️ Sweep command not yet implemented in Baileys version.' 
-        });
-        return true;
-    }
     async handleBotKick(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -2696,7 +2616,7 @@ class CommandHandler {
 
         // Check if in private chat
         if (this.isPrivateChat(msg)) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ The #botkick command can only be used in groups.\n\nUsage: In a group, type #botkick to scan and remove all blacklisted users' 
             });
             return true;
@@ -2712,7 +2632,7 @@ class CommandHandler {
             // Import blacklist check function
             const { isBlacklisted } = require('./blacklistService');
             
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🔍 Scanning ${participants.length} group members for blacklisted users...` 
             });
             
@@ -2739,14 +2659,14 @@ class CommandHandler {
             }
             
             if (blacklistedUsers.length === 0) {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '✅ No blacklisted users found in this group.' 
                 });
                 return true;
             }
             
             // Kick blacklisted users
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🚫 Found ${blacklistedUsers.length} blacklisted user(s). Removing them now...` 
             });
             
@@ -2799,7 +2719,7 @@ class CommandHandler {
             }
             summaryMessage += `\n⏰ Time: ${getTimestamp()}`;
             
-            await this.sock.sendMessage(groupId, { text: summaryMessage });
+            await this.sock.sendMessage(this.getAdminJid(), { text: summaryMessage });
             
             // Alert admin
             const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
@@ -2826,7 +2746,7 @@ class CommandHandler {
             
         } catch (error) {
             console.error('❌ Error in botkick command:', error);
-            await this.sock.sendMessage(groupId, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Need to be an admin' 
             });
         }
@@ -2836,7 +2756,7 @@ class CommandHandler {
     
     async handleSessionCheck(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -2877,13 +2797,13 @@ class CommandHandler {
             report += `• Monitor for spam from listed users\n`;
         }
         
-        await this.sock.sendMessage(msg.key.remoteJid, { text: report });
+        await this.sock.sendMessage(this.getAdminJid(), { text: report });
         return true;
     }
     
     async handleBotAdminCheck(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -2917,10 +2837,10 @@ class CommandHandler {
                     report += `🔧 *To fix: Make bot admin in group settings*`;
                 }
                 
-                await this.sock.sendMessage(groupId, { text: report });
+                await this.sock.sendMessage(this.getAdminJid(), { text: report });
                 
             } catch (error) {
-                await this.sock.sendMessage(groupId, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `❌ Error checking bot status: ${error.message}` 
                 });
             }
@@ -2934,7 +2854,7 @@ class CommandHandler {
             report += `⏰ Time: ${getTimestamp()}\n\n`;
             report += `💡 Use this command in a group to check admin status`;
             
-            await this.sock.sendMessage(msg.key.remoteJid, { text: report });
+            await this.sock.sendMessage(this.getAdminJid(), { text: report });
         }
         
         return true;
@@ -2942,14 +2862,14 @@ class CommandHandler {
 
     async handleSearch(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: this.getRandomSassyResponse()
             });
             return true;
         }
 
         if (args.length === 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Please provide a search query\n\nUsage: #search <query>\nExample: #search WhatsApp security tips' 
             });
             return true;
@@ -2966,28 +2886,28 @@ class CommandHandler {
         // Check rate limit
         const rateLimit = searchService.checkRateLimit(userId);
         if (!rateLimit.allowed) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `⏳ Rate limit exceeded. Please wait ${rateLimit.remainingTime} seconds before searching again.` 
             });
             return true;
         }
 
         try {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🔍 Searching for: "${query}"...` 
             });
 
             const results = await searchService.search(query);
             const formattedResults = searchService.formatSearchResults(results);
 
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: formattedResults 
             });
 
             console.log(`[${getTimestamp()}] ✅ Search completed for query: ${query}`);
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Search failed:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Search failed: ${error.message}\n\n💡 Note: MCP Chrome search requires setup. See MCP_SETUP.md for instructions.` 
             });
         }
@@ -2997,14 +2917,14 @@ class CommandHandler {
 
     async handleVerifyLink(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: this.getRandomSassyResponse()
             });
             return true;
         }
 
         if (args.length === 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Please provide a URL to verify\n\nUsage: #verify <url>\nExample: #verify https://example.com' 
             });
             return true;
@@ -3014,7 +2934,7 @@ class CommandHandler {
 
         // Basic URL validation
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Invalid URL. Please include http:// or https://' 
             });
             return true;
@@ -3026,7 +2946,7 @@ class CommandHandler {
         }
 
         try {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🔒 Verifying link safety: ${url}...` 
             });
 
@@ -3046,14 +2966,14 @@ class CommandHandler {
 
             resultMessage += `\n⏰ Verified at: ${getTimestamp()}`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: resultMessage 
             });
 
             console.log(`[${getTimestamp()}] ✅ Link verified: ${url} - Safe: ${verification.safe}`);
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Link verification failed:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Verification failed: ${error.message}\n\n💡 Note: Link verification requires MCP setup. See MCP_SETUP.md for instructions.` 
             });
         }
@@ -3079,7 +2999,7 @@ class CommandHandler {
         
         // If no args and no quoted message, show help
         if (args.length === 0 && !textToTranslateFromQuoted) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Please provide text to translate\n\n📝 *Usage:*\n• #translate <text> - Translate to Hebrew (default)\n• #translate <lang> <text> - Translate to specific language\n• *Reply* to a message with #translate - Translate that message\n• *Reply* to a message with #translate <lang> - Translate to specific language\n\n🌐 Example:\n• #translate Hello world\n• #translate en שלום עולם\n• #translate fr Bonjour le monde\n\nUse #langs to see supported languages' 
             });
             return true;
@@ -3122,20 +3042,20 @@ class CommandHandler {
             const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
             
             if (urlRegex.test(textToTranslate)) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '🔗 Cannot translate URLs. Please provide regular text instead.' 
                 });
                 return true;
             }
             
             if (emailRegex.test(textToTranslate)) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '📧 Cannot translate email addresses. Please provide regular text instead.' 
                 });
                 return true;
             }
             
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `🌐 Translating to ${translationService.getSupportedLanguages()[targetLang] || targetLang}...` 
             });
             
@@ -3144,14 +3064,14 @@ class CommandHandler {
             // Simple clean response - just the translation
             const response = result.translatedText;
             
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: response 
             });
             
             console.log(`[${getTimestamp()}] ✅ Translation completed: ${result.detectedLanguage} → ${targetLang}`);
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Translation failed:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: `❌ Translation failed: ${error.message}\n\n💡 Note: Translation requires Google Translate API setup. Add GOOGLE_TRANSLATE_API_KEY to your environment.` 
             });
         }
@@ -3159,19 +3079,12 @@ class CommandHandler {
         return true;
     }
 
-    /**
-     * Handle #ru command — translate replied message to Russian (admin only)
-     */
-    async handleTranslateRu(msg) {
-        const adminPhone = config.ADMIN_PHONE; // '972544345287'
+    async _translateShortcut(msg, langCode, langName) {
+        const adminPhone = config.ADMIN_PHONE;
         const adminJid = `${adminPhone}@s.whatsapp.net`;
-
-        // Identify sender (group message: participant; DM: remoteJid)
         const sender = msg.key.participant || msg.key.remoteJid;
         const senderPhone = sender.split('@')[0].split(':')[0];
         const adminLid = config.ADMIN_LID || '';
-
-        // Silent ignore for non-admins (check both phone and LID format)
         const isAdmin = senderPhone === adminPhone || senderPhone === adminLid;
         if (!isAdmin) return true;
 
@@ -3182,9 +3095,7 @@ class CommandHandler {
             quotedMessage?.videoMessage?.caption;
 
         if (!textToTranslate) {
-            await this.sock.sendMessage(adminJid, {
-                text: '❌ #ru: Reply to a message to translate it to Russian'
-            });
+            await this.sock.sendMessage(adminJid, { text: `❌ #${langCode}: Reply to a message to translate it to ${langName}` });
             return true;
         }
 
@@ -3193,26 +3104,26 @@ class CommandHandler {
             const response = await openai.chat.completions.create({
                 model: 'gpt-5.4-nano',
                 messages: [
-                    { role: 'system', content: 'Translate the following text to Russian. Return ONLY the translated text, no explanations.' },
+                    { role: 'system', content: `Translate the following text to ${langName}. Return ONLY the translated text, no explanations.` },
                     { role: 'user', content: textToTranslate }
                 ],
                 max_completion_tokens: 500
             });
-
             const translation = response.choices[0]?.message?.content?.trim();
             if (!translation) throw new Error('Empty response from OpenAI');
-
-            await this.sock.sendMessage(msg.key.remoteJid, { text: translation });
-            console.log(`[${getTimestamp()}] ✅ #ru translation sent`);
+            await this.sock.sendMessage(this.getAdminJid(), { text: translation });
+            console.log(`[${getTimestamp()}] ✅ #${langCode} translation sent`);
         } catch (error) {
-            console.error(`[${getTimestamp()}] ❌ #ru translation failed:`, error);
-            await this.sock.sendMessage(adminJid, {
-                text: `❌ #ru error: ${error.message}`
-            });
+            console.error(`[${getTimestamp()}] ❌ #${langCode} translation failed:`, error);
+            await this.sock.sendMessage(adminJid, { text: `❌ #${langCode} error: ${error.message}` });
         }
-
         return true;
     }
+
+    async handleTranslateRu(msg) { return this._translateShortcut(msg, 'ru', 'Russian'); }
+    async handleTranslateHe(msg) { return this._translateShortcut(msg, 'he', 'Hebrew'); }
+    async handleTranslateFr(msg) { return this._translateShortcut(msg, 'fr', 'French'); }
+    async handleTranslateEn(msg) { return this._translateShortcut(msg, 'en', 'English'); }
 
     /**
      * Handle language list command
@@ -3239,13 +3150,13 @@ class CommandHandler {
             response += `• #translate עברית Good morning\n`;
             response += `• #translate fr Bonjour`;
             
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: response 
             });
             
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Language list failed:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Failed to get language list. Please try again later.' 
             });
         }
@@ -3259,7 +3170,7 @@ class CommandHandler {
     async handleTranslationToggle(msg, args) {
         // Check if message is from the bot itself
         if (!msg.key.fromMe) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '🤖 Auto-translation settings can only be changed by the bot itself.' 
             });
             return true;
@@ -3282,7 +3193,7 @@ class CommandHandler {
                 response += `• Mixed Hebrew/non-Hebrew messages are ignored\n\n`;
                 response += `⚙️ Use \`#autotranslate off\` to disable`;
                 
-                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                await this.sock.sendMessage(this.getAdminJid(), { text: response });
                 console.log(`[${getTimestamp()}] ✅ Auto-translation enabled by admin`);
                 
             } else if (command === 'off' || command === 'disable') {
@@ -3295,7 +3206,7 @@ class CommandHandler {
                 response += `• \`#translate <lang> <text>\` - Translate to specific language\n\n`;
                 response += `⚙️ Use \`#autotranslate on\` to re-enable`;
                 
-                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                await this.sock.sendMessage(this.getAdminJid(), { text: response });
                 console.log(`[${getTimestamp()}] ❌ Auto-translation disabled by admin`);
                 
             } else if (command === 'status' || command === '') {
@@ -3317,17 +3228,17 @@ class CommandHandler {
                     response += `• \`#translate <text>\` - Manual translation still works\n`;
                 }
                 
-                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                await this.sock.sendMessage(this.getAdminJid(), { text: response });
                 
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: '❌ Invalid option. Use:\n• `#autotranslate on` - Enable\n• `#autotranslate off` - Disable\n• `#autotranslate status` - Check status' 
                 });
             }
             
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Translation toggle failed:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Failed to toggle auto-translation. Please try again later.' 
             });
         }
@@ -3351,7 +3262,7 @@ class CommandHandler {
             const targetUserId = typeof args === 'string' ? args.trim() : args[0];
             
             if (!targetUserId) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `❌ Usage: \`${decision} <phone_number>\`\nExample: \`${decision} 972555123456\`` 
                 });
                 return true;
@@ -3376,7 +3287,7 @@ class CommandHandler {
                     
                     if (removed) {
                         // Notify admin
-                        await this.sock.sendMessage(msg.key.remoteJid, { 
+                        await this.sock.sendMessage(this.getAdminJid(), { 
                             text: `✅ *Request APPROVED*\n\n` +
                                   `👤 User ${normalizedUserId} has been removed from blacklist.\n` +
                                   `📨 User has been notified.` 
@@ -3459,13 +3370,13 @@ class CommandHandler {
 
                         console.log(`[${getTimestamp()}] ✅ Admin ${adminPhone} approved unblacklist for ${normalizedUserId}`);
                     } else {
-                        await this.sock.sendMessage(msg.key.remoteJid, { 
+                        await this.sock.sendMessage(this.getAdminJid(), { 
                             text: `❌ Failed to remove ${normalizedUserId} from blacklist. They may not be blacklisted.` 
                         });
                     }
                 } else {
                     // Deny: Keep on blacklist
-                    await this.sock.sendMessage(msg.key.remoteJid, { 
+                    await this.sock.sendMessage(this.getAdminJid(), { 
                         text: `❌ *Request DENIED*\n\n` +
                               `👤 User ${normalizedUserId} remains on blacklist.\n` +
                               `📨 User has been notified.` 
@@ -3488,14 +3399,14 @@ class CommandHandler {
                     console.log(`[${getTimestamp()}] ❌ Admin ${adminPhone} denied unblacklist for ${normalizedUserId}`);
                 }
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `❌ Failed to process response. User ${normalizedUserId} may not have a pending request.` 
                 });
             }
 
         } catch (error) {
             console.error(`❌ Error handling admin approval:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Error processing admin response. Please try again.' 
             });
         }
@@ -3505,7 +3416,7 @@ class CommandHandler {
 
     async handleJokeStats(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
@@ -3532,11 +3443,11 @@ class CommandHandler {
 
             report += `💡 *Usage:* Reply to "משעמם" messages triggers random jokes`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: report });
+            await this.sock.sendMessage(this.getAdminJid(), { text: report });
 
         } catch (error) {
             console.error('❌ Error fetching joke stats:', error.message);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Error fetching joke statistics. Please try again.' 
             });
         }
@@ -3546,14 +3457,14 @@ class CommandHandler {
 
     async handleRejoinLinks(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: 'מה אני עובד אצלך?!' 
             });
             return true;
         }
 
         if (!args) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ Usage: #rejoinlinks <phone_number>\nExample: #rejoinlinks 972555123456' 
             });
             return true;
@@ -3569,7 +3480,7 @@ class CommandHandler {
             const allKicks = await kickedUserService.getRejoinInfo(userId, false); // Get all, not just recent
             
             if (!allKicks || allKicks.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `ℹ️ No kick records found for ${phoneNumber}` 
                 });
                 return true;
@@ -3595,11 +3506,11 @@ class CommandHandler {
 
             report += `📊 *Summary:* ${allKicks.length} total kicks, ${allKicks.filter(k => k.canRejoin).length} ready for rejoin`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: report });
+            await this.sock.sendMessage(this.getAdminJid(), { text: report });
 
         } catch (error) {
             console.error('❌ Error fetching rejoin links:', error.message);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ Error fetching rejoin links. Please try again.' 
             });
         }
@@ -3613,7 +3524,7 @@ class CommandHandler {
      */
     async handleJokesOn(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -3621,7 +3532,7 @@ class CommandHandler {
 
         // Only works in groups
         if (!msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ This command can only be used in groups.' 
             });
             return true;
@@ -3643,17 +3554,17 @@ class CommandHandler {
             const success = await groupJokeSettingsService.setJokesEnabled(groupId, true, senderPhone, groupName);
             
             if (success) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `🎭✅ בדיחות משעמם הופעלו בקבוצה!\n\nכשמישהו כותב "משעמם", הבוט יענה עם בדיחה.` 
                 });
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `⚠️ בדיחות הופעלו מקומית, אך עדכון Firebase נכשל. ההגדרה תאבד בהפעלה מחדש.` 
                 });
             }
         } catch (error) {
             console.error('Error enabling jokes:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ שגיאה בהפעלת בדיחות. נסה שוב.' 
             });
         }
@@ -3666,7 +3577,7 @@ class CommandHandler {
      */
     async handleJokesOff(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -3674,7 +3585,7 @@ class CommandHandler {
 
         // Only works in groups
         if (!msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ הפקודה הזו פועלת רק בקבוצות.' 
             });
             return true;
@@ -3696,17 +3607,17 @@ class CommandHandler {
             const success = await groupJokeSettingsService.setJokesEnabled(groupId, false, senderPhone, groupName);
             
             if (success) {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `🎭❌ בדיחות משעמם כובו בקבוצה!\n\nהבוט יתעלם מהודעות "משעמם" בקבוצה זו.` 
                 });
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, { 
+                await this.sock.sendMessage(this.getAdminJid(), { 
                     text: `⚠️ בדיחות כובו מקומית, אך עדכון Firebase נכשל. ההגדרה תאבד בהפעלה מחדש.` 
                 });
             }
         } catch (error) {
             console.error('Error disabling jokes:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ שגיאה בכיבוי בדיחות. נסה שוב.' 
             });
         }
@@ -3719,7 +3630,7 @@ class CommandHandler {
      */
     async handleJokesStatus(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -3727,7 +3638,7 @@ class CommandHandler {
 
         // Only works in groups
         if (!msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '⚠️ הפקודה הזו פועלת רק בקבוצות.' 
             });
             return true;
@@ -3764,11 +3675,11 @@ class CommandHandler {
             statusText += `• #jokesoff - כבה בדיחות משעמם\n`;
             statusText += `• #jokesstatus - הצג מצב נוכחי`;
             
-            await this.sock.sendMessage(msg.key.remoteJid, { text: statusText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: statusText });
             
         } catch (error) {
             console.error('Error getting joke status:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ שגיאה באחזור סטטוס בדיחות. נסה שוב.' 
             });
         }
@@ -3781,7 +3692,7 @@ class CommandHandler {
      */
     async handleMsg1(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, { 
+            await this.sock.sendMessage(this.getAdminJid(), { 
                 text: '❌ פקודה זו מיועדת למנהלים בלבד.' 
             });
             return true;
@@ -3795,7 +3706,7 @@ class CommandHandler {
 🤡🚷
 #רק_אהבה_ולא_הזמנות`;
 
-        await this.sock.sendMessage(msg.key.remoteJid, { text: warningMessage });
+        await this.sock.sendMessage(this.getAdminJid(), { text: warningMessage });
         return true;
     }
 
@@ -3806,7 +3717,7 @@ class CommandHandler {
      */
     async handleMarkMine(msg, isAdmin, args = []) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -3814,7 +3725,7 @@ class CommandHandler {
 
         // Only works in groups
         if (!msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ This command can only be used in groups.'
             });
             return true;
@@ -3849,15 +3760,15 @@ class CommandHandler {
                 if (notes) {
                     response += `\n📝 Notes: ${notes}`;
                 }
-                await this.sock.sendMessage(msg.key.remoteJid, { text: response });
+                await this.sock.sendMessage(this.getAdminJid(), { text: response });
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '❌ Failed to mark group. Make sure database is connected.'
                 });
             }
         } catch (error) {
             console.error('Error marking group as mine:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error marking group. Check logs for details.'
             });
         }
@@ -3870,7 +3781,7 @@ class CommandHandler {
      */
     async handleUnmarkMine(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -3878,7 +3789,7 @@ class CommandHandler {
 
         // Only works in groups
         if (!msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ This command can only be used in groups.'
             });
             return true;
@@ -3889,17 +3800,17 @@ class CommandHandler {
             const success = await groupService.unmarkMine(groupId);
 
             if (success) {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '✅ This group has been unmarked.'
                 });
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '❌ Failed to unmark group.'
                 });
             }
         } catch (error) {
             console.error('Error unmarking group:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error unmarking group. Check logs for details.'
             });
         }
@@ -3914,7 +3825,7 @@ class CommandHandler {
      */
     async handleMyGroups(msg, isAdmin, args = []) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -3922,7 +3833,7 @@ class CommandHandler {
 
         // Only works in private chat
         if (msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ This command can only be used in private chat for privacy.'
             });
             return true;
@@ -3939,7 +3850,7 @@ class CommandHandler {
                     ? `📋 *Your Groups - ${categoryFilter}*\n\nNo groups found in this category.\n\nUse #categories to see all categories.`
                     : '📋 *Your Groups*\n\nYou haven\'t marked any groups yet.\n\nUse #markmine in a group to mark it as yours.';
 
-                await this.sock.sendMessage(msg.key.remoteJid, { text: noGroupsMsg });
+                await this.sock.sendMessage(this.getAdminJid(), { text: noGroupsMsg });
                 return true;
             }
 
@@ -3988,11 +3899,11 @@ class CommandHandler {
             const totalMembers = myGroups.reduce((sum, g) => sum + (g.member_count || 0), 0);
             responseText += `Total Members: ${totalMembers}\n`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: responseText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: responseText });
 
         } catch (error) {
             console.error('Error getting my groups:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error fetching your groups. Check logs for details.'
             });
         }
@@ -4026,7 +3937,7 @@ class CommandHandler {
      */
     async handleSetCategory(msg, args, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -4034,14 +3945,14 @@ class CommandHandler {
 
         // Only works in groups
         if (!msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ This command can only be used in groups.'
             });
             return true;
         }
 
         if (!args || args.length === 0) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `📂 *Set Category*
 
 Usage: #setcategory <category>
@@ -4070,17 +3981,17 @@ Example: #setcategory family`
 
             if (success) {
                 const emoji = this.getCategoryEmoji(category);
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `✅ Category set to: ${emoji} *${category}*`
                 });
             } else {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '❌ Failed to set category. Make sure it\'s a valid category.\n\nUse #setcategory without arguments to see valid categories.'
                 });
             }
         } catch (error) {
             console.error('Error setting category:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error setting category. Check logs for details.'
             });
         }
@@ -4093,7 +4004,7 @@ Example: #setcategory family`
      */
     async handleCategories(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -4101,7 +4012,7 @@ Example: #setcategory family`
 
         // Only works in private chat
         if (msg.key.remoteJid.endsWith('@g.us')) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '⚠️ This command can only be used in private chat for privacy.'
             });
             return true;
@@ -4111,7 +4022,7 @@ Example: #setcategory family`
             const stats = await groupService.getCategoryStats();
 
             if (stats.length === 0) {
-                await this.sock.sendMessage(msg.key.remoteJid, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📂 *Categories*\n\nNo groups marked yet.\n\nUse #markmine in a group to get started!'
                 });
                 return true;
@@ -4135,11 +4046,11 @@ Example: #setcategory family`
             responseText += `Groups: ${totalGroups} | Members: ${totalMembers}\n\n`;
             responseText += `💡 Use #mygroups <category> to filter by category`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: responseText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: responseText });
 
         } catch (error) {
             console.error('Error getting categories:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error fetching categories. Check logs for details.'
             });
         }
@@ -4152,7 +4063,7 @@ Example: #setcategory family`
      */
     async handleMemoryCheck(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -4174,12 +4085,12 @@ Example: #setcategory family`
                 `• Heap: ${stats.process.heapUsedMB}MB / ${stats.process.heapTotalMB}MB\n\n` +
                 `⏰ ${getTimestamp()}`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: statusText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: statusText });
             console.log(`[${getTimestamp()}] ✅ Memory check sent to admin`);
             return true;
         } catch (error) {
             console.error('Error checking memory:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error checking memory. Check logs for details.'
             });
             return false;
@@ -4191,7 +4102,7 @@ Example: #setcategory family`
      */
     async handleMemoryReport(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -4204,12 +4115,12 @@ Example: #setcategory family`
 
             const fullReport = `${memReport}\n\n${'─'.repeat(40)}\n\n${leakReport}`;
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: fullReport });
+            await this.sock.sendMessage(this.getAdminJid(), { text: fullReport });
             console.log(`[${getTimestamp()}] ✅ Full memory report sent to admin`);
             return true;
         } catch (error) {
             console.error('Error generating memory report:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error generating memory report. Check logs for details.'
             });
             return false;
@@ -4221,7 +4132,7 @@ Example: #setcategory family`
      */
     async handleForceGC(msg, isAdmin) {
         if (!isAdmin) {
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: this.getRandomSassyResponse()
             });
             return true;
@@ -4253,12 +4164,12 @@ Example: #setcategory family`
                     `⏰ ${getTimestamp()}`;
             }
 
-            await this.sock.sendMessage(msg.key.remoteJid, { text: resultText });
+            await this.sock.sendMessage(this.getAdminJid(), { text: resultText });
             console.log(`[${getTimestamp()}] ✅ GC command executed`);
             return true;
         } catch (error) {
             console.error('Error forcing GC:', error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Error forcing garbage collection. Check logs for details.'
             });
             return false;
@@ -4280,7 +4191,7 @@ Example: #setcategory family`
             const { executeGlobalBanOnSelectedGroups, formatSelectedGroupsBanReport } = require('../utils/globalBanHelper');
 
             // Send processing message
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `⏳ Processing your selection...\nThis may take a few minutes.`
             });
 
@@ -4289,7 +4200,7 @@ Example: #setcategory family`
             if (selection.toLowerCase() === 'all') {
                 // Use all groups from the map
                 if (!global.groupSelectionMap) {
-                    await this.sock.sendMessage(msg.key.remoteJid, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: `❌ Group selection expired. Please run #kickglobal again.`
                     });
                     delete global[pendingBanKey];
@@ -4303,7 +4214,7 @@ Example: #setcategory family`
                 console.log(`[${require('../utils/logger').getTimestamp()}] 🌍 Selected group numbers: ${numbers.join(', ')}`);
 
                 if (!global.groupSelectionMap) {
-                    await this.sock.sendMessage(msg.key.remoteJid, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: `❌ Group selection expired. Please run #kickglobal again.`
                     });
                     delete global[pendingBanKey];
@@ -4321,7 +4232,7 @@ Example: #setcategory family`
                 }
 
                 if (selectedGroupIds.length === 0) {
-                    await this.sock.sendMessage(msg.key.remoteJid, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: `❌ No valid groups selected. Please try again with valid group numbers.`
                     });
                     return true;
@@ -4329,7 +4240,7 @@ Example: #setcategory family`
 
                 // Safety warning if more than 10 groups
                 if (selectedGroupIds.length > 10) {
-                    await this.sock.sendMessage(msg.key.remoteJid, {
+                    await this.sock.sendMessage(this.getAdminJid(), {
                         text: `⚠️ *Warning:* You selected ${selectedGroupIds.length} groups.\n` +
                               `For safety, it's recommended to limit to 10 groups at a time.\n\n` +
                               `Reply "continue" to proceed anyway, or send new selection.`
@@ -4351,7 +4262,7 @@ Example: #setcategory family`
 
             // Send report
             const reportMessage = formatSelectedGroupsBanReport(report);
-            await this.sock.sendMessage(msg.key.remoteJid, { text: reportMessage });
+            await this.sock.sendMessage(this.getAdminJid(), { text: reportMessage });
 
             // Cleanup
             delete global[pendingBanKey];
@@ -4362,7 +4273,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${require('../utils/logger').getTimestamp()}] ❌ Error processing group selection:`, error);
-            await this.sock.sendMessage(msg.key.remoteJid, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `❌ Error processing selection: ${error.message}`
             });
             delete global[pendingBanKey];
@@ -4403,7 +4314,7 @@ Example: #setcategory family`
             }
 
             if (flaggedMessages.length === 0) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📭 No flagged messages to review.\n\nFlagged messages will appear here when bullying is detected.',
                     quoted: msg
                 });
@@ -4439,7 +4350,7 @@ Example: #setcategory family`
             reviewMessage += `#bullywatch feedback <id> <verdict>\n\n`;
             reviewMessage += `Verdicts: true_positive | false_positive | low | medium | high`;
 
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: reviewMessage,
                 quoted: msg
             });
@@ -4448,7 +4359,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to handle bullywatch review:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to retrieve flagged messages. Check logs for details.',
                 quoted: msg
             });
@@ -4469,7 +4380,7 @@ Example: #setcategory family`
         const verdict = args[2];
 
         if (!messageId || !verdict) {
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ *Usage:* #bullywatch feedback <id> <verdict>\n\n' +
                       'Verdicts:\n' +
                       '  • true_positive - Correctly flagged bullying\n' +
@@ -4485,7 +4396,7 @@ Example: #setcategory family`
 
         const validVerdicts = ['true_positive', 'false_positive', 'low', 'medium', 'high'];
         if (!validVerdicts.includes(verdict)) {
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `❌ Invalid verdict: ${verdict}\n\n` +
                       `Valid verdicts: ${validVerdicts.join(' | ')}`,
                 quoted: msg
@@ -4545,7 +4456,7 @@ Example: #setcategory family`
             }
 
             if (updated) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `✅ Feedback recorded!\n\n` +
                           `🆔 Message ID: ${messageId}\n` +
                           `📊 Verdict: ${verdict}\n` +
@@ -4556,7 +4467,7 @@ Example: #setcategory family`
 
                 console.log(`[${getTimestamp()}] ✅ Bullywatch feedback recorded: ${messageId} → ${verdict} (${source})`);
             } else {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `❌ Message ID not found: ${messageId}\n\n` +
                           `Use #bullywatch review to see available message IDs.`,
                     quoted: msg
@@ -4565,7 +4476,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to store feedback:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to store feedback. Check logs for details.',
                 quoted: msg
             });
@@ -4585,7 +4496,7 @@ Example: #setcategory family`
         const word = args.slice(1).join(' ').trim();
 
         if (!word) {
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ *Usage:* #bullywatch suggest <word>\n\n' +
                       'Example: #bullywatch suggest חנון\n\n' +
                       'Suggested words will be reviewed and added to the offensive words database.',
@@ -4625,7 +4536,7 @@ Example: #setcategory family`
                 });
             }
 
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `✅ Word suggestion recorded!\n\n` +
                       `📝 Word: "${word}"\n` +
                       `💾 Stored in: ${source}\n\n` +
@@ -4637,7 +4548,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to store suggestion:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to store suggestion. Check logs for details.',
                 quoted: msg
             });
@@ -4676,7 +4587,7 @@ Example: #setcategory family`
             }
 
             if (feedbackData.length === 0) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📊 *No feedback data available yet.*\n\n' +
                           'Use #bullywatch feedback to provide verdicts on flagged messages.',
                     quoted: msg
@@ -4718,7 +4629,7 @@ Example: #setcategory family`
 
             metricsMessage += `Use #bullywatch export to download full data.`;
 
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: metricsMessage,
                 quoted: msg
             });
@@ -4727,7 +4638,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to calculate metrics:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to calculate metrics. Check logs for details.',
                 quoted: msg
             });
@@ -4765,7 +4676,7 @@ Example: #setcategory family`
             }
 
             if (flaggedMessages.length === 0) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📭 No data to export.\n\nFlagged messages will be available for export once bullying is detected.',
                     quoted: msg
                 });
@@ -4802,7 +4713,7 @@ Example: #setcategory family`
                                  `\`\`\`${csv}\`\`\`\n\n` +
                                  `💡 Copy the CSV data above and save as .csv file.`;
 
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: exportMessage,
                 quoted: msg
             });
@@ -4811,7 +4722,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to export data:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to export data. Check logs for details.',
                 quoted: msg
             });
@@ -4850,7 +4761,7 @@ Example: #setcategory family`
             }
 
             if (suggestions.length === 0) {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: '📭 No pending word suggestions.\n\n' +
                           'Use #bullywatch suggest <word> to suggest new offensive words.',
                     quoted: msg
@@ -4881,7 +4792,7 @@ Example: #setcategory family`
             suggestionsMessage += `#bullywatch approve <word> <category>\n\n`;
             suggestionsMessage += `Categories: sexual_harassment | general_insult | social_exclusion | direct_threat | privacy_threat`;
 
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: suggestionsMessage,
                 quoted: msg
             });
@@ -4890,7 +4801,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to list suggestions:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to retrieve suggestions. Check logs for details.',
                 quoted: msg
             });
@@ -4911,7 +4822,7 @@ Example: #setcategory family`
         const category = args[2] || 'general_insult'; // Default category
 
         if (!word) {
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ *Usage:* #bullywatch approve <word> <category>\n\n' +
                       'Categories:\n' +
                       '  • sexual_harassment (score: 16)\n' +
@@ -4927,7 +4838,7 @@ Example: #setcategory family`
 
         const validCategories = ['sexual_harassment', 'general_insult', 'social_exclusion', 'direct_threat', 'privacy_threat', 'self_harm'];
         if (!validCategories.includes(category)) {
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: `❌ Invalid category: ${category}\n\n` +
                       `Valid categories: ${validCategories.join(' | ')}`,
                 quoted: msg
@@ -4972,7 +4883,7 @@ Example: #setcategory family`
                     console.log(`[${getTimestamp()}] ⚠️  Could not remove from suggestions: ${redisError.message}`);
                 }
 
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `✅ Word added to lexicon!\n\n` +
                           `📝 Word: "${word}"\n` +
                           `🏷️  Category: ${category}\n` +
@@ -4984,7 +4895,7 @@ Example: #setcategory family`
 
                 console.log(`[${getTimestamp()}] ✅ Word approved and added to lexicon: "${word}" (category: ${category}, approved by: ${adminPhone})`);
             } else {
-                await this.sock.sendMessage(groupId, {
+                await this.sock.sendMessage(this.getAdminJid(), {
                     text: `❌ Failed to add word to lexicon.\n\nError: ${result.error}`,
                     quoted: msg
                 });
@@ -4992,7 +4903,7 @@ Example: #setcategory family`
 
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Failed to approve word:`, error);
-            await this.sock.sendMessage(groupId, {
+            await this.sock.sendMessage(this.getAdminJid(), {
                 text: '❌ Failed to add word to lexicon. Check logs for details.',
                 quoted: msg
             });

@@ -15,7 +15,7 @@ const globalBanTracker = require('../services/globalBanTracker');
  * @param {number} maxGroups - Maximum number of groups to process (default: 10 for safety)
  * @returns {Object} Summary report of the operation
  */
-async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null, maxGroups = 20) {
+async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhoneDecoded = null, maxGroups = 100) {
     console.log(`[${getTimestamp()}] 🌍 Starting Global Ban for user: ${userJid}`);
     console.log(`   Admin phone: ${adminPhone}`);
     console.log(`   ⚠️ SAFETY LIMIT: Processing max ${maxGroups} groups to prevent Meta bans`);
@@ -34,35 +34,23 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
     };
 
     try {
-        // Step 1: Get all groups
-        console.log(`[${getTimestamp()}] 📋 Fetching all groups...`);
-        const groups = await sock.groupFetchAllParticipating();
-        const allGroupIds = Object.keys(groups);
-
-        console.log(`[${getTimestamp()}] 📋 Bot is in ${allGroupIds.length} total groups`);
-
-        // Step 1b: Filter to only groups where bot is admin (can actually kick)
-        const botId = sock.user?.id || '';
-        const botPhone = botId.split(':')[0].split('@')[0];
         const knownBotLids = ['171012763213843@lid'];
 
-        const groupIds = allGroupIds.filter(gid => {
-            const group = groups[gid];
-            if (!group.participants) return false;
+        // Step 1: Get admin groups from DB — source of truth.
+        const { query } = require('../database/connection');
 
-            const botParticipant = group.participants.find(p => {
-                if (p.id === botId) return true;
-                if (knownBotLids.includes(p.id)) return true;
-                const pPhone = p.id.split(':')[0].split('@')[0];
-                if (pPhone === botPhone) return true;
-                return false;
-            });
+        const dbResult = await query(`
+            SELECT g.whatsapp_group_id
+            FROM groups g
+            JOIN group_members gm ON gm.group_id = g.id
+            JOIN users u ON u.id = gm.user_id
+            WHERE (gm.is_admin = true OR gm.is_super_admin = true)
+              AND u.phone_number = $1
+        `, [adminPhone]);
 
-            return botParticipant && (botParticipant.admin === 'admin' || botParticipant.admin === 'superadmin');
-        });
-
+        const groupIds = dbResult.rows.map(r => r.whatsapp_group_id);
         report.totalGroups = groupIds.length;
-        console.log(`[${getTimestamp()}] ✅ Bot is admin in ${groupIds.length} groups (filtered from ${allGroupIds.length} total)`);
+        console.log(`[${getTimestamp()}] 📋 Bot is admin in ${groupIds.length} groups (from DB)`);
 
         // Get already processed groups for this user
         const processedGroups = await globalBanTracker.getProcessedGroups(userJid);
@@ -100,6 +88,31 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
             }
         }
 
+        // Resolve user's LID from file cache (phone → LID reverse lookup)
+        // Needed because Baileys returns participant IDs in LID format, not phone format
+        let userLid = null;
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const authDir = path.join(process.cwd(), 'baileys_auth_info');
+            if (fs.existsSync(authDir)) {
+                const files = fs.readdirSync(authDir).filter(f => f.startsWith('lid-mapping-') && f.endsWith('_reverse.json'));
+                for (const file of files) {
+                    try {
+                        const content = fs.readFileSync(path.join(authDir, file), 'utf8').replace(/['"]/g, '').trim();
+                        if (content === userPhone) {
+                            userLid = file.replace('lid-mapping-', '').replace('_reverse.json', '') + '@lid';
+                            console.log(`[${getTimestamp()}] 🔓 Resolved user LID from cache: ${userLid}`);
+                            break;
+                        }
+                    } catch(e) { /* skip unreadable files */ }
+                }
+            }
+            if (!userLid) console.log(`[${getTimestamp()}] ⚠️  No LID cache found for phone ${userPhone}`);
+        } catch(e) {
+            console.log(`[${getTimestamp()}] ⚠️  LID resolution error: ${e.message}`);
+        }
+
         // Note: Israeli number protection exists for BLACKLISTING (blacklistService.js)
         // Global ban (kicking) is allowed for all numbers including Israeli
 
@@ -110,8 +123,7 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
         for (const groupId of groupsToProcess) {
             processedCount++;
             report.groupsProcessed = processedCount;
-            const group = groups[groupId];
-            const groupName = group.subject || 'Unknown Group';
+            let groupName = groupId; // will be overwritten by fresh metadata below
 
             // Progress update every 5 groups
             if (processedCount % 5 === 0) {
@@ -128,10 +140,30 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
                 // ULTRA-SAFE: MUCH longer delay before each metadata fetch to avoid rate limiting
                 await new Promise(resolve => setTimeout(resolve, 3000)); // 3 seconds between each group
 
-                // Get group metadata with participants
+                // Get group metadata with participants (always fresh — don't trust groupFetchAllParticipating cache)
                 const metadata = await sock.groupMetadata(groupId);
+                groupName = metadata.subject || groupId;
 
-                // No admin check - just try to kick. If it fails, we'll catch the error.
+                // Fix 1: Re-verify bot is actually admin using fresh metadata (groupFetchAllParticipating can be stale)
+                const botIdFresh = sock.user?.id || '';
+                const botPhoneFresh = botIdFresh.split(':')[0].split('@')[0];
+                const botInFresh = metadata.participants.find(p => {
+                    if (p.id === botIdFresh) return true;
+                    if (knownBotLids.includes(p.id)) return true;
+                    const pPhone = p.id.split(':')[0].split('@')[0];
+                    return pPhone === botPhoneFresh;
+                });
+                if (!botInFresh || (botInFresh.admin !== 'admin' && botInFresh.admin !== 'superadmin')) {
+                    report.groupsWhereAdminNotAdmin++;
+                    report.details.push({
+                        groupId,
+                        groupName,
+                        status: 'skipped',
+                        reason: 'Bot is not admin in this group (verified via fresh metadata)'
+                    });
+                    console.log(`[${getTimestamp()}]    ⚠️ Skipping ${groupName} — bot not admin (fresh check)`);
+                    continue;
+                }
 
                 // Check if user is a member of this group
                 // WhatsApp provides both 'id' (LID) and 'phoneNumber' (real phone) in participant objects
@@ -183,6 +215,13 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
                             console.log(`[${getTimestamp()}]    ✓ Matched by decoded phone (last 9): ${last9} in ${p.phoneNumber}`);
                             return true;
                         }
+                    }
+
+                    // Method 6: Direct LID match using resolved LID cache
+                    // This handles the case where Baileys returns participant IDs in LID format
+                    if (userLid && p.id === userLid) {
+                        console.log(`[${getTimestamp()}]    ✓ Matched by LID: ${p.id}`);
+                        return true;
                     }
 
                     return false;
@@ -257,8 +296,8 @@ async function removeUserFromAllAdminGroups(sock, userJid, adminPhone, userPhone
         const processedGroupIds = groupsToProcess.map(gid => gid);
         await globalBanTracker.addProcessedGroups(userJid, processedGroupIds);
 
-        // If all groups processed, clear tracking
-        if (!report.limitReached) {
+        // Clear tracking only when all groups were processed with no errors
+        if (!report.limitReached && report.skippedGroups === 0) {
             await globalBanTracker.clearTracking(userJid);
         }
 
@@ -297,19 +336,25 @@ function formatGlobalBanReport(report) {
         message += `   This prevents Meta bans from mass actions\n\n`;
     }
 
+    const adminGroups = report.groupsProcessed - report.groupsWhereAdminNotAdmin;
     message += `📊 Summary:\n`;
-    message += `   • Groups Processed: ${report.groupsProcessed}${report.limitReached ? ` (limited)` : ``}\n`;
-    message += `   • Total Groups Available: ${report.totalGroups}\n`;
+    message += `   • Total Groups: ${report.totalGroups}\n`;
+    message += `   • Bot is Admin in: ${adminGroups} groups\n`;
     message += `   • User Found In: ${report.groupsWhereUserFound} groups\n`;
-    message += `   • Successfully Removed: ${report.successfulKicks} ✅\n`;
+    message += `   • Successfully Kicked: ${report.successfulKicks} ✅\n`;
 
     if (report.failedKicks > 0) {
-        message += `   • Failed Removals: ${report.failedKicks} ❌\n`;
+        message += `   • Failed Kicks: ${report.failedKicks} ❌\n`;
+    }
+    if (report.groupsWhereAdminNotAdmin > 0) {
+        message += `   • Skipped (bot not admin): ${report.groupsWhereAdminNotAdmin}\n`;
     }
 
-    message += `\n`;
-    message += `ℹ️ Additional Info:\n`;
-    message += `   • User not member of: ${report.groupsWhereUserNotMember} groups\n`;
+    message += `   • User not in: ${report.groupsWhereUserNotMember} groups\n`;
+
+    if (report.successfulKicks === 0 && report.groupsWhereUserNotMember > 0) {
+        message += `\n⚠️ User may have been auto-kicked before global ban ran.\n`;
+    }
 
     if (report.limitReached) {
         const remaining = report.totalGroups - report.groupsProcessed;

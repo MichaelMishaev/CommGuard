@@ -155,24 +155,17 @@ function testAdminPrivileges() {
     console.log('\n5️⃣ Testing Admin Privilege Levels...');
     
     const adminCommands = ['#mute', '#kick', '#ban', '#clear', '#whitelist', '#blacklist'];
-    const superAdminCommands = ['#sweep'];
     const publicCommands = ['#help'];
-    
+
     let passed = 0;
-    let total = adminCommands.length + superAdminCommands.length + publicCommands.length;
-    
+    let total = adminCommands.length + publicCommands.length;
+
     // Test admin commands
     for (const cmd of adminCommands) {
         console.log(`   ✅ "${cmd}" -> Requires ADMIN privileges`);
         passed++;
     }
-    
-    // Test super admin commands
-    for (const cmd of superAdminCommands) {
-        console.log(`   ✅ "${cmd}" -> Requires SUPER ADMIN privileges`);
-        passed++;
-    }
-    
+
     // Test public commands
     for (const cmd of publicCommands) {
         console.log(`   ✅ "${cmd}" -> Available to ALL users`);

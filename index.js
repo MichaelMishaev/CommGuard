@@ -1749,24 +1749,43 @@ async function handleMessage(sock, msg, commandHandler) {
             
             // Only admins can use bot commands
             if (isAdmin) {
+                // #globalban_<phone> — manual global ban by phone number
+                if (command.toLowerCase().startsWith('#globalban_')) {
+                    // Use full messageText (not just command) so spaces in phone numbers are included
+                    const rawPhone = messageText.slice('#globalban_'.length).replace(/\D/g, '');
+                    if (!rawPhone || rawPhone.length < 7) {
+                        await sock.sendMessage(chatId, { text: '⚠️ Usage: #globalban_972551234567' });
+                        return;
+                    }
+                    const { removeUserFromAllAdminGroups, formatGlobalBanReport } = require('./utils/globalBanHelper');
+                    const userJid = `${rawPhone}@s.whatsapp.net`;
+                    console.log(`[${getTimestamp()}] 🌍 Manual Global Ban triggered for: ${rawPhone}`);
+                    await sock.sendMessage(chatId, {
+                        text: `🌍 Starting Global Ban for +${rawPhone}...\n\n⏳ This may take a moment...`
+                    });
+                    try {
+                        const report = await removeUserFromAllAdminGroups(
+                            sock,
+                            userJid,
+                            config.ALERT_PHONE,
+                            rawPhone
+                        );
+                        await sock.sendMessage(chatId, { text: formatGlobalBanReport(report) });
+                    } catch (err) {
+                        console.error(`❌ Manual global ban failed:`, err.message);
+                        await sock.sendMessage(chatId, { text: `❌ Global Ban failed: ${err.message}` });
+                    }
+                    return;
+                }
+
                 const handled = await commandHandler.handleCommand(msg, command, args, isAdmin, isAdmin);
                 if (handled) {
                     console.log(`   Command Handled: ✅ Successfully`);
                     return;
                 }
             } else {
-                // Non-admin tried to use admin command
+                // Non-admin tried to use admin command — silently ignore
                 console.log(`   Command Rejected: ❌ Non-admin user`);
-
-                const responseText = config.FEATURES.RANDOMIZE_RESPONSES ?
-                    stealthUtils.getMessageVariation('admin_only_hebrew', 'מה אני עובד אצלך?!') :
-                    'מה אני עובד אצלך?!';
-
-                if (config.FEATURES.STEALTH_MODE) {
-                    await stealthUtils.sendHumanLikeMessage(sock, chatId, { text: responseText });
-                } else {
-                    await sock.sendMessage(chatId, { text: responseText });
-                }
                 return;
             }
 
@@ -1912,7 +1931,8 @@ async function handleMessage(sock, msg, commandHandler) {
                                     const report = await removeUserFromAllAdminGroups(
                                         sock,
                                         pendingRequest.userId,
-                                        adminPhone
+                                        adminPhone,
+                                        pendingRequest.phoneNumber
                                     );
 
                                     const reportMessage = formatGlobalBanReport(report);
@@ -1946,7 +1966,8 @@ async function handleMessage(sock, msg, commandHandler) {
                                     const report = await removeUserFromAllAdminGroups(
                                         sock,
                                         pendingRequest.userId,
-                                        adminPhone
+                                        adminPhone,
+                                        pendingRequest.phoneNumber
                                     );
 
                                     const reportMessage = formatGlobalBanReport(report);
@@ -2105,25 +2126,7 @@ async function handleMessage(sock, msg, commandHandler) {
             const msgCount = await muteService.incrementMutedMessageCount(senderId);
             console.log(`[${getTimestamp()}] 🔇 ✅ SUCCESS: Deleted message from muted user (${msgCount} messages deleted)`);
             
-            // Send warning at 7 messages with remaining mute time
-            if (msgCount === 7) {
-                const remainingTime = await muteService.getRemainingMuteTime(senderId);
-                const timeText = remainingTime ? ` (${remainingTime} remaining / נותרו ${remainingTime})` : '';
-                
-                try {
-                    await sock.sendMessage(groupId, { 
-                        text: `⚠️ @${senderId.split('@')[0]} You are muted${timeText}\n` +
-                              `🚨 After 3 more messages, you will be removed from the group\n\n` +
-                              `⚠️ @${senderId.split('@')[0]} אתה מושתק${timeText}\n` +
-                              `🚨 אחרי עוד 3 הודעות, תוסר מהקבוצה\n\n` +
-                              `🤐 Please wait until your mute expires / אנא המתן עד שההשתקה תפוג`,
-                        mentions: [senderId]
-                    });
-                    console.log(`[${getTimestamp()}] ⚠️ Sent bilingual mute warning to user`);
-                } catch (warnError) {
-                    console.error('Failed to send mute warning:', warnError);
-                }
-            }
+            // Warning at 7 messages — silent, no group message
             
             // Kick user if they send too many messages while muted (after 10 messages)
             if (msgCount >= 10) {
@@ -2234,16 +2237,6 @@ async function handleMessage(sock, msg, commandHandler) {
         // Block #help command in groups for security
         if (command === '#help') {
             console.log(`   Result: ❌ Help command blocked in groups`);
-
-            const helpBlockedText = config.FEATURES.RANDOMIZE_RESPONSES ?
-                stealthUtils.getMessageVariation('help_blocked_group', '❌ Unknown command.') :
-                '❌ Unknown command.';
-
-            if (config.FEATURES.STEALTH_MODE) {
-                await stealthUtils.sendHumanLikeMessage(sock, groupId, { text: helpBlockedText });
-            } else {
-                await sock.sendMessage(groupId, { text: helpBlockedText });
-            }
             return;
         }
 
@@ -2322,20 +2315,7 @@ async function handleMessage(sock, msg, commandHandler) {
                         // Translate to Hebrew
                         const result = await translationService.translateText(messageText, 'he', null, userId);
                         
-                        // Send translation as reply to the original message
-                        let translationResponse = `🌐 *תרגום לעברית:*\n\n`;
-                        translationResponse += `"${result.translatedText}"\n\n`;
-                        translationResponse += `📝 *מקור:* ${translationService.getSupportedLanguages()[result.detectedLanguage] || result.detectedLanguage}`;
-                        
-                        await sock.sendMessage(groupId, { 
-                            text: translationResponse,
-                            contextInfo: {
-                                quotedMessage: msg.message,
-                                participant: senderId
-                            }
-                        });
-                        
-                        console.log(`✅ Sent immediate Hebrew translation for ${result.detectedLanguage} text`);
+                        console.log(`✅ Auto-translation skipped (silent mode) for ${result.detectedLanguage} text`);
                         
                     } catch (translationError) {
                         if (translationError.message.includes('Rate limit')) {
@@ -2553,6 +2533,12 @@ async function handleMessage(sock, msg, commandHandler) {
         return;
     }
 
+    // Guard: if participant was unresolved, senderId falls back to the group's own JID — skip it
+    if (senderId.endsWith('@g.us')) {
+        console.log(`[${getTimestamp()}] ⚠️ Skipping invite link — sender resolved to group JID (no participant), likely a replayed/system message`);
+        return;
+    }
+
     console.log(`\n[${getTimestamp()}] 🚨 INVITE LINK DETECTED!`);
     console.log(`Group: ${groupId}`);
     console.log(`Sender: ${senderId}`);
@@ -2597,19 +2583,6 @@ async function handleMessage(sock, msg, commandHandler) {
             });
             deletionFailed = true;
             deletionError = 'Bot lacks delete permission';
-
-            // Send Hebrew message to group explaining bot needs admin
-            const hebrewMessage = `🚨 *קישור הזמנה לקבוצת וואטסאפ זוהה!*\n\n` +
-                                `❌ הבוט לא יכול למחוק הודעות בקבוצה זו\n` +
-                                `🛡️ *הבוט חייב להיות מנהל כדי למחוק קישורי הזמנה*\n\n` +
-                                `⚠️ *אם לא מעוניינים להפוך את הבוט למנהל, אנא הסירו אותו מהקבוצה*`;
-
-            try {
-                await sock.sendMessage(groupId, { text: hebrewMessage });
-                console.log(`📢 Sent Hebrew admin request message to group ${groupId}`);
-            } catch (messageError) {
-                console.error('Failed to send admin request message:', messageError.message);
-            }
 
             // Continue with kicking even if can't delete
         } else {
@@ -2862,19 +2835,6 @@ async function handleBotWelcome(sock, groupId, addedBy) {
         
         console.log(`[${getTimestamp()}] 🎯 Group name: ${groupName}`);
         
-        // Send welcome message to the group
-        const welcomeMessage = `ברור! קבל גרסה עם יותר הומור:
-
-כל מי שישלח קישור הזמנה לוואטסאפ —
-יעוף מהקבוצה מהר יותר מההודעה של "אמא בדרך"! 🚀🤣
-
-רק האדמינים מחלקים קישורים,
-אז תשאירו את הקישורים בארון, יחד עם הגרביים הלא תואמות 🧦😉
-
-תחסכו לנו סצנות, ותישארו איתנו בצחוקים! 😜🔗🍬`;
-        
-        await sock.sendMessage(groupId, { text: welcomeMessage });
-        
         // Alert admin about new group
         const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
         const addedByPhone = addedBy ? addedBy.split('@')[0] : 'Unknown';
@@ -3065,11 +3025,6 @@ async function handleGroupJoin(sock, groupId, participants, addedBy = null) {
                     await sock.groupParticipantsUpdate(groupId, [participantId], 'remove');
                     console.log('✅ Kicked user with restricted country code');
                     
-                    // Notify the user
-                    const message = `🚫 You have been automatically removed from ${groupMetadata.subject}.\n\n` +
-                                  `Users from certain regions are restricted from joining this group.\n\n` +
-                                  `If you believe this is a mistake, please contact the group admin.`;
-                    await sock.sendMessage(participantId, { text: message }).catch(() => {});
                     
                     // Alert admin with whitelist option
                     const adminId = config.ALERT_PHONE + '@s.whatsapp.net';
