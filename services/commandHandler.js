@@ -31,6 +31,30 @@ if (config.FEATURES.FIREBASE_INTEGRATION) {
 // Track group mute status
 const groupMuteStatus = new Map();
 
+/**
+ * Parse #autotranslate command arguments.
+ * Module-level so it can be imported and unit-tested without instantiating CommandHandler.
+ *
+ * @param {string} argsString  The raw args string (e.g. 'on ru,he', 'off', 'status')
+ * @returns {{ action: string, from?: string, to?: string } | null}
+ *   null for unrecognised/malformed input.
+ */
+function parseAutoTranslateArgs(argsString) {
+    if (!argsString || typeof argsString !== 'string') return null;
+    const parts  = argsString.trim().toLowerCase().split(/\s+/);
+    const action = parts[0];
+
+    if (action === 'off')    return { action: 'off' };
+    if (action === 'status') return { action: 'status' };
+    if (action === 'on') {
+        if (!parts[1]) return { action: 'on', from: undefined, to: undefined };
+        const pair = parts[1].split(',');
+        if (pair.length !== 2 || !pair[0] || !pair[1]) return { action: 'on', from: undefined, to: undefined };
+        return { action: 'on', from: pair[0], to: pair[1] };
+    }
+    return null;
+}
+
 class CommandHandler {
     // Track processed messages to prevent duplicates
     static processedMessages = new Set();
@@ -3165,84 +3189,83 @@ class CommandHandler {
     }
 
     /**
-     * Handle translation toggle command (bot only)
+     * Handle #autotranslate command — per-group Russian → Hebrew auto-translation.
+     * Admins (group admin or bot owner) can toggle per-group; no global config flag touched.
      */
     async handleTranslationToggle(msg, args) {
-        // Check if message is from the bot itself
-        if (!msg.key.fromMe) {
-            await this.sock.sendMessage(this.getAdminJid(), { 
-                text: '🤖 Auto-translation settings can only be changed by the bot itself.' 
+        // Must be in a group (not a private chat)
+        if (this.isPrivateChat(msg)) {
+            await this.sock.sendMessage(this.getAdminJid(), {
+                text: '⚠️ #autotranslate can only be used inside a group.'
             });
             return true;
         }
 
-        const argsString = Array.isArray(args) ? args.join(' ') : args;
-        const command = argsString.toLowerCase();
-        const config = require('../config');
-        
+        const groupId    = msg.key.remoteJid;
+        const argsString = Array.isArray(args) ? args.join(' ') : (args || '');
+        // parseAutoTranslateArgs splits the lang pair on ',' (e.g. 'ru,he' → ['ru','he'])
+        const parsed     = parseAutoTranslateArgs(argsString) || { action: 'status' };
+        const langParts  = argsString.includes(',') ? argsString.split(',') : [];
+
         try {
-            if (command === 'on' || command === 'enable') {
-                config.FEATURES.AUTO_TRANSLATION = true;
-                
-                let response = `✅ *Auto-Translation Enabled*\n\n`;
-                response += `🌐 Bot will now automatically translate non-Hebrew messages to Hebrew immediately\n\n`;
-                response += `📋 *How it works:*\n`;
-                response += `• When someone sends a non-Hebrew message\n`;
-                response += `• Bot detects if ALL words are non-Hebrew\n`;
-                response += `• Bot translates the message to Hebrew immediately\n`;
-                response += `• Mixed Hebrew/non-Hebrew messages are ignored\n\n`;
-                response += `⚙️ Use \`#autotranslate off\` to disable`;
-                
-                await this.sock.sendMessage(this.getAdminJid(), { text: response });
-                console.log(`[${getTimestamp()}] ✅ Auto-translation enabled by admin`);
-                
-            } else if (command === 'off' || command === 'disable') {
-                config.FEATURES.AUTO_TRANSLATION = false;
-                
-                let response = `❌ *Auto-Translation Disabled*\n\n`;
-                response += `🚫 Bot will no longer automatically translate messages\n\n`;
-                response += `💡 Manual translation commands still work:\n`;
-                response += `• \`#translate <text>\` - Translate to English\n`;
-                response += `• \`#translate <lang> <text>\` - Translate to specific language\n\n`;
-                response += `⚙️ Use \`#autotranslate on\` to re-enable`;
-                
-                await this.sock.sendMessage(this.getAdminJid(), { text: response });
-                console.log(`[${getTimestamp()}] ❌ Auto-translation disabled by admin`);
-                
-            } else if (command === 'status' || command === '') {
-                const isEnabled = config.FEATURES.AUTO_TRANSLATION;
-                
-                let response = `🌐 *Auto-Translation Status*\n\n`;
-                response += `📊 Current Status: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}\n\n`;
-                
-                if (isEnabled) {
-                    response += `🎯 *Active Settings:*\n`;
-                    response += `• Translates non-Hebrew messages → Hebrew immediately\n`;
-                    response += `• Strict detection: ALL words must be non-Hebrew\n`;
-                    response += `• Rate limited: 10 translations/minute per user\n`;
-                    response += `• Minimum text length: 5 characters\n\n`;
-                    response += `⚙️ Use \`#autotranslate off\` to disable`;
+            if (parsed.action === 'on') {
+                const from = parsed.from || 'ru';
+                const to   = parsed.to   || 'he';
+                const ok   = await groupService.setGroupAutoTranslate(groupId, from, to);
+                if (ok) {
+                    await this.sock.sendMessage(groupId, {
+                        text: `✅ *Auto-Translation ENABLED*\n\n` +
+                              `🌐 Source: ${from.toUpperCase()} → Target: ${to.toUpperCase()}\n` +
+                              `Every ${from === 'ru' ? 'Russian' : from} message in this group will be translated to ${to === 'he' ? 'Hebrew' : to}.\n\n` +
+                              `Use \`#autotranslate off\` to disable.`
+                    });
+                    console.log(`[${getTimestamp()}] ✅ Auto-translate ON for ${groupId}: ${from} → ${to}`);
                 } else {
-                    response += `💡 *Available Commands:*\n`;
-                    response += `• \`#autotranslate on\` - Enable auto-translation\n`;
-                    response += `• \`#translate <text>\` - Manual translation still works\n`;
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Failed to enable auto-translation. Is this group registered in the database?'
+                    });
                 }
-                
-                await this.sock.sendMessage(this.getAdminJid(), { text: response });
-                
+
+            } else if (parsed.action === 'off') {
+                const ok = await groupService.disableGroupAutoTranslate(groupId);
+                if (ok) {
+                    await this.sock.sendMessage(groupId, {
+                        text: '⏸️ *Auto-Translation DISABLED*\n\nNo more automatic translations in this group.'
+                    });
+                    console.log(`[${getTimestamp()}] ⏸️ Auto-translate OFF for ${groupId}`);
+                } else {
+                    await this.sock.sendMessage(groupId, {
+                        text: '❌ Failed to disable auto-translation. Is this group registered?'
+                    });
+                }
+
             } else {
-                await this.sock.sendMessage(this.getAdminJid(), { 
-                    text: '❌ Invalid option. Use:\n• `#autotranslate on` - Enable\n• `#autotranslate off` - Disable\n• `#autotranslate status` - Check status' 
-                });
+                // status (default)
+                const setting = await groupService.getGroupAutoTranslate(groupId);
+                if (setting) {
+                    await this.sock.sendMessage(groupId, {
+                        text: `🌐 *Auto-Translation Status*\n\n` +
+                              `✅ Enabled\n` +
+                              `Source: ${setting.from.toUpperCase()}\n` +
+                              `Target: ${setting.to.toUpperCase()}\n\n` +
+                              `Use \`#autotranslate off\` to disable.`
+                    });
+                } else {
+                    await this.sock.sendMessage(groupId, {
+                        text: `🌐 *Auto-Translation Status*\n\n` +
+                              `❌ Disabled for this group.\n\n` +
+                              `Use \`#autotranslate on ru,he\` to enable Russian → Hebrew.`
+                    });
+                }
             }
-            
+
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Translation toggle failed:`, error);
-            await this.sock.sendMessage(this.getAdminJid(), { 
-                text: '❌ Failed to toggle auto-translation. Please try again later.' 
+            await this.sock.sendMessage(this.getAdminJid(), {
+                text: '❌ Failed to update auto-translation setting. Check logs.'
             });
         }
-        
+
         return true;
     }
 
@@ -4914,3 +4937,4 @@ Example: #setcategory family`
 }
 
 module.exports = CommandHandler;
+module.exports.parseAutoTranslateArgs = parseAutoTranslateArgs;
