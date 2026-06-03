@@ -444,8 +444,9 @@ class CommandHandler {
 • *#translate <lang> <text>* - Translate to specific language
 • *#langs* - Show supported language codes
 • *#ru* → Russian  • *#he* → Hebrew  • *#fr* → French  • *#en* → English
-• *#autotranslate <on/off/status>* - Control auto-translation
-• Auto-Translation: ${config.FEATURES.AUTO_TRANSLATION ? '✅ ENABLED' : '❌ DISABLED'}
+• *#autotranslate on ru,he* - Enable auto-translate Russian→Hebrew in this group
+• *#autotranslate off* - Disable auto-translation for this group
+• *#autotranslate status* - Show current setting for this group
 
 *🎭 Entertainment:*
 • *#jokeson* / *#jokesoff* / *#jokesstatus* - Control Hebrew jokes per group
@@ -568,8 +569,8 @@ class CommandHandler {
 • *#translate <text>* - Translate text
 • *#ru* → Russian  • *#he* → Hebrew  • *#fr* → French  • *#en* → English
 • *#langs* - Show language codes
-• *#autotranslate <on/off/status>* - Auto-translation control
-• Status: ${config.FEATURES.AUTO_TRANSLATION ? '✅ Enabled' : '❌ Disabled'}
+• *#autotranslate on ru,he* - Enable Russian→Hebrew auto-translate in this group
+• *#autotranslate off* - Disable · *#autotranslate status* - Current setting
 
 *🎭 Jokes:*
 • *#jokeson* / *#jokesoff* / *#jokesstatus* - Per-group control

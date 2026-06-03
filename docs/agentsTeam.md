@@ -1,78 +1,91 @@
-# Agent Team — Link Preview URL Extraction Fix
+# Agent Team — Per-Group Russian → Hebrew Auto-Translation
 Date: 2026-06-03
 
 ## Mission
-Messages sent as WhatsApp link previews ("חשבתי זה לא אמיתי...") carry the
-actual URL in `extendedTextMessage.matchedText` / `canonicalUrl`, not in the
-message body. The URL scanner in `index.js` only reads `messageText` (from
-`extractMessageText()`), so the URL is never extracted, Safe Browsing is never
-called, and no alert fires.
-
-Fix: extract a pure helper `extractPreviewUrls(rawMsg)` in `utils/urlUtils.js`
-and use it to build a `urlScanText` at line 2451 of `index.js`, leaving
-`messageText` unchanged everywhere else.
+Add per-group auto-translation: when admin runs `#autotranslate on ru,he` inside a
+WhatsApp group, every Russian message in that group gets automatically translated to
+Hebrew and sent as a reply. `#autotranslate off` stops it. Other groups are unaffected.
 
 ## Contract (designed before tests)
 
-### `extractPreviewUrls(rawMsg: object | null | undefined): string[]`
-- Reads `rawMsg?.message?.extendedTextMessage?.matchedText`
-- Reads `rawMsg?.message?.extendedTextMessage?.canonicalUrl`
-- Extracts all `https?://...` URLs from each field (regex)
-- Returns a **deduplicated** array of URLs
-- NEVER throws — returns `[]` on any null/undefined/missing path
-- Pure function: no side effects, no I/O
-
-### Change in `index.js` at line 2451
-```js
-// BEFORE
-const urlMatches = messageText.match(/https?:\/\/[^\s<>"]+/gi) || [];
-
-// AFTER
-const previewUrls = extractPreviewUrls(msg);
-const urlScanText = previewUrls.length
-    ? messageText + ' ' + previewUrls.join(' ')
-    : messageText;
-const urlMatches = urlScanText.match(/https?:\/\/[^\s<>"]+/gi) || [];
+### DB schema (`database/add-auto-translate-column.sql`)
+```sql
+ALTER TABLE groups
+  ADD COLUMN IF NOT EXISTS auto_translate_from VARCHAR(5) DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS auto_translate_to   VARCHAR(5) DEFAULT NULL;
 ```
-`messageText` is NOT modified — it continues to feed commands, bullywatch, etc.
+NULL = disabled. `'ru'` / `'he'` = ISO 639-1 language codes.
 
-## Test Runner
-Unit: `node tests/testUrlExtraction.js`
-E2E: N/A (no live WhatsApp needed)
+### `utils/languageUtils.js` (new file)
+```js
+function isRussian(text: string): boolean
+// true if text contains any Cyrillic character Ѐ-ӿ
+// Uses RegExp.test() — exits on first match. Zero API calls.
+```
+
+### `database/groupService.js` additions
+```js
+getGroupAutoTranslate(whatsappGroupId): Promise<{from,to}|null>
+// {from,to} if enabled, null if disabled. Cached (5-min TTL).
+
+setGroupAutoTranslate(whatsappGroupId, fromLang, toLang): Promise<boolean>
+// Saves to DB, invalidates cache.
+
+disableGroupAutoTranslate(whatsappGroupId): Promise<boolean>
+// Sets both columns to NULL, invalidates cache.
+```
+
+### `services/commandHandler.js` — update `handleTranslationToggle`
+- Remove `msg.key.fromMe` restriction → admin can toggle
+- Parse `on ru,he` → `{ action:'on', from:'ru', to:'he' }`
+- `on ru,he` → `setGroupAutoTranslate(groupId, 'ru', 'he')`
+- `off`     → `disableGroupAutoTranslate(groupId)`
+- `status`  → show current setting from `getGroupAutoTranslate(groupId)`
+- All actions scoped to the group where the command is sent (msg.key.remoteJid)
+
+### `index.js` — per-group translation check in `handleMessage()`
+After command handling block, before the old global AUTO_TRANSLATION block:
+```js
+const autoTranslate = await getGroupAutoTranslate(chatId);
+if (autoTranslate && isRussian(messageText)) {
+    const result = await translationService.translateText(messageText, autoTranslate.to, autoTranslate.from);
+    await sock.sendMessage(chatId, { text: result.translatedText, quoted: msg });
+    return;
+}
+```
+No API call when group has no setting (cache null = instant skip).
+No API call when message is not Russian (isRussian is pure regex).
 
 ## Baseline
-No automated URL-extraction tests exist before this change.
-Existing tests that require Baileys/live connection are unchanged and untouched.
-`git status` before any change: clean (2 untracked doc files, no staged/modified src).
+Pre-existing `testAutoTranslation.js` fails with MODULE_NOT_FOUND in logger.js — pre-existing
+broken dependency, unrelated to this feature.
+No central test runner (`tests/runTests.js` does not exist).
+New tests must be self-contained (no logger import).
+
+## Test Runner
+Unit: `node tests/testPerGroupAutoTranslate.js`
 
 ## Team
 Config: A (dev + qa + checker)
-| Agent | Zone | Status |
-|---|---|---|
-| dev | `utils/urlUtils.js` (new), `index.js` line 2451 only, `tests/testUrlExtraction.js` | plan |
-| qa | `tests/testUrlExtraction.js` (edge cases), `docs/bugs.md` | spawned |
-| checker | reads all, runs `node tests/testUrlExtraction.js` | spawned |
+| Agent   | Zone                                                                        | Status  |
+|---------|-----------------------------------------------------------------------------|---------|
+| dev     | database/add-auto-translate-column.sql, database/groupService.js,           | plan    |
+|         | utils/languageUtils.js, services/commandHandler.js, index.js,               |         |
+|         | tests/testPerGroupAutoTranslate.js                                          |         |
+| qa      | tests/ + reads all                                                          | spawned |
+| checker | reads all                                                                   | spawned |
 
 ## Acceptance Criteria (checker validates each)
-- [ ] AC1: Message with URL **only** in `matchedText`, empty body → URL detected
-- [ ] AC2: Message with URL **only** in `canonicalUrl`, empty body → URL detected
-- [ ] AC3: Same URL in both body and `matchedText` → appears exactly **once** in `urlMatches`
-- [ ] AC4: Message with URL only in body (existing path) → still detected (no regression)
-- [ ] AC5: `extractPreviewUrls(null)` → returns `[]` without throwing
-- [ ] AC6: `extractPreviewUrls({})` → returns `[]` without throwing
-- [ ] AC7: `extractPreviewUrls({ message: { extendedTextMessage: {} } })` → returns `[]`
-- [ ] AC8: `messageText` variable in `index.js` is unchanged — commands/bullywatch/translate unaffected
+- [ ] AC1: `#autotranslate on ru,he` in a group → DB updated, bot confirms
+- [ ] AC2: `#autotranslate off` in a group → DB updated, translations stop, bot confirms
+- [ ] AC3: `#autotranslate status` → shows from/to or "disabled" for the group
+- [ ] AC4: Russian message in enabled group → bot replies with Hebrew translation
+- [ ] AC5: Non-Russian message in enabled group → NOT translated, no API call
+- [ ] AC6: Group without `#autotranslate on` → zero impact
+- [ ] AC7: `isRussian()` uses pure Cyrillic regex — no API calls
+- [ ] AC8: Non-admin cannot change setting
+- [ ] AC9: All `testPerGroupAutoTranslate.js` tests pass
 
 ## Session Log
-- [start] baseline: no URL unit tests existed; src files clean
-- [dev/red] `tests/testUrlExtraction.js` committed with 8 test cases (all RED — module not found)
-- [dev/green TC1] `null input returns []` — PASS
-- [dev/green TC2] `empty object returns []` — PASS
-- [dev/green TC3] `extendedTextMessage empty returns []` — PASS
-- [dev/green TC4] `URL only in matchedText is returned` (AC1) — PASS
-- [dev/green TC5] `URL only in canonicalUrl is returned` (AC2) — PASS
-- [dev/green TC6] `duplicate URL in both fields appears exactly once` (AC3) — PASS
-- [dev/green TC7] `URL only in body → extractPreviewUrls returns []` (AC4) — PASS
-- [dev/green TC8] `multiple URLs in matchedText are all returned and deduplicated` — PASS
-- [dev/wire] `index.js` import added + URL scan (line ~2452) updated — `messageText` unchanged
-- [dev/final] `node tests/testUrlExtraction.js` → 8 passed, 0 failed ✅
+- [2026-06-03] Baseline: testAutoTranslation.js pre-broken (logger MODULE_NOT_FOUND)
+- [2026-06-03] Contract designed, agentsTeam.md written, team spawning
