@@ -104,5 +104,79 @@ test('multiple URLs in matchedText are all returned and deduplicated', () => {
     assert.ok(result.includes('https://b.com'));
 });
 
+// ── QA edge cases (added by qa agent) ────────────────────────────────────────
+
+// EC1: matchedText is a non-URL string → no URLs extracted
+test('matchedText is a non-URL string → returns []', () => {
+    const rawMsg = {
+        message: {
+            extendedTextMessage: {
+                matchedText: 'hello world, nothing to see here',
+            }
+        }
+    };
+    const result = extractPreviewUrls(rawMsg);
+    assert.deepStrictEqual(result, []);
+});
+
+// EC2: canonicalUrl is an empty string → returns []
+test('canonicalUrl is empty string → returns []', () => {
+    const rawMsg = {
+        message: {
+            extendedTextMessage: {
+                canonicalUrl: '',
+            }
+        }
+    };
+    const result = extractPreviewUrls(rawMsg);
+    assert.deepStrictEqual(result, []);
+});
+
+// EC3: both matchedText and canonicalUrl present with different URLs → both returned, deduplicated
+test('both matchedText and canonicalUrl with different URLs → both returned', () => {
+    const rawMsg = {
+        message: {
+            extendedTextMessage: {
+                matchedText: 'https://alpha.com/page',
+                canonicalUrl: 'https://beta.com/other',
+            }
+        }
+    };
+    const result = extractPreviewUrls(rawMsg);
+    assert.strictEqual(result.length, 2);
+    assert.ok(result.includes('https://alpha.com/page'));
+    assert.ok(result.includes('https://beta.com/other'));
+});
+
+// EC4: rawMsg has message key but no extendedTextMessage key → returns []
+test('message key present but no extendedTextMessage → returns []', () => {
+    const rawMsg = {
+        message: {
+            conversation: 'plain text message with no preview',
+        }
+    };
+    const result = extractPreviewUrls(rawMsg);
+    assert.deepStrictEqual(result, []);
+});
+
+// EC5: matchedText explicitly null (field exists but is null) → returns []
+test('matchedText is explicitly null → returns []', () => {
+    const rawMsg = {
+        message: {
+            extendedTextMessage: {
+                matchedText: null,
+            }
+        }
+    };
+    const result = extractPreviewUrls(rawMsg);
+    assert.deepStrictEqual(result, []);
+});
+
+// EC6: undefined rawMsg → returns []
+test('undefined rawMsg → returns []', () => {
+    const result = extractPreviewUrls(undefined);
+    assert.deepStrictEqual(result, []);
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
