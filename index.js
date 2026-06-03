@@ -2306,7 +2306,9 @@ async function handleMessage(sock, msg, commandHandler) {
                 }
                 return;
             }
+            return; // empty cleanText — silently ignore
         }
+        return; // non-admin/non-owner — silently ignore
     }
 
     // Check for immediate auto-translation of non-Hebrew messages
