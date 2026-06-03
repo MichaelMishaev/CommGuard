@@ -2320,9 +2320,11 @@ async function handleMessage(sock, msg, commandHandler) {
     // Per-group Russian → Hebrew auto-translation (runs before global flag check)
     if (chatId && chatId.endsWith('@g.us')) {
         const pa = await getGroupAutoTranslate(chatId).catch(() => null);
+        console.log(`[${getTimestamp()}] [AT-DEBUG] chatId=${chatId} pa=${JSON.stringify(pa)} isRussian=${isRussian(messageText)} text="${messageText?.substring(0,30)}"`);
         if (pa && isRussian(messageText)) {
             try { const ts2 = require('./services/translationService').translationService;
                 await ts2.initialize(); const r2 = await ts2.translateText(messageText, pa.to, pa.from);
+                console.log(`[${getTimestamp()}] [AT-DEBUG] translateResult=${JSON.stringify(r2)}`);
                 if (r2?.translatedText) await sock.sendMessage(chatId, {text: r2.translatedText, quoted: msg});
             } catch (pgE) { console.error(`[${getTimestamp()}] ❌ Per-group translate:`, pgE.message); }
             return;
