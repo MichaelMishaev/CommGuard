@@ -2299,10 +2299,29 @@ async function handleMessage(sock, msg, commandHandler) {
                     if (result.translatedText) {
                         await sock.sendMessage(chatId, { text: result.translatedText, quoted: msg });
                     }
-                } catch (error) {
-                    console.log(`[${getTimestamp()}] #ru translation error: ${error.message}`);
-                    const alertJid = config.ALERT_PHONE + '@s.whatsapp.net';
-                    await sock.sendMessage(alertJid, { text: `❌ #ru translation failed in ${chatId}: ${error.message}` });
+                } catch (googleError) {
+                    console.log(`[${getTimestamp()}] #ru Google Translate failed (${googleError.message}), trying OpenAI fallback`);
+                    try {
+                        const OpenAI = require('openai');
+                        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                        const response = await openai.chat.completions.create({
+                            model: config.GPT.MODEL,
+                            messages: [
+                                { role: 'system', content: 'You are a translator. Translate the following text to Russian. Return only the translated text, no explanations, no quotes.' },
+                                { role: 'user', content: cleanText }
+                            ],
+                            max_completion_tokens: 1000
+                        });
+                        const translated = response.choices[0].message.content.trim();
+                        console.log(`[${getTimestamp()}] #ru OpenAI fallback success in ${chatId}`);
+                        if (translated) {
+                            await sock.sendMessage(chatId, { text: translated, quoted: msg });
+                        }
+                    } catch (openaiError) {
+                        console.log(`[${getTimestamp()}] #ru OpenAI fallback also failed: ${openaiError.message}`);
+                        const alertJid = config.ALERT_PHONE + '@s.whatsapp.net';
+                        await sock.sendMessage(alertJid, { text: `❌ #ru translation failed in ${chatId}: Google: ${googleError.message} | OpenAI: ${openaiError.message}` });
+                    }
                 }
                 return;
             }

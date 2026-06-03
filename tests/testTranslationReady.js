@@ -96,7 +96,7 @@ async function main() {
         console.log(`╠═══════════════════════════════════════════════════════════════╣`);
         console.log(`║  🎉 Google Translate API Successfully Configured             ║`);
         console.log(`║                                                               ║`);
-        console.log(`║  ✅ API Key: AIzaSyC7VZYnyK7mORTbxJirt4o9pmeFqSedgIw         ║`);
+        console.log(`║  ✅ API Key: configured via .env                              ║`);
         console.log(`║  ✅ Environment: Loaded from .env file                       ║`);
         console.log(`║  ✅ Translation: Working for all languages                   ║`);
         console.log(`║  ✅ Auto-Detection: Working perfectly                        ║`);
