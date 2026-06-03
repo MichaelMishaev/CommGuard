@@ -2305,7 +2305,7 @@ async function handleMessage(sock, msg, commandHandler) {
                         const OpenAI = require('openai');
                         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
                         const response = await openai.chat.completions.create({
-                            model: config.GPT.MODEL,
+                            model: 'gpt-5.4-nano',
                             messages: [
                                 { role: 'system', content: 'You are a translator. Translate the following text to Russian. Return only the translated text, no explanations, no quotes.' },
                                 { role: 'user', content: cleanText }
