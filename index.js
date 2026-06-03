@@ -367,6 +367,7 @@ const { enqueueDeferredKick } = require('./utils/deferredKickQueue');
 const { logInviteOutcome } = require('./utils/inviteLogger');
 const { storePendingRequest, getPendingRequest, removePendingRequest } = require('./utils/blacklistPendingRequests');
 const { isBlockedUrl, addBlockedDomain } = require('./services/urlBlacklistService');
+const { extractPreviewUrls } = require('./utils/urlUtils');
 
 // Initialize Database (PostgreSQL + Redis)
 const { initDatabase } = require('./database/connection');
@@ -2448,7 +2449,9 @@ async function handleMessage(sock, msg, commandHandler) {
             'chat.whatsapp.com', 'facebook.com', 'fb.com', 'm.facebook.com', 'l.facebook.com',
             'instagram.com', 'tiktok.com', 'vm.tiktok.com', 'youtube.com', 'youtu.be',
         ];
-        const urlMatches = messageText.match(/https?:\/\/[^\s<>"]+/gi) || [];
+        const previewUrls = extractPreviewUrls(msg);
+        const urlScanText = previewUrls.length ? messageText + ' ' + previewUrls.join(' ') : messageText;
+        const urlMatches = urlScanText.match(/https?:\/\/[^\s<>"]+/gi) || [];
 
         // Check URL blacklist first — auto-delete without asking admin
         const blacklistedUrls = urlMatches.filter(u => isBlockedUrl(u));
