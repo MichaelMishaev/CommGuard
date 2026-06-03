@@ -372,7 +372,8 @@ const { extractPreviewUrls } = require('./utils/urlUtils');
 // Initialize Database (PostgreSQL + Redis)
 const { initDatabase } = require('./database/connection');
 const { initRedis } = require('./services/redisService');
-const { incrementViolation, getViolations, blacklistUser, getUserByPhone, upsertGroup, isRestrictCountryCodesEnabled } = require('./database/groupService');
+const { incrementViolation, getViolations, blacklistUser, getUserByPhone, upsertGroup, isRestrictCountryCodesEnabled, getGroupAutoTranslate } = require('./database/groupService');
+const { isRussian } = require('./utils/languageUtils');
 const { cacheBlacklistedUser, removeFromBlacklistCache } = require('./services/redisService');
 
 // Initialize databases if URLs are provided
@@ -2314,6 +2315,18 @@ async function handleMessage(sock, msg, commandHandler) {
             return; // empty cleanText — silently ignore
         }
         return; // non-admin/non-owner — silently ignore
+    }
+
+    // Per-group Russian → Hebrew auto-translation (runs before global flag check)
+    if (chatId && chatId.endsWith('@g.us')) {
+        const pa = await getGroupAutoTranslate(chatId).catch(() => null);
+        if (pa && isRussian(messageText)) {
+            try { const ts2 = require('./services/translationService').translationService;
+                await ts2.initialize(); const r2 = await ts2.translateText(messageText, pa.to, pa.from);
+                if (r2?.translatedText) await sock.sendMessage(chatId, {text: r2.translatedText, quoted: msg});
+            } catch (pgE) { console.error(`[${getTimestamp()}] ❌ Per-group translate:`, pgE.message); }
+            return;
+        }
     }
 
     // Check for immediate auto-translation of non-Hebrew messages
