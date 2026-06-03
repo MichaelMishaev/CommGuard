@@ -818,6 +818,97 @@ async function isRestrictCountryCodesEnabled(whatsappGroupId) {
     }
 }
 
+// ─── Per-group auto-translate ────────────────────────────────────────────────
+const autoTranslateCache = new Map(); // groupId -> {value: {from,to}|null, expiresAt: number}
+const AUTO_TRANSLATE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get per-group auto-translation setting.
+ * @param {string} whatsappGroupId
+ * @returns {Promise<{from:string,to:string}|null>} {from,to} if enabled, null if disabled.
+ */
+async function getGroupAutoTranslate(whatsappGroupId) {
+    const cached = autoTranslateCache.get(whatsappGroupId);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+    try {
+        const result = await query(`
+            SELECT auto_translate_from, auto_translate_to
+            FROM groups
+            WHERE whatsapp_group_id = $1
+        `, [whatsappGroupId]);
+
+        const row = result.rows[0];
+        const value = (row && row.auto_translate_from && row.auto_translate_to)
+            ? { from: row.auto_translate_from, to: row.auto_translate_to }
+            : null;
+
+        autoTranslateCache.set(whatsappGroupId, { value, expiresAt: Date.now() + AUTO_TRANSLATE_CACHE_TTL });
+        return value;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to get auto-translate setting:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Enable per-group auto-translation.
+ * @param {string} whatsappGroupId
+ * @param {string} fromLang ISO 639-1 source language code (e.g. 'ru')
+ * @param {string} toLang   ISO 639-1 target language code (e.g. 'he')
+ * @returns {Promise<boolean>}
+ */
+async function setGroupAutoTranslate(whatsappGroupId, fromLang, toLang) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET auto_translate_from = $2,
+                auto_translate_to   = $3
+            WHERE whatsapp_group_id = $1
+            RETURNING whatsapp_group_id
+        `, [whatsappGroupId, fromLang, toLang]);
+
+        autoTranslateCache.delete(whatsappGroupId); // invalidate
+        if (result.rows.length > 0) {
+            console.log(`[${getTimestamp()}] ✅ Auto-translate enabled for ${whatsappGroupId}: ${fromLang} → ${toLang}`);
+            return true;
+        }
+        console.log(`[${getTimestamp()}] ❌ Group not found for auto-translate: ${whatsappGroupId}`);
+        return false;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to set auto-translate:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Disable per-group auto-translation (sets both columns to NULL).
+ * @param {string} whatsappGroupId
+ * @returns {Promise<boolean>}
+ */
+async function disableGroupAutoTranslate(whatsappGroupId) {
+    try {
+        const result = await query(`
+            UPDATE groups
+            SET auto_translate_from = NULL,
+                auto_translate_to   = NULL
+            WHERE whatsapp_group_id = $1
+            RETURNING whatsapp_group_id
+        `, [whatsappGroupId]);
+
+        autoTranslateCache.delete(whatsappGroupId); // invalidate
+        if (result.rows.length > 0) {
+            console.log(`[${getTimestamp()}] ✅ Auto-translate disabled for ${whatsappGroupId}`);
+            return true;
+        }
+        console.log(`[${getTimestamp()}] ❌ Group not found for auto-translate disable: ${whatsappGroupId}`);
+        return false;
+    } catch (error) {
+        console.error(`[${getTimestamp()}] ❌ Failed to disable auto-translate:`, error.message);
+        return false;
+    }
+}
+
 module.exports = {
     getAllGroups,
     getGroupByWhatsAppId,
@@ -853,5 +944,8 @@ module.exports = {
     getBullywatchGroups,
     upsertGroup,  // Auto-register groups on join
     setRestrictCountryCodes,
-    isRestrictCountryCodesEnabled
+    isRestrictCountryCodesEnabled,
+    getGroupAutoTranslate,
+    setGroupAutoTranslate,
+    disableGroupAutoTranslate
 };
