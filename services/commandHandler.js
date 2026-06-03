@@ -3063,9 +3063,9 @@ class CommandHandler {
             
             // Simple clean response - just the translation
             const response = result.translatedText;
-            
-            await this.sock.sendMessage(this.getAdminJid(), { 
-                text: response 
+
+            await this.sock.sendMessage(msg.key.remoteJid, {
+                text: response
             });
             
             console.log(`[${getTimestamp()}] ✅ Translation completed: ${result.detectedLanguage} → ${targetLang}`);
@@ -3111,7 +3111,7 @@ class CommandHandler {
             });
             const translation = response.choices[0]?.message?.content?.trim();
             if (!translation) throw new Error('Empty response from OpenAI');
-            await this.sock.sendMessage(this.getAdminJid(), { text: translation });
+            await this.sock.sendMessage(msg.key.remoteJid, { text: translation });
             console.log(`[${getTimestamp()}] ✅ #${langCode} translation sent`);
         } catch (error) {
             console.error(`[${getTimestamp()}] ❌ #${langCode} translation failed:`, error);
