@@ -2284,7 +2284,31 @@ async function handleMessage(sock, msg, commandHandler) {
         }
         if (handled) return;
     }
-    
+
+    if (messageText && messageText.trimEnd().match(/#ru\s*$/i)) {
+        const isBotOwnerCheck = senderId.includes(config.ADMIN_PHONE) || senderId.includes(config.ALERT_PHONE) || (config.ADMIN_LID && senderId.includes(config.ADMIN_LID));
+        if (isAdmin || isBotOwnerCheck) {
+            const cleanText = messageText.replace(/#ru\s*$/i, '').trim();
+            if (cleanText) {
+                console.log(`[${getTimestamp()}] #ru trigger detected from ${senderId} in ${chatId}`);
+                try {
+                    const { translationService } = require('./services/translationService');
+                    await translationService.initialize();
+                    const result = await translationService.translateText(cleanText, 'ru', null, senderId);
+                    console.log(`[${getTimestamp()}] #ru translation success in ${chatId}, source length: ${cleanText.length}`);
+                    if (result.translatedText) {
+                        await sock.sendMessage(chatId, { text: result.translatedText, quoted: msg });
+                    }
+                } catch (error) {
+                    console.log(`[${getTimestamp()}] #ru translation error: ${error.message}`);
+                    const alertJid = config.ALERT_PHONE + '@s.whatsapp.net';
+                    await sock.sendMessage(alertJid, { text: `❌ #ru translation failed in ${chatId}: ${error.message}` });
+                }
+                return;
+            }
+        }
+    }
+
     // Check for immediate auto-translation of non-Hebrew messages
     if (config.FEATURES.AUTO_TRANSLATION && messageText && messageText.trim().length > 5) {
         try {
