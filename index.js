@@ -1300,21 +1300,6 @@ async function handleMessage(sock, msg, commandHandler) {
     // Extract message text with improved handling
     let messageText = extractMessageText(msg);
     
-    // ULTRA DEBUG: Check what extractMessageText returned
-    const rawText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-    if (rawText.includes('#')) {
-        console.log(`[EXTRACT-DEBUG] Raw text: "${rawText}"`);
-        console.log(`[EXTRACT-DEBUG] Extracted: "${messageText}"`);
-        console.log(`[EXTRACT-DEBUG] fromMe: ${msg.key.fromMe}`);
-    }
-
-    // Debug logging for #kick commands specifically
-    if (msg.message?.extendedTextMessage?.text && msg.message.extendedTextMessage.text.includes('#kick')) {
-        console.log(`[${getTimestamp()}] 🔍 DEBUG: Found #kick in extendedTextMessage`);
-        console.log(`   Text: "${msg.message.extendedTextMessage.text}"`);
-        console.log(`   Has contextInfo: ${!!msg.message.extendedTextMessage.contextInfo}`);
-        console.log(`   messageText extracted: "${messageText}"`);
-    }
 
     // Check for sticker/reaction commands (always check if it's a sticker/reaction)
     let stickerCommand = { isCommand: false };
@@ -2450,6 +2435,7 @@ async function handleMessage(sock, msg, commandHandler) {
             'instagram.com', 'tiktok.com', 'vm.tiktok.com', 'youtube.com', 'youtu.be',
         ];
         const previewUrls = extractPreviewUrls(msg);
+        if (previewUrls.length) console.log(`[${getTimestamp()}] 🔗 Link preview URL detected: ${previewUrls.join(', ')}`);
         const urlScanText = previewUrls.length ? messageText + ' ' + previewUrls.join(' ') : messageText;
         const urlMatches = urlScanText.match(/https?:\/\/[^\s<>"]+/gi) || [];
 

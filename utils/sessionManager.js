@@ -100,11 +100,6 @@ function mightContainInviteLink(msg) {
 
 // Get message text with fallback for encrypted messages
 function extractMessageText(msg) {
-    // Debug: Log full message structure for text messages to understand new WhatsApp format
-    if (msg.message && (msg.message.conversation || msg.message.extendedTextMessage)) {
-        console.log(`[DEBUG] TEXT MESSAGE STRUCTURE:`, JSON.stringify(msg.message, null, 2));
-    }
-
     // Try all possible text locations
     const text = msg.message?.conversation ||
            msg.message?.extendedTextMessage?.text ||
