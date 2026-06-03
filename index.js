@@ -2294,7 +2294,7 @@ async function handleMessage(sock, msg, commandHandler) {
                 try {
                     const { translationService } = require('./services/translationService');
                     await translationService.initialize();
-                    const result = await translationService.translateText(cleanText, 'ru', null, senderId);
+                    const result = await translationService.translateText(cleanText, 'ru', null, 'system');
                     console.log(`[${getTimestamp()}] #ru translation success in ${chatId}, source length: ${cleanText.length}`);
                     if (result.translatedText) {
                         await sock.sendMessage(chatId, { text: result.translatedText, quoted: msg });
