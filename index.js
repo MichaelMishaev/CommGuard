@@ -2320,13 +2320,28 @@ async function handleMessage(sock, msg, commandHandler) {
     // Per-group Russian → Hebrew auto-translation (runs before global flag check)
     if (chatId && chatId.endsWith('@g.us')) {
         const pa = await getGroupAutoTranslate(chatId).catch(() => null);
-        console.log(`[${getTimestamp()}] [AT-DEBUG] chatId=${chatId} pa=${JSON.stringify(pa)} isRussian=${isRussian(messageText)} text="${messageText?.substring(0,30)}"`);
         if (pa && isRussian(messageText)) {
-            try { const ts2 = require('./services/translationService').translationService;
-                await ts2.initialize(); const r2 = await ts2.translateText(messageText, pa.to, pa.from);
-                console.log(`[${getTimestamp()}] [AT-DEBUG] translateResult=${JSON.stringify(r2)}`);
-                if (r2?.translatedText) await sock.sendMessage(chatId, {text: r2.translatedText, quoted: msg});
-            } catch (pgE) { console.error(`[${getTimestamp()}] ❌ Per-group translate:`, pgE.message); }
+            try {
+                const OpenAI = require('openai');
+                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                const langNames = { ru: 'Russian', he: 'Hebrew', en: 'English', fr: 'French', ar: 'Arabic' };
+                const targetName = langNames[pa.to] || pa.to;
+                const response = await openai.chat.completions.create({
+                    model: 'gpt-5.4-nano',
+                    messages: [
+                        { role: 'system', content: `Translate the following text to ${targetName}. Return ONLY the translated text, no explanations.` },
+                        { role: 'user', content: messageText }
+                    ],
+                    max_completion_tokens: 500
+                });
+                const translated = response.choices[0]?.message?.content?.trim();
+                if (translated) {
+                    await sock.sendMessage(chatId, { text: translated, quoted: msg });
+                    console.log(`[${getTimestamp()}] ✅ Auto-translated (${pa.from}→${pa.to}) in ${chatId}`);
+                }
+            } catch (pgE) {
+                console.error(`[${getTimestamp()}] ❌ Per-group auto-translate failed:`, pgE.message);
+            }
             return;
         }
     }
